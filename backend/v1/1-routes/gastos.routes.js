@@ -7,7 +7,7 @@ import {
   eliminarTodosLosGastos,
 } from "../2-controllers/gastos.controller.js";
 import { validateBody } from "../middlewares/validateBody.middleware.js";
-import gastosSchema from "../0-validators/gasto.validators.js";
+import {gastosSchema, actualizarGastoSchema} from "../0-validators/gasto.validators.js";
 import { uploadFactura } from "../middlewares/uploadFactura.middleware.js";
 import { subirFacturaGasto } from "../2-controllers/gastos.controller.js";
 
@@ -21,7 +21,7 @@ router.patch(
   uploadFactura.single("factura"),
   subirFacturaGasto,
 );
-router.patch("/:id", validateBody(gastosSchema), actualizarGasto);
+router.patch("/:id", validateBody(actualizarGastoSchema), actualizarGasto);
 router.delete("/:id", eliminarGasto);
 router.delete("/", eliminarTodosLosGastos);
 

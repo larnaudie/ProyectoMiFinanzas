@@ -1,6 +1,6 @@
 import Joi from "joi";
 
-const gastosSchema = Joi.object({
+export const gastosSchema = Joi.object({
   detalle: Joi.string().trim().min(3).max(30).required().messages({
     "string.min": "El nombre del gasto debe tener al menos 3 caracteres",
     "string.max": "El nombre del gasto no puede exceder los 30 caracteres",
@@ -38,4 +38,14 @@ const gastosSchema = Joi.object({
   }).optional(),
 });
 
-export default gastosSchema;
+export const actualizarGastoSchema = Joi.object({
+  detalle: Joi.string(),
+  cuentaId: Joi.string(),
+  fecha: Joi.date().allow("", null),
+  montoBancario: Joi.number().allow("", null),
+  porcentaje: Joi.number().min(0).max(100).allow("", null),
+  incluirMontoReal: Joi.boolean(),
+  categoriaId: Joi.string().allow("", null),
+  subcategoriaId: Joi.string().allow("", null),
+  cambiarEstado: Joi.boolean(),
+}).min(1);

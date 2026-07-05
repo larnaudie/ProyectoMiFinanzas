@@ -8,6 +8,7 @@ import cuentasRouter from "./1-routes/cuentas.routes.js";
 import gastosRouter from "./1-routes/gastos.routes.js";
 import categoriasRouter from "./1-routes/categorias.routes.js";
 import subcategoriasRouter from "./1-routes/subcategorias.routes.js";
+import importacionesRouter from "./1-routes/importacionExcel.routes.js";
 //import tarjetasRouter from "./1-routes/tarjetasCredito.routes.js";
 //import prestamosRouter from "./1-routes/prestamos.routes.js";
 
@@ -25,6 +26,7 @@ router.use("/cuentas", cuentasRouter);
 router.use("/gastos", gastosRouter);
 router.use("/categorias", categoriasRouter);
 router.use("/subcategorias", subcategoriasRouter);
+router.use("/importaciones", importacionesRouter);
 //router.use("/tarjetas", tarjetasRouter);
 //router.use("/prestamos", prestamosRouter);
 
