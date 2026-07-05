@@ -1,0 +1,3 @@
+INSTALAR
+npm i o npm install
+npm install nodemon
