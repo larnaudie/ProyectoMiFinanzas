@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api } from '../services/api.js';
+import { api } from '../../../services/api.js';
 
 function ImportExcelPage() {
   const { cuentaId } = useParams();

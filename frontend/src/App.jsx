@@ -1,29 +1,44 @@
-﻿import { Navigate, Route, Routes } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import AppLayout from './components/AppLayout.jsx';
-import ProtectedRoute from './components/ProtectedRoute.jsx';
-import LoginPage from './pages/LoginPage.jsx';
-import AccountsPage from './pages/AccountsPage.jsx';
-import DashboardPage from './pages/DashboardPage.jsx';
-import ExpensesPage from './pages/ExpensesPage.jsx';
-import ImportExcelPage from './pages/ImportExcelPage.jsx';
+﻿import { Navigate, Route, Routes, BrowserRouter } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import AppLayout from "./pages/AppLayout.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import LoginPage from "./pages/auth/LoginPage.jsx";
+import HomePage from "./pages/HomePage/HomePage.jsx";
+import ManagePage from "./pages/HomePage/ManagePage.jsx";
+import DashboardPage from "./pages/HomePage/DashboardPage/DashboardPage.jsx";
+import DesglocePage from "./pages/HomePage/DesglocePage/DesglocePage.jsx";
+import ImportExcelPage from "./pages/HomePage/DashboardPage/ImportExcelPage.jsx";
+import RegisterPage from "./pages/auth/RegisterPage.jsx";
+import NotFoundPage from "./pages/NotFoundPage.jsx";
+import { Provider } from "react-redux";
+import store from "./app/store.js";
 
 function App() {
-  const token = useSelector((state) => state.auth.token);
-
   return (
-    <Routes>
-      <Route path="/login" element={token ? <Navigate to="/cuentas" /> : <LoginPage />} />
-      <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
-          <Route path="/cuentas" element={<AccountsPage />} />
-          <Route path="/cuentas/:cuentaId" element={<DashboardPage />} />
-          <Route path="/cuentas/:cuentaId/gastos" element={<ExpensesPage />} />
-          <Route path="/cuentas/:cuentaId/importar" element={<ImportExcelPage />} />
-        </Route>
-      </Route>
-      <Route path="*" element={<Navigate to={token ? '/cuentas' : '/login'} />} />
-    </Routes>
+    <Provider store={store}>
+      <BrowserRouter>
+        <Routes>
+          {/* RUTAS PÚBLICAS */}
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          {/* RUTAS DE USER */}
+          <Route element={<AppLayout />}>
+            <Route path="/home" element={<HomePage />}></Route>
+            <Route path="/manage" element={<ManagePage />}></Route>
+            <Route>
+              <Route path="cuentas/:cuentaId/dashboard" element={<DashboardPage />} />
+              <Route path="cuentas/:cuentaId/gastos" element={<DesglocePage />} />
+              <Route
+                path="cuentas/:cuentaId/importar-excel"
+                element={<ImportExcelPage />}
+              />
+            </Route>
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </Provider>
   );
 }
 

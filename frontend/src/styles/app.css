@@ -113,3 +113,29 @@ th { color: #425955; font-size: 14px; }
   .summary-grid { grid-template-columns: 1fr; }
   .page-header { align-items: flex-start; flex-direction: column; }
 }
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 16px;
+  background: #f3f6f5;
+}
+
+.sidebar-link {
+  display: block;
+  padding: 10px 12px;
+  text-decoration: none;
+  color: #0b1f33;
+}
+
+.dashboard-contenedor {
+  flex: 1;
+  padding: 32px;
+}
