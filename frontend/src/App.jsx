@@ -12,6 +12,7 @@ import RegisterPage from "./pages/auth/RegisterPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import { Provider } from "react-redux";
 import store from "./app/store.js";
+import DetalleGastoPage from "./pages/HomePage/DesglocePage/DetalleGastoPage.jsx";
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
             <Route path="/home" element={<HomePage />}></Route>
             <Route path="/manage" element={<ManagePage />}></Route>
             <Route>
+              <Route path="/cuentas/:cuentaId/gastos/gasto/:gastoId" element={<DetalleGastoPage />} />
               <Route path="cuentas/:cuentaId/dashboard" element={<DashboardPage />} />
               <Route path="cuentas/:cuentaId/gastos" element={<DesglocePage />} />
               <Route

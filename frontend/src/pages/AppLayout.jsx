@@ -16,14 +16,15 @@ function AppLayout() {
     <div className="app-shell">
       {/* El Navbar va solo, arriba de todo */}
       <Navbar alternarMenu={alternarMenu} />
-      <Sidebar abierto={menuAbierto} />
-
-      {/* El contenedor principal envuelve el Sidebar y el Contenido */}
-      <main className="dashboard-contenedor">
-        <section className="contenido-principal">
-          <Outlet />
-        </section>
-      </main>
+      <div className="app-body">
+        <Sidebar abierto={menuAbierto} />
+        {/* El contenedor principal envuelve el Sidebar y el Contenido */}
+        <main className="dashboard-contenedor">
+          <section className="contenido-principal">
+            <Outlet />
+          </section>
+        </main>
+      </div>
     </div>
   );
 }

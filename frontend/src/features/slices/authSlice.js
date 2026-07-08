@@ -1,65 +1,66 @@
-﻿import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { api } from "../../services/api.js";
+﻿import { createSlice } from "@reduxjs/toolkit";
+
+const usuarioGuardado = localStorage.getItem("usuario");
+const usuarioInicial = usuarioGuardado ? JSON.parse(usuarioGuardado) : null;
 
 const initialState = {
   token: localStorage.getItem("token"),
-  usuario: JSON.parse(localStorage.getItem("usuario") || "null"),
+  id: usuarioInicial?.id || null,
+  rol: usuarioInicial?.rol || null,
+  usuario: usuarioInicial?.username || null,
+
+  isAuthenticated: Boolean(localStorage.getItem("token")),
+
   loading: false,
   error: null,
 };
 
-export const loginUsuario = createAsyncThunk(
-  "auth/loginUsuario",
-  async ({ username, password }, { rejectWithValue }) => {
-    try {
-      const { data } = await api.post("/auth/login", { username, password });
-      return data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || "No se pudo iniciar sesion",
-      );
-    }
-  },
-);
-
 const authSlice = createSlice({
   name: "auth",
+
   initialState,
+
   reducers: {
-    logout(state) {
+    loginStart: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+
+    loginSuccess: (state, action) => {
+      state.loading = false;
+
+      state.token = action.payload.token;
+      state.id = action.payload.id;
+      state.rol = action.payload.rol;
+      state.usuario = action.payload.username;
+
+      state.isAuthenticated = true;
+
+      state.error = null;
+    },
+
+    loginError: (state, action) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
+
+    logout: (state) => {
       state.token = null;
+      state.id = null;
+      state.rol = null;
       state.usuario = null;
+
+      state.isAuthenticated = false;
+
+      state.loading = false;
+      state.error = null;
+
       localStorage.removeItem("token");
       localStorage.removeItem("usuario");
     },
   },
-  extraReducers: (builder) => {
-    builder
-      .addCase(loginUsuario.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      //Cuando loginUsuario sale bien, Redux entra acá:
-      // el dispatch(loginUsuario(form) es igual a type: "auth/loginUsuario/pending")
-      // esto coincide con .addCase(loginUsuario.pending, por eso entra aca
-      .addCase(loginUsuario.fulfilled, (state, action) => {
-        const usuario = {
-          id: action.payload.id,
-          rol: action.payload.rol,
-        };
-
-        state.loading = false;
-        state.token = action.payload.token;
-        state.usuario = usuario;
-        localStorage.setItem("token", action.payload.token);
-        localStorage.setItem("usuario", JSON.stringify(usuario));
-      })
-      .addCase(loginUsuario.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      });
-  },
 });
 
-export const { logout } = authSlice.actions;
+export const { loginStart, loginSuccess, loginError, logout } = authSlice.actions;
+
 export default authSlice.reducer;

@@ -1,7 +1,8 @@
 ﻿import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { loginUsuario } from "../../features/slices/authSlice.js";
+import { loginStart, loginSuccess, loginError } from "../../features/slices/authSlice.js";
 import { useNavigate } from "react-router-dom";
+import { api } from "../../services/api.js";
 
 function LoginPage() {
   const dispatch = useDispatch();
@@ -10,22 +11,34 @@ function LoginPage() {
   const navigate = useNavigate();
 
   const handleChange = (event) => {
-    /**
-     * aca event.target.name es el valor usuario y el evento.target.value es el valor escrito
-     * Si no ponemos ...form, reemplaza todo por lo ultimo editado.
-     */
     setForm({ ...form, [event.target.name]: event.target.value });
   };
 
   const handleSubmit = async (event) => {
-    //sirve para que no recargue la pagina el Navegador, react maneja el formulario.
     event.preventDefault();
+    dispatch(loginStart());
 
-    const resultado = await dispatch(loginUsuario(form));
-    //Si el usuario se relleno y machea con el reslutado redireccionar a dashboard
-    if (loginUsuario.fulfilled.match(resultado)) {
-      // Redirigir a la página de inicio después del inicio de sesión exitoso
+    try {
+      const response = await api.post("/auth/login", form);
+      const usuario = {
+        id: response.data.id,
+        rol: response.data.rol,
+        username: form.username,
+      };
+
+      dispatch(
+        loginSuccess({
+          token: response.data.token,
+          ...usuario,
+        }),
+      );
+
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("usuario", JSON.stringify(usuario));
+
       navigate("/home");
+    } catch (error) {
+      dispatch(loginError("Usuario o password incorrectos"));
     }
   };
 

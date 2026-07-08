@@ -1,19 +1,28 @@
-import React from 'react'
-import { Link } from 'react-router-dom';
+﻿import { Link, useParams } from "react-router-dom";
+import { api } from "../../../services/api";
+import { useDispatch, useSelector } from "react-redux";
+import { useEffect } from "react";
+import { guardarGastos } from "../../../features/slices/gastosSlice";
 
 const Navbar = ({ alternarMenu }) => {
-  const username = localStorage.getItem("usuario")
+  const usuarioGuardado = localStorage.getItem("usuario");
+  const usuario = usuarioGuardado ? JSON.parse(usuarioGuardado) : null;
+  const nombreUsuario = usuario?.username || "Usuario";
+
   return (
     <header className="navbar">
-      <button onClick={ alternarMenu } className="menu-hamburguesa text-decoration-none text-white">
+      <button onClick={alternarMenu} className="menu-hamburguesa">
         ☰
       </button>
+
       <div className="usuario-info">
-        <span>Bienvenido {username}</span>
-        <Link to="/perfil" className="avatar text-decoration-none">👤</Link>
+        <span>Bienvenido {nombreUsuario}</span>
+        <Link to="/perfil" className="avatar">
+          👤
+        </Link>
       </div>
     </header>
-  )
-}
+  );
+};
 
-export default Navbar
+export default Navbar;

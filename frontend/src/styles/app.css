@@ -73,6 +73,15 @@ button, .primary-link { background: #126b5a; color: #fff; }
   border: 0;
   text-align: left;
 }
+.navbar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid #dbe3e1;
+  background: #ffffff;
+}
 .nav-list a.active { background: #e4ebe9; color: #123d35; font-weight: 700; }
 .ghost-button { margin-top: auto; }
 .main-panel { padding: 28px; overflow: auto; }
@@ -113,10 +122,15 @@ th { color: #425955; font-size: 14px; }
   .summary-grid { grid-template-columns: 1fr; }
   .page-header { align-items: flex-start; flex-direction: column; }
 }
+.app-body {
+  flex: 1;
+  display: flex;
+}
 
 .app-shell {
-  display: flex;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar {
@@ -126,6 +140,7 @@ th { color: #425955; font-size: 14px; }
   gap: 12px;
   padding: 24px 16px;
   background: #f3f6f5;
+  border-right: 1px solid #dbe3e1;
 }
 
 .sidebar-link {
@@ -134,6 +149,7 @@ th { color: #425955; font-size: 14px; }
   text-decoration: none;
   color: #0b1f33;
 }
+
 
 .dashboard-contenedor {
   flex: 1;
