@@ -1,218 +1,393 @@
-import { useParams } from "react-router-dom";
+﻿import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
-//useRef es usado para designar un tiempo.
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   actualizarGasto,
   guardarGastos,
 } from "../../../features/slices/gastosSlice";
 import { guardarCuentas } from "../../../features/slices/cuentasSlice";
-import { formatearFecha } from "../../../../utils/utils";
 import { guardarCategorias } from "../../../features/slices/categoriasSlice";
 import { guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
 
+const obtenerId = (valor) => valor?._id || valor || "";
+
+const fechaParaInput = (fecha) => {
+  if (!fecha) return "";
+  return String(fecha).slice(0, 10);
+};
+
+const obtenerCamposFaltantes = (gasto) => {
+  const campos = [];
+
+  if (!gasto?.detalle) campos.push("detalle");
+  if (!obtenerId(gasto?.cuentaId)) campos.push("cuenta");
+  if (!gasto?.fecha) campos.push("fecha");
+
+  if (
+    gasto?.montoBancario === "" ||
+    gasto?.montoBancario === null ||
+    gasto?.montoBancario === undefined
+  ) {
+    campos.push("monto bancario");
+  }
+
+  if (
+    gasto?.porcentaje === "" ||
+    gasto?.porcentaje === null ||
+    gasto?.porcentaje === undefined
+  ) {
+    campos.push("porcentaje");
+  }
+
+  if (!obtenerId(gasto?.categoriaId)) campos.push("categoria");
+  if (!obtenerId(gasto?.subcategoriaId)) campos.push("subcategoria");
+
+  return campos;
+};
+
+const esGastoCompleto = (gasto) => obtenerCamposFaltantes(gasto).length === 0;
+
+const valorParaBackend = (campo, valor) => {
+  if (["montoBancario", "porcentaje"].includes(campo)) {
+    return valor === "" ? "" : Number(valor);
+  }
+
+  return valor;
+};
+
 const DetalleGastoPage = () => {
   const { cuentaId, gastoId } = useParams();
+  const dispatch = useDispatch();
+
   const gastos = useSelector((state) => state.gastos.gastos);
-  const gastoActual = gastos.find((gasto) => gasto._id === gastoId);
   const cuentas = useSelector((state) => state.cuentas.cuentas);
-  const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
   const categorias = useSelector((state) => state.categorias.categorias);
   const subcategorias = useSelector(
     (state) => state.subcategorias.subcategorias,
   );
-  const dispatch = useDispatch();
-  const [form, setForm] = useState({});
+
+  const gastoActual = gastos.find((gasto) => gasto._id === gastoId);
+  const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
+
+  const [form, setForm] = useState(null);
+  const [archivoFactura, setArchivoFactura] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [subiendoFactura, setSubiendoFactura] = useState(false);
+  const [mensaje, setMensaje] = useState("");
+  const [error, setError] = useState("");
+  const [errorActualizar, setErrorActualizar] = useState("");
   const timerRef = useRef(null);
 
   useEffect(() => {
-    api
-      .get("/gastos")
-      .then((response) => {
-        dispatch(guardarGastos(response.data.gastos));
-      })
-      .catch((error) => {
-        console.error("Error al obtener gastos:", error);
-      });
-    api
-      .get("/cuentas")
-      .then((response) => {
-        dispatch(guardarCuentas(response.data.cuentas));
-      })
-      .catch((error) => {
-        console.error("Error al obtener las cuentas:", error);
-      });
-    api
-      .get("/categorias")
-      .then((response) => {
-        dispatch(guardarCategorias(response.data.categorias));
-      })
-      .catch((error) => {
-        console.error("Error al obtener las categorias:", error);
-      });
-    api
-      .get("/subcategorias")
-      .then((response) => {
-        dispatch(guardarSubcategorias(response.data.subcategorias));
-      })
-      .catch((error) => {
-        console.error("Error al obtener las subcategorias:", error);
-      });
-    /**
-           * Si entrás desde Home, seguramente funciona. Pero si recargás directamente en:
-            /cuentas/123/gastos
-            Redux puede arrancar vacío, entonces cuentaActual va a ser undefined.
-            Para resolver eso después, DesglocePage debería cargar las cuentas si todavía no están cargadas:
-           */
-    if (cuentas.length === 0) {
-      api.get("/cuentas").then((response) => {
-        dispatch(guardarCuentas(response.data.cuentas));
-      });
-    }
-  }, [dispatch]);
+    const cargarDatos = async () => {
+      try {
+        const [gastosRes, cuentasRes, categoriasRes, subcategoriasRes] =
+          await Promise.all([
+            api.get("/gastos"),
+            api.get("/cuentas"),
+            api.get("/categorias"),
+            api.get("/subcategorias"),
+          ]);
 
-  console.log("form! ", form);
-  console.log("categorias! ", categorias);
-  console.log("subcategorias! ", subcategorias);
-
-  const handleChange = (campo, valor) => {
-    const nuevoForm = {
-      ...form,
-      [campo]: valor,
+        dispatch(guardarGastos(gastosRes.data.gastos));
+        dispatch(guardarCuentas(cuentasRes.data.cuentas));
+        dispatch(guardarCategorias(categoriasRes.data.categorias));
+        dispatch(guardarSubcategorias(subcategoriasRes.data.subcategorias));
+      } catch (err) {
+        console.error("Error al cargar el detalle del gasto:", err);
+        setError("No se pudieron cargar los datos del gasto.");
+      }
     };
-    setForm(nuevoForm);
-    //aca estamos colocando un tiempo antes de mandar un request patch
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      api
-        .patch(`/gastos/${gastoActual._id}`, { [campo]: valor })
-        .then((res) => {
-          //Eso actualiza Redux, pero tu pantalla está leyendo desde form
-          dispatch(actualizarGasto(res.data.gasto));
-          //asique debemos agregar esto tambien
-          setForm(res.data.gasto);
-        })
-        .catch((err) => console.error(`Error al actualizar gasto: `, err));
-    }, 1000);
-  };
+
+    cargarDatos();
+  }, [dispatch]);
 
   useEffect(() => {
     if (gastoActual) {
       setForm(gastoActual);
     }
   }, [gastoActual]);
+
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  const guardarCampo = (campo, valor) => {
+    clearTimeout(timerRef.current);
+    setGuardando(true);
+    setMensaje("");
+    setError("");
+
+    timerRef.current = setTimeout(async () => {
+      try {
+        const valorNormalizado = valorParaBackend(campo, valor);
+        const response = await api.patch(`/gastos/${gastoId}`, {
+          [campo]: valorNormalizado,
+        });
+
+        dispatch(actualizarGasto(response.data.gasto));
+        setForm(response.data.gasto);
+        setMensaje("Cambio guardado.");
+      } catch (err) {
+        console.error("Error al actualizar gasto:", err);
+        setError(
+          err.response?.data?.message ||
+            "No se pudo guardar el cambio. Revisá si el gasto creado quedó incompleto.",
+        );
+      } finally {
+        setGuardando(false);
+      }
+    }, 1000);
+  };
+
+  const handleChange = (campo, valor) => {
+    const nuevoForm = {
+      ...form,
+      [campo]: valor,
+    };
+
+    setForm(nuevoForm);
+    guardarCampo(campo, valor);
+  };
+
+  const actualizarEstado = async () => {
+    const camposFaltantes = obtenerCamposFaltantes(form);
+
+    if (camposFaltantes.length > 0) {
+      setMensaje("");
+      setError("");
+      setErrorActualizar(
+        `No se puede actualizar a creado: falta completar ${camposFaltantes.join(", ")}.`,
+      );
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      setMensaje("");
+      setError("");
+      setErrorActualizar("");
+
+      const response = await api.patch(`/gastos/${gastoId}`, {
+        cambiarEstado: true,
+      });
+
+      dispatch(actualizarGasto(response.data.gasto));
+      setForm(response.data.gasto);
+      setMensaje("Gasto actualizado a creado.");
+    } catch (err) {
+      console.error("Error al actualizar estado del gasto:", err);
+      setErrorActualizar(
+        err.response?.data?.message ||
+          "No se pudo actualizar a creado. Revisá los campos requeridos.",
+      );
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const subirFactura = async () => {
+    if (!archivoFactura) {
+      setError("Seleccioná una factura antes de subirla.");
+      return;
+    }
+
+    try {
+      setSubiendoFactura(true);
+      setMensaje("");
+      setError("");
+
+      const formData = new FormData();
+      formData.append("factura", archivoFactura);
+
+      const response = await api.patch(`/gastos/${gastoId}/factura`, formData);
+
+      dispatch(actualizarGasto(response.data.gasto));
+      setForm(response.data.gasto);
+      setArchivoFactura(null);
+      setMensaje("Factura subida correctamente.");
+    } catch (err) {
+      console.error("Error al subir factura:", err);
+      setError(err.response?.data?.message || "No se pudo subir la factura.");
+    } finally {
+      setSubiendoFactura(false);
+    }
+  };
+
+  if (!form) {
+    return <p>Cargando detalle del gasto...</p>;
+  }
+
+  const categoriaSeleccionada = obtenerId(form.categoriaId);
+  const subcategoriaSeleccionada = obtenerId(form.subcategoriaId);
+  const facturaUrl = form.factura?.url;
+  const completo = esGastoCompleto(form);
+  const estaCreado = form.estado === "creado";
+
   return (
-    <>
-      <form>
-        <p>Detalles del Gasto</p>
-        <label id="detalleGasto">Detalle: </label>
-        <input
-          type="text"
-          value={form?.detalle || ""}
-          //Le paso un valor campo con el nombre definido, y el valor es el valor del evento value.
-          onChange={(event) => handleChange("detalle", event.target.value)}
-        ></input>
+    <section className="page-section detail-page">
+      <header className="page-header detail-header">
+        <div>
+          <Link className="secondary-link compact-link" to={`/cuentas/${cuentaId}/gastos`}>
+            Volver a gastos
+          </Link>
+          <h1>Detalle del gasto</h1>
+          <p>{cuentaActual?.nombreCuenta || form.cuentaId?.nombreCuenta || "Cuenta seleccionada"}</p>
+        </div>
 
-        <label id="fechaGasto">Fecha: </label>
-        <input
-          type="date"
-          value={form.fecha ? form.fecha.slice(0, 10) : ""}
-          onChange={(event) => handleChange("fecha", event.target.value)}
-        />
+        <div className="detail-status-group">
+          <span className={`status-badge ${estaCreado ? "status-created" : "status-pending"}`}>
+            {estaCreado ? "CREADO" : "PENDIENTE"}
+          </span>
+          {!estaCreado && (
+            <div className="update-action">
+              <button type="button" disabled={guardando} onClick={actualizarEstado}>
+                Actualizar
+              </button>
+              {errorActualizar && <p className="inline-error">{errorActualizar}</p>}
+            </div>
+          )}
+        </div>
+      </header>
 
-        <label id="montoBancario">Monto Bancario: </label>
-        <input
-          type="text"
-          value={form?.montoBancario || ""}
-          //hay que colocarle el number y preever que devuelva algo.
-          onChange={(event) =>
-            handleChange(
-              "montoBancario",
-              event.target.value === "" ? "" : Number(event.target.value),
-            )
-          }
-        ></input>
+      {(mensaje || guardando || error) && (
+        <div className="detail-feedback">
+          {guardando && <p>Guardando cambios...</p>}
+          {mensaje && <p>{mensaje}</p>}
+          {error && <p className="error-text">{error}</p>}
+        </div>
+      )}
 
-        <label id="porcentajeGasto">Porcentaje: </label>
-        <input
-          type="text"
-          value={form?.porcentaje || ""}
-          //conviene convertir los numeros
-          onChange={(event) =>
-            handleChange(
-              "porcentaje",
-              event.target.value === "" ? "" : Number(event.target.value),
-            )
-          }
-        ></input>
-        <label id="porcentajeGasto">
-          Monto Real: {form.montoReal === 0 ? 0 : form?.montoReal || ""}{" "}
-        </label>
+      <div className="detail-grid">
+        <form className="detail-card detail-form">
+          <h2>Datos del gasto</h2>
 
-        <label id="incluirEnMonto">¿Incluir en Monto Real? </label>
-        <input
-          type="checkbox"
-          checked={Boolean(form?.incluirMontoReal)}
-          onChange={(event) =>
-            //para un checkbox, se usa checked no value
-            handleChange("incluirMontoReal", event.target.checked)
-          }
-        ></input>
+          <label>
+            Detalle
+            <input
+              type="text"
+              value={form.detalle || ""}
+              onChange={(event) => handleChange("detalle", event.target.value)}
+            />
+          </label>
 
-        <label>Categoria: </label>
-        <select
-          value={form.categoriaId?._id || form.categoriaId || ""}
-          onChange={(event) => handleChange("categoriaId", event.target.value)}
-        >
-          <option value="">Seleccione categoria</option>
+          <label>
+            Fecha
+            <input
+              type="date"
+              value={fechaParaInput(form.fecha)}
+              onChange={(event) => handleChange("fecha", event.target.value)}
+            />
+          </label>
 
-          {categorias.map((categoria) => (
-            <option key={categoria._id} value={categoria._id}>
-              {categoria.nombreCategoria}
-            </option>
-          ))}
-        </select>
+          <label>
+            Monto bancario
+            <input
+              type="number"
+              value={form.montoBancario ?? ""}
+              onChange={(event) => handleChange("montoBancario", event.target.value)}
+            />
+          </label>
 
-        <label>Subcategoria: </label>
-        <select
-          value={form.subcategoriaId?._id || form.subcategoriaId || ""}
-          onChange={(event) => handleChange("subcategoriaId", event.target.value)}
-        >
-          <option value="">Seleccione subcategoria</option>
+          <label>
+            Porcentaje
+            <input
+              type="number"
+              value={form.porcentaje ?? ""}
+              onChange={(event) => handleChange("porcentaje", event.target.value)}
+            />
+          </label>
 
-          {subcategorias.map((subcategoria) => (
-            <option key={subcategoria._id} value={subcategoria._id}>
-              {subcategoria.nombreSubcategoria}
-            </option>
-          ))}
-        </select>
-      </form>
-    </>
+          <label>
+            Categoria
+            <select
+              value={categoriaSeleccionada}
+              onChange={(event) => handleChange("categoriaId", event.target.value)}
+            >
+              <option value="">Seleccione categoria</option>
+              {categorias.map((categoria) => (
+                <option key={categoria._id} value={categoria._id}>
+                  {categoria.nombreCategoria}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Subcategoria
+            <select
+              value={subcategoriaSeleccionada}
+              onChange={(event) => handleChange("subcategoriaId", event.target.value)}
+            >
+              <option value="">Seleccione subcategoria</option>
+              {subcategorias.map((subcategoria) => (
+                <option key={subcategoria._id} value={subcategoria._id}>
+                  {subcategoria.nombreSubcategoria}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="checkbox-row detail-checkbox">
+            <input
+              type="checkbox"
+              checked={Boolean(form.incluirMontoReal)}
+              onChange={(event) =>
+                handleChange("incluirMontoReal", event.target.checked)
+              }
+            />
+            Incluir en monto real
+          </label>
+        </form>
+
+        <aside className="detail-card detail-summary">
+          <h2>Resumen</h2>
+          <dl>
+            <div>
+              <dt>Monto real</dt>
+              <dd>$ {form.montoReal ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Origen</dt>
+              <dd>{form.origen?.tipo || "manual"}</dd>
+            </div>
+            <div>
+              <dt>Factura</dt>
+              <dd>{facturaUrl ? "Cargada" : "Sin factura"}</dd>
+            </div>
+          </dl>
+        </aside>
+
+        <section className="detail-card detail-factura">
+          <h2>Factura</h2>
+          {facturaUrl ? (
+            <div className="factura-preview">
+              <img src={facturaUrl} alt="Factura del gasto" />
+              <a className="secondary-link" href={facturaUrl} target="_blank" rel="noreferrer">
+                Ver factura
+              </a>
+            </div>
+          ) : (
+            <p>Este gasto todavía no tiene una factura asociada.</p>
+          )}
+
+          <div className="factura-upload-row">
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(event) => setArchivoFactura(event.target.files?.[0] || null)}
+            />
+            <button type="button" disabled={subiendoFactura} onClick={subirFactura}>
+              {subiendoFactura ? "Subiendo..." : "Subir factura"}
+            </button>
+          </div>
+        </section>
+      </div>
+    </section>
   );
 };
 
 export default DetalleGastoPage;
 
-/** Documentacion:
- * 
-1) Problema 1: No me dejaba sobreescribir los valores
- Si yo uso gastoActual, y no form:
 
- <label id="porcentajeGasto">Porcentaje: </label>
-        <input
-          type="text"
-          value={gastoActual?.porcentaje || ""}
-          onChange={(event) => handleChange("porcentaje", event.target.value)}
- ></input>
-
-Entonces siempre va a usar lo que viene del gastoActual y no deja sobreescribir
-Debemos crear un form y un setForm para usarlo como lugar donde guarda todos los valores del gastoActual
-y poder sobreescribirlo
-
-gastoActual = dato original desde Redux/backend
-form = copia editable que se muestra en los inputs
-Si ponés value={gastoActual.detalle}, el input queda atado al dato original.
-Si ponés value={form.detalle}, el input queda atado a lo que estás escribiendo.
-        
- */

@@ -1,4 +1,4 @@
-import Gasto from "../0.1-models/gasto.model.js";
+﻿import Gasto from "../0.1-models/gasto.model.js";
 import cloudinary from "../config/cloudinary.config.js";
 
 export const obtenerGastosService = async (usuarioId) => {
@@ -66,22 +66,27 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
 export const crearGastoService = async (data, usuarioId) => {
   const gastoData = limpiarCamposVacios(data);
 
+  const debeCrear = gastoData.cambiarEstado === true;
+
   delete gastoData.cambiarEstado;
   delete gastoData.estado;
   delete gastoData.montoReal;
 
   const estaCompleto = gastoEstaCompleto(gastoData);
 
+  if (debeCrear && !estaCompleto) {
+    throw new Error("No se puede crear un gasto incompleto");
+  }
+
   const gasto = await Gasto.create({
     ...gastoData,
     usuarioId,
-    estado: estaCompleto ? "creado" : "pendiente",
+    estado: debeCrear ? "creado" : "pendiente",
     montoReal: calcularMontoReal(gastoData),
   });
 
   return gasto;
 };
-
 export const eliminarGastoService = async (usuarioId, id) => {
   const gastoEliminado = await Gasto.findOneAndDelete({ _id: id, usuarioId });
   return gastoEliminado;
@@ -94,7 +99,7 @@ export const eliminarTodosLosGastosService = async (usuarioId) => {
 
 export const subirFacturaGastoService = async (id, usuarioId, file) => {
   if (!file) {
-    throw new Error("No se recibió ningún archivo");
+    throw new Error("No se recibiÃ³ ningÃºn archivo");
   }
 
   const gasto = await Gasto.findOne({ _id: id, usuarioId });
@@ -161,9 +166,19 @@ const gastoEstaCompleto = (gasto) => {
 };
 
 const calcularMontoReal = (gasto) => {
-  if (!gastoEstaCompleto(gasto) || !gasto.incluirMontoReal) {
+  if (!gastoEstaCompleto(gasto)) {
     return 0;
   }
 
-  return gasto.montoBancario * (gasto.porcentaje / 100);
+  const montoBancario = Number(gasto.montoBancario);
+  const porcentaje = Number(gasto.porcentaje);
+
+  // Los ingresos positivos siempre cuentan en el monto real.
+  // Los egresos negativos solo cuentan si el usuario marca incluirMontoReal.
+  if (montoBancario < 0 && gasto.incluirMontoReal !== true) {
+    return 0;
+  }
+
+  return montoBancario * (porcentaje / 100);
 };
+

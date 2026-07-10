@@ -1,8 +1,9 @@
 ﻿import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { obtenerCuentas, seleccionarCuenta } from "../../features/slices/cuentasSlice.js";
 import { api } from "../../services/api.js";
+import { useNavigate } from "react-router-dom";
 
 function HomePage() {
   const dispatch = useDispatch();
@@ -36,15 +37,15 @@ function HomePage() {
       {error && <p className="error-text">{error}</p>}
       <div className="card-grid">
         {cuentas.map((cuenta) => (
-          <button
+          <Link
             className="account-card"
             key={cuenta._id}
-            type="button"
+            to={`/cuentas/${cuenta._id}/dashboard`}
             onClick={() => abrirCuenta(cuenta)}
           >
             <strong>{cuenta.nombreCuenta}</strong>
             <span>{cuenta.moneda || "UYU"}</span>
-          </button>
+          </Link>
         ))}
       </div>
     </section>
@@ -52,3 +53,4 @@ function HomePage() {
 }
 
 export default HomePage;
+
