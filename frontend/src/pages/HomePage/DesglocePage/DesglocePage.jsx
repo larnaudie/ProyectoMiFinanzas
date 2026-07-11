@@ -1,10 +1,11 @@
-﻿import { Link, useParams } from "react-router-dom";
+﻿import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useRef, useState } from "react";
 import {
   actualizarGasto,
   agregarGasto,
+  eliminarGasto,
   guardarGastos,
 } from "../../../features/slices/gastosSlice";
 import { guardarCuentas } from "../../../features/slices/cuentasSlice";
@@ -115,6 +116,7 @@ const subcategoriaInicial = {
 
 function DesglocePage() {
   const { cuentaId } = useParams();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
 
   const gastos = useSelector((state) => state.gastos.gastos);
@@ -161,6 +163,7 @@ function DesglocePage() {
 
   // edicionesRapidas guarda lo que el usuario esta escribiendo antes de que llegue la respuesta del backend.
   const [edicionesRapidas, setEdicionesRapidas] = useState({});
+  const [detalleEnEdicion, setDetalleEnEdicion] = useState(null);
 
   // timersRef guarda un timer por gasto/campo para poder hacer debounce.
   const timersRef = useRef({});
@@ -438,6 +441,37 @@ function DesglocePage() {
     });
   };
 
+  const abrirEditorDetalle = (gasto) => {
+    setDetalleEnEdicion({
+      gastoId: gasto._id,
+      valor: gasto.detalle || "",
+    });
+  };
+
+  const cancelarEditorDetalle = () => {
+    setDetalleEnEdicion(null);
+  };
+
+  const confirmarEditorDetalle = () => {
+    if (!detalleEnEdicion?.valor.trim()) {
+      alert("El detalle no puede quedar vacio.");
+      return;
+    }
+
+    api
+      .patch(`/gastos/${detalleEnEdicion.gastoId}`, {
+        detalle: detalleEnEdicion.valor.trim(),
+      })
+      .then((response) => {
+        dispatch(actualizarGasto(response.data.gasto));
+        setDetalleEnEdicion(null);
+      })
+      .catch((error) => {
+        console.error("Error al editar el detalle:", error);
+        alert("No se pudo editar el detalle.");
+      });
+  };
+
   const guardarCambioRapido = (gasto, campo, valor) => {
     const gastoId = gasto._id;
     const timerId = `${gastoId}-${campo}`;
@@ -472,6 +506,60 @@ function DesglocePage() {
           console.error("Error al guardar cambio rapido:", error);
         });
     }, 1000);
+  };
+
+  const eliminarGastosSeleccionados = (gastosSeleccionadosVisibles) => {
+    const cantidad = gastosSeleccionadosVisibles.length;
+    const confirmar = window.confirm(
+      `Estas seguro de que queres eliminar ${cantidad} gasto${cantidad === 1 ? "" : "s"}?`,
+    );
+
+    if (!confirmar) return;
+
+    const idsAEliminar = gastosSeleccionadosVisibles.map((gasto) => gasto._id);
+
+    Promise.allSettled(idsAEliminar.map((gastoId) => api.delete(`/gastos/${gastoId}`)))
+      .then((resultados) => {
+        resultados.forEach((resultado, index) => {
+          if (resultado.status === "fulfilled") {
+            dispatch(eliminarGasto(idsAEliminar[index]));
+          }
+        });
+
+        setSeleccionados((ids) => ids.filter((id) => !idsAEliminar.includes(id)));
+
+        const fallidos = resultados.filter((resultado) => resultado.status === "rejected");
+        if (fallidos.length > 0) {
+          alert(`No se pudieron eliminar ${fallidos.length} gasto${fallidos.length === 1 ? "" : "s"}.`);
+        }
+      });
+  };
+
+  const clonarGastoSeleccionado = (gasto) => {
+    const payload = {
+      detalle: gasto.detalle,
+      cuentaId,
+      fecha: fechaParaInput(gasto.fecha),
+      montoBancario: Number(gasto.montoBancario || 0),
+      porcentaje: Number(gasto.porcentaje || 100),
+      incluirMontoReal: Boolean(gasto.incluirMontoReal),
+      categoriaId: obtenerId(gasto.categoriaId),
+      subcategoriaId: obtenerId(gasto.subcategoriaId),
+      cambiarEstado: false,
+    };
+
+    api
+      .post("/gastos", payload)
+      .then((response) => {
+        const gastoClonado = response.data.gasto;
+        dispatch(agregarGasto(gastoClonado));
+        setSeleccionados([]);
+        navigate(`/cuentas/${cuentaId}/gastos/gasto/${gastoClonado._id}`);
+      })
+      .catch((error) => {
+        console.error("Error al clonar el gasto:", error);
+        alert("No se pudo clonar el gasto.");
+      });
   };
 
   const estaSeleccionado = (gastoId) => seleccionados.includes(gastoId);
@@ -512,6 +600,9 @@ function DesglocePage() {
   const renderTablaGastos = (titulo, gastosVisibles, mostrarTotales = false) => {
     const totalMontoBancario = calcularTotal(gastosVisibles, "montoBancario");
     const totalMontoReal = calcularTotal(gastosVisibles, "montoReal");
+    const gastosSeleccionadosVisibles = gastosVisibles.filter((gasto) =>
+      seleccionados.includes(gasto._id),
+    );
 
     return (
     <section className="page-section">
@@ -536,6 +627,31 @@ function DesglocePage() {
             <span>Total monto real</span>
             <strong>$ {formatearMonto(totalMontoReal)}</strong>
           </article>
+        </div>
+      )}
+
+      {gastosSeleccionadosVisibles.length > 0 && (
+        <div className="selection-actions">
+          <span>
+            {gastosSeleccionadosVisibles.length} seleccionado
+            {gastosSeleccionadosVisibles.length === 1 ? "" : "s"}
+          </span>
+          <button
+            className="selection-action delete-action"
+            type="button"
+            onClick={() => eliminarGastosSeleccionados(gastosSeleccionadosVisibles)}
+          >
+            Eliminar
+          </button>
+          {gastosSeleccionadosVisibles.length === 1 && (
+            <button
+              className="selection-action"
+              type="button"
+              onClick={() => clonarGastoSeleccionado(gastosSeleccionadosVisibles[0])}
+            >
+              Clonar
+            </button>
+          )}
         </div>
       )}
 
@@ -566,7 +682,6 @@ function DesglocePage() {
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
-              <th>Detalle</th>
             </tr>
           </thead>
           <tbody>
@@ -596,15 +711,52 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>
-                    <input
-                      className="table-input table-input-wide"
-                      type="text"
-                      value={obtenerValorVisible(gasto, "detalle")}
-                      onChange={(event) =>
-                        guardarCambioRapido(gasto, "detalle", event.target.value)
-                      }
-                    />
+                  <td className="detail-name-cell">
+                    <div className="detail-name-wrap">
+                      <span className="detail-name-text">{gasto.detalle}</span>
+                      <button
+                        className="edit-detail-button"
+                        type="button"
+                        title="Editar detalle"
+                        aria-label={`Editar detalle ${gasto.detalle}`}
+                        onClick={() => abrirEditorDetalle(gasto)}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          focusable="false"
+                        >
+                          <path d="M4 20h12a4 4 0 0 0 4-4v-5h-3v5a1 1 0 0 1-1 1H5V6h7V3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                          <path d="m9 14 1-4 7.7-7.7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4L15 14l-4 1a1.2 1.2 0 0 1-1.4-1.4Z" />
+                        </svg>
+                      </button>
+
+                      {detalleEnEdicion?.gastoId === gasto._id && (
+                        <div className="detail-popover">
+                          <label>
+                            Detalle
+                            <input
+                              type="text"
+                              value={detalleEnEdicion.valor}
+                              onChange={(event) =>
+                                setDetalleEnEdicion({
+                                  ...detalleEnEdicion,
+                                  valor: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <div className="detail-popover-actions">
+                            <button type="button" onClick={cancelarEditorDetalle}>
+                              Cancelar
+                            </button>
+                            <button type="button" onClick={confirmarEditorDetalle}>
+                              Confirmar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <input
@@ -697,13 +849,7 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>
-                    <strong>
-                      <Link to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}>
-                        Ver
-                      </Link>
-                    </strong>
-                  </td>
+
                 </tr>
               );
             })}
@@ -1285,6 +1431,10 @@ function DesglocePage() {
 }
 
 export default DesglocePage;
+
+
+
+
 
 
 

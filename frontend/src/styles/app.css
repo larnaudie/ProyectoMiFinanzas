@@ -90,6 +90,10 @@ button, .primary-link { background: #126b5a; color: #fff; }
 .page-header h1 { margin: 0; }
 .page-header p { margin: 6px 0 0; color: #60716e; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.account-carousel::-webkit-scrollbar {
+  display: none;
+}
+
 .account-card {
   display: grid;
   gap: 8px;
@@ -465,3 +469,490 @@ button:disabled {
 .totals-row strong {
   font-size: 22px;
 }
+.icon-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9e1df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #243532;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  background: #eef5f2;
+}
+
+.delete-button {
+  color: #b42318;
+}
+
+.delete-button:hover {
+  border-color: #f0b8b1;
+  background: #fff1ef;
+}
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  color: #60716e;
+  font-size: 14px;
+}
+
+.selection-action {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #243532;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.selection-action:hover {
+  background: #eef5f2;
+}
+
+.delete-action {
+  color: #b42318;
+}
+
+.delete-action:hover {
+  border-color: #f0b8b1;
+  background: #fff1ef;
+}
+.detail-name-cell {
+  min-width: 220px;
+}
+
+.detail-name-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.detail-name-text {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.edit-detail-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #126b5a;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.edit-detail-button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.detail-name-wrap:hover .edit-detail-button,
+.edit-detail-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.edit-detail-button:hover {
+  background: #eef5f2;
+}
+
+.detail-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  gap: 10px;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid #cfd7d5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(22, 34, 31, 0.16);
+}
+
+.detail-popover label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-popover input {
+  min-height: 36px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.detail-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.detail-popover-actions button {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-popover-actions button:last-child {
+  background: #187a68;
+  color: #ffffff;
+}
+.manage-page {
+  max-width: 1180px;
+}
+
+.manage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.manage-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.manage-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manage-card-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.manage-card-header p {
+  margin: 4px 0 0;
+  color: #60716e;
+  font-size: 13px;
+}
+
+.manage-table-shell {
+  padding: 0;
+}
+
+.manage-table-shell table {
+  min-width: 100%;
+}
+
+.manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manage-icon-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #126b5a;
+}
+
+.manage-icon-button svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+}
+
+.manage-icon-button:hover {
+  background: #eef5f2;
+}
+
+.create-icon-button {
+  color: #187a68;
+}
+
+.delete-manage-button {
+  color: #b42318;
+}
+
+.delete-manage-button:hover {
+  border-color: #f0b8b1;
+  background: #fff1ef;
+}
+
+.manage-muted {
+  margin: 0;
+  color: #60716e;
+  font-size: 14px;
+}
+
+.modal-panel {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(11, 31, 51, 0.2);
+}
+
+.modal-header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-header h2 {
+  margin: 0;
+}
+
+.modal-form {
+  display: grid;
+  gap: 12px;
+}
+
+.modal-form select {
+  min-height: 40px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  font: inherit;
+}
+
+.manage-modal {
+  max-width: 460px;
+}
+
+.modal-error {
+  max-width: none;
+  text-align: left;
+}
+.home-page {
+  max-width: 1180px;
+}
+
+.account-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 270px);
+  gap: 14px;
+  overflow-x: auto;
+  padding: 4px 4px 18px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.account-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.account-card {
+  position: relative;
+  display: grid;
+  min-height: 150px;
+  align-content: start;
+  gap: 8px;
+  padding: 18px;
+  overflow: hidden;
+  scroll-snap-align: start;
+  border: 1px solid #d7e0dd;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(18, 107, 90, 0.1), transparent 52%),
+    #ffffff;
+  color: #18212f;
+  box-shadow: 0 8px 20px rgba(22, 34, 31, 0.05);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.account-card::after {
+  content: "";
+  position: absolute;
+  right: -34px;
+  bottom: -34px;
+  width: 104px;
+  height: 104px;
+  border: 18px solid rgba(18, 107, 90, 0.08);
+  border-radius: 50%;
+}
+
+.account-card:hover,
+.account-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: #9ab5ae;
+  box-shadow: 0 14px 30px rgba(22, 34, 31, 0.1);
+  outline: none;
+}
+
+.account-card-topline,
+.account-card-meta {
+  color: #60716e;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.account-card strong {
+  min-height: 42px;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.account-card-currency {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e4ebe9;
+  color: #173b34;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.account-card-action {
+  margin-top: auto;
+  color: #126b5a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .account-carousel {
+    grid-auto-columns: minmax(220px, 82vw);
+  }
+}
+.account-carousel-shell {
+  position: relative;
+}
+
+.account-carousel-shell::before,
+.account-carousel-shell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 42px;
+  pointer-events: none;
+}
+
+.account-carousel-shell::before {
+  left: 0;
+  background: linear-gradient(90deg, #f6f7f9, rgba(246, 247, 249, 0));
+}
+
+.account-carousel-shell::after {
+  right: 0;
+  background: linear-gradient(270deg, #f6f7f9, rgba(246, 247, 249, 0));
+}
+
+.account-carousel {
+  padding-left: 54px;
+  padding-right: 54px;
+}
+
+.carousel-control {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  width: 34px;
+  height: 48px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid #d7e0dd;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #126b5a;
+  font-size: 32px;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(22, 34, 31, 0.08);
+}
+
+.carousel-control:hover {
+  background: #ffffff;
+  border-color: #9ab5ae;
+}
+
+.carousel-control-left {
+  left: 4px;
+}
+
+.carousel-control-right {
+  right: 4px;
+}
+.app-body,
+.main-panel,
+.dashboard-contenedor,
+.home-page {
+  min-width: 0;
+}
+
+.dashboard-contenedor,
+.main-panel {
+  overflow-x: hidden;
+}
+
+.home-page {
+  width: 100%;
+  max-width: 1180px;
+}
+
+.account-carousel-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.account-carousel {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
