@@ -1,5 +1,6 @@
-import {
+﻿import {
   importarExcelService,
+  importarExcelPersonalService,
   obtenerMovimientosImportadosService,
   ignorarMovimientoImportadoService,
   vincularMovimientoAGastoService,
@@ -27,6 +28,27 @@ export const importarExcel = async (req, res, next) => {
   }
 };
 
+
+export const importarExcelPersonal = async (req, res, next) => {
+  try {
+    const usuarioId = req.user.id;
+    const { cuentaId } = req.params;
+    const file = req.file;
+
+    const resultado = await importarExcelPersonalService({
+      usuarioId,
+      cuentaId,
+      file,
+    });
+
+    res.status(201).json({
+      message: "Excel personal importado correctamente",
+      ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 export const obtenerMovimientosImportados = async (req, res, next) => {
   try {
     const usuarioId = req.user.id;

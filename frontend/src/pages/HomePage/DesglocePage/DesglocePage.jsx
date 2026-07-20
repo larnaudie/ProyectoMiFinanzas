@@ -1,4 +1,4 @@
-﻿import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useRef, useState } from "react";
@@ -82,14 +82,38 @@ const cumpleFiltroMonto = (valor, modo, monto, desde, hasta) => {
   return true;
 };
 
-const gastoInicial = {
+const obtenerFechaActualParaInput = () => {
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, "0");
+  const dia = String(hoy.getDate()).padStart(2, "0");
+
+  return `${anio}-${mes}-${dia}`;
+};
+
+const crearGastoInicial = () => ({
   detalle: "",
-  fecha: "",
+  fecha: obtenerFechaActualParaInput(),
   montoBancario: "",
   porcentaje: 100,
   incluirMontoReal: true,
   categoriaId: "",
   subcategoriaId: "",
+});
+
+const esNumeroValido = (valor) => {
+  if (valor === "" || valor === null || valor === undefined) return false;
+  return Number.isFinite(Number(valor));
+};
+
+const esMontoBancarioValido = (valor) => {
+  return esNumeroValido(valor) && Number(valor) !== 0;
+};
+
+const esPorcentajeValido = (valor) => {
+  if (!esNumeroValido(valor)) return false;
+  const numero = Number(valor);
+  return numero >= 0 && numero <= 100;
 };
 
 const obtenerCamposFaltantesNuevoGasto = (gasto) => {
@@ -97,12 +121,38 @@ const obtenerCamposFaltantesNuevoGasto = (gasto) => {
 
   if (!gasto.detalle.trim()) campos.push("detalle");
   if (!gasto.fecha) campos.push("fecha");
-  if (gasto.montoBancario === "") campos.push("monto bancario");
-  if (gasto.porcentaje === "") campos.push("porcentaje");
+  if (!esMontoBancarioValido(gasto.montoBancario)) campos.push("monto bancario distinto de 0");
+  if (!esPorcentajeValido(gasto.porcentaje)) campos.push("porcentaje entre 0 y 100");
   if (!gasto.categoriaId) campos.push("categoria");
   if (!gasto.subcategoriaId) campos.push("subcategoria");
 
   return campos;
+};
+const nombresCamposGasto = {
+  detalle: "detalle",
+  fecha: "fecha",
+  montoBancario: "monto bancario distinto de 0",
+  porcentaje: "porcentaje entre 0 y 100",
+  cuentaId: "cuenta",
+  categoriaId: "categoria",
+  subcategoriaId: "subcategoria",
+};
+
+const obtenerMensajeErrorGasto = (error) => {
+  const data = error.response?.data;
+
+  // Joi devuelve un array con el detalle fino de cada campo que fallo.
+  // Si existe, lo traducimos a un mensaje que el usuario pueda corregir.
+  if (Array.isArray(data?.error) && data.error.length > 0) {
+    const campos = data.error.map((item) => {
+      const nombreCampo = item.path?.[0];
+      return nombresCamposGasto[nombreCampo] || item.message;
+    });
+
+    return `No se pudo guardar. Revisa: ${campos.join(", ")}.`;
+  }
+
+  return data?.message || data?.mensaje || "No se pudo guardar el gasto.";
 };
 
 const categoriaInicial = {
@@ -155,7 +205,7 @@ function DesglocePage() {
   });
 
   const [modalActivo, setModalActivo] = useState(null);
-  const [formGasto, setFormGasto] = useState(gastoInicial);
+  const [formGasto, setFormGasto] = useState(crearGastoInicial);
   const [formCategoria, setFormCategoria] = useState(categoriaInicial);
   const [formSubcategoria, setFormSubcategoria] = useState(subcategoriaInicial);
   const [errorModal, setErrorModal] = useState("");
@@ -319,7 +369,7 @@ function DesglocePage() {
   const cerrarModal = () => {
     setModalActivo(null);
     setErrorModal("");
-    setFormGasto(gastoInicial);
+    setFormGasto(crearGastoInicial());
     setFormCategoria(categoriaInicial);
     setFormSubcategoria(subcategoriaInicial);
   };
@@ -361,11 +411,7 @@ function DesglocePage() {
         cerrarModal();
       })
       .catch((error) => {
-        setErrorModal(
-          error.response?.data?.message ||
-            error.response?.data?.mensaje ||
-            "No se pudo guardar el gasto.",
-        );
+        setErrorModal(obtenerMensajeErrorGasto(error));
       });
   };
 
@@ -658,7 +704,7 @@ function DesglocePage() {
       {gastosVisibles.length === 0 ? (
         <p className="empty-state">No hay gastos para mostrar.</p>
       ) : (
-        <div className="table-shell">
+        <div className="table-shell expenses-table-shell">
         <table>
           <thead>
             <tr>
@@ -713,7 +759,12 @@ function DesglocePage() {
                   </td>
                   <td className="detail-name-cell">
                     <div className="detail-name-wrap">
-                      <span className="detail-name-text">{gasto.detalle}</span>
+                      <Link
+                        className="detail-name-text detail-name-link"
+                        to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}
+                      >
+                        {gasto.detalle}
+                      </Link>
                       <button
                         className="edit-detail-button"
                         type="button"
@@ -747,7 +798,11 @@ function DesglocePage() {
                             />
                           </label>
                           <div className="detail-popover-actions">
-                            <button type="button" onClick={cancelarEditorDetalle}>
+                            <button
+                              className="detail-cancel-button"
+                              type="button"
+                              onClick={cancelarEditorDetalle}
+                            >
                               Cancelar
                             </button>
                             <button type="button" onClick={confirmarEditorDetalle}>
@@ -939,6 +994,9 @@ function DesglocePage() {
         <button type="button" onClick={() => abrirModal("categoria")}>
           Crear categoria
         </button>
+        <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
+          Importar Excel
+        </Link>
       </div>
 
       {modalActivo === "gasto" && (
@@ -1431,6 +1489,9 @@ function DesglocePage() {
 }
 
 export default DesglocePage;
+
+
+
 
 
 

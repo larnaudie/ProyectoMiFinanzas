@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color: #18212f;
   background: #f6f7f9;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -955,4 +955,644 @@ button:disabled {
   overflow-x: auto;
   overscroll-behavior-inline: contain;
 }
+.quick-expense-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 18px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(18, 107, 90, 0.08), transparent 48%),
+    #ffffff;
+}
 
+.quick-expense-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-expense-copy span {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e4ebe9;
+  color: #173b34;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quick-expense-copy h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.quick-expense-copy p {
+  max-width: 420px;
+  margin: 0;
+  color: #60716e;
+  line-height: 1.5;
+}
+
+.quick-expense-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.quick-expense-form select,
+.quick-expense-form input {
+  min-height: 40px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.quick-file-field input {
+  padding: 7px 10px;
+}
+
+.quick-expense-error {
+  grid-column: 1 / -1;
+}
+
+.quick-expense-form button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+@media (max-width: 860px) {
+  .quick-expense-panel,
+  .quick-expense-form {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-expense-form button {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+.expenses-table-shell {
+  overflow: visible;
+}
+
+.expenses-table-shell table {
+  min-width: 1120px;
+}
+
+.detail-name-link {
+  color: #0b1f33;
+  text-decoration: none;
+}
+
+.detail-name-link:hover,
+.detail-name-link:focus-visible {
+  color: #126b5a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.detail-popover {
+  z-index: 80;
+}
+
+.detail-popover-actions button {
+  color: #173b34;
+}
+
+.detail-popover-actions button:last-child {
+  color: #ffffff;
+}
+
+
+/* Contenedor general de las paginas internas.
+   Mantiene el contenido centrado y evita que las tablas/formularios respiren pegados a los bordes. */
+.dashboard-contenedor {
+  padding: 36px clamp(72px, 7vw, 128px);
+}
+
+.contenido-principal {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+@media (max-width: 760px) {
+  .dashboard-contenedor {
+    padding: 24px 16px;
+  }
+}
+.import-page {
+  align-content: start;
+}
+
+.import-upload-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px) auto;
+  align-items: end;
+}
+
+.import-upload-panel label {
+  max-width: 520px;
+}
+
+.import-upload-panel select {
+  min-height: 40px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  font: inherit;
+}
+
+.personal-import-panel {
+  display: grid;
+  gap: 14px;
+  border-style: dashed;
+}
+
+.import-personal-result {
+  padding: 10px 12px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #eef5f2;
+  color: #173b34;
+}
+
+.import-message {
+  grid-column: 1 / -1;
+}
+
+.import-result-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.import-result-panel h2,
+.import-section-header h2,
+.import-section-header p {
+  margin: 0;
+}
+
+.import-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.import-result-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #f6f7f9;
+}
+
+.import-result-grid span,
+.import-section-header p {
+  color: #60716e;
+}
+
+.import-result-grid strong {
+  font-size: 24px;
+}
+
+.import-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 760px) {
+  .import-upload-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .import-upload-panel button,
+  .import-section-header button {
+    width: 100%;
+  }
+
+  .import-section-header {
+    flex-direction: column;
+  }
+}
+.import-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.import-upload-panel > div {
+  grid-column: 1 / -1;
+}
+
+.import-upload-panel h2,
+.import-upload-panel p {
+  margin: 0;
+}
+
+.import-upload-panel p {
+  color: #60716e;
+}
+
+.import-expenses-table table {
+  min-width: 980px;
+}
+.modal-card {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(11, 31, 51, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-header h2,
+.modal-header p {
+  margin: 0;
+}
+
+.modal-header p {
+  margin-top: 6px;
+  color: #60716e;
+}
+
+.import-subcategory-modal {
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+}
+
+.detected-subcategory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.detected-subcategory-list label {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.detected-subcategory-list select {
+  min-height: 40px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .modal-header,
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .detected-subcategory-list label {
+    grid-template-columns: 1fr;
+  }
+}
+
+.import-bulk-panel {
+  display: grid;
+  grid-template-columns: auto repeat(5, minmax(130px, 1fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.import-bulk-panel label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #173b34;
+}
+
+.import-bulk-panel .table-input,
+.import-bulk-panel .table-select {
+  width: 100%;
+  min-height: 38px;
+}
+
+@media (max-width: 1180px) {
+  .import-bulk-panel {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .import-bulk-panel strong,
+  .import-bulk-panel button {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .import-bulk-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .import-bulk-panel strong,
+  .import-bulk-panel button {
+    grid-column: auto;
+  }
+}
+/* Compact density: lower global visual weight without changing page flow. */
+body {
+  font-size: 13px;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+h3 {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+p {
+  line-height: 1.35;
+}
+
+label {
+  gap: 4px;
+  font-size: 13px;
+}
+
+input,
+select,
+textarea,
+.table-input,
+.table-select,
+.filters-panel select,
+.bulk-panel select,
+.detail-form select,
+.modal-form select,
+.import-upload-panel select,
+.detected-subcategory-list select {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+button,
+.primary-link,
+.secondary-link,
+.compact-link,
+.selection-action,
+.detail-popover-actions button {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.navbar {
+  height: 48px;
+  padding: 0 18px;
+}
+
+.sidebar {
+  width: 190px;
+  gap: 8px;
+  padding: 14px 10px;
+}
+
+.sidebar-link,
+.nav-list a,
+.ghost-button {
+  padding: 7px 9px;
+  border-radius: 5px;
+}
+
+.dashboard-contenedor,
+.main-panel {
+  padding: 24px clamp(44px, 6vw, 88px);
+}
+
+.page-section {
+  gap: 16px;
+}
+
+.page-header {
+  gap: 12px;
+}
+
+.page-header p,
+.import-section-header p,
+.quick-expense-copy p,
+.manage-card-header p,
+.detail-summary dt,
+.totals-row span,
+.manage-muted {
+  font-size: 12px;
+}
+
+.action-row,
+.factura-upload-row,
+.upload-panel,
+.modal-actions,
+.manage-actions {
+  gap: 8px;
+}
+
+.filters-panel,
+.bulk-panel,
+.summary-grid article,
+.table-shell,
+.upload-panel,
+.detail-card,
+.manage-card,
+.import-upload-panel,
+.import-result-panel,
+.quick-expense-panel {
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.filters-panel,
+.bulk-panel,
+.import-bulk-panel,
+.quick-expense-panel,
+.import-actions-grid,
+.manage-grid,
+.detail-grid,
+.import-result-panel {
+  gap: 10px;
+}
+
+.table-shell th,
+.table-shell td,
+th,
+td {
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.table-input-wide {
+  min-width: 170px;
+}
+
+.table-input-number {
+  min-width: 90px;
+}
+
+.table-input-small {
+  min-width: 58px;
+}
+
+.summary-grid strong {
+  font-size: 22px;
+}
+
+.totals-row strong,
+.detail-summary dd,
+.import-result-grid strong {
+  font-size: 18px;
+}
+
+.status-badge {
+  min-height: 24px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.icon-button,
+.edit-detail-button,
+.manage-icon-button {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  border-radius: 5px;
+}
+
+.edit-detail-button svg,
+.manage-icon-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.detail-popover {
+  width: 240px;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.modal-card,
+.modal-panel,
+.edit-modal {
+  gap: 12px;
+  padding: 16px;
+  border-radius: 6px;
+}
+
+.account-carousel {
+  grid-auto-columns: minmax(190px, 220px);
+  gap: 10px;
+  padding-top: 2px;
+  padding-bottom: 12px;
+}
+
+.account-card {
+  min-height: 118px;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 6px;
+}
+
+.account-card::after {
+  right: -26px;
+  bottom: -26px;
+  width: 82px;
+  height: 82px;
+  border-width: 14px;
+}
+
+.account-card-topline,
+.account-card-meta {
+  font-size: 10px;
+}
+
+.account-card strong {
+  min-height: 34px;
+  font-size: 14px;
+}
+
+.account-card-currency {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.account-card-action {
+  font-size: 12px;
+}
+
+.carousel-control {
+  width: 28px;
+  height: 38px;
+  min-height: 38px;
+  border-radius: 6px;
+  font-size: 24px;
+}
+
+.import-upload-panel {
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 210px) auto;
+}
+
+.import-bulk-panel {
+  grid-template-columns: auto repeat(5, minmax(110px, 1fr)) auto auto;
+  gap: 8px;
+}
+
+.import-bulk-panel label {
+  gap: 3px;
+  font-size: 12px;
+}
+
+.import-bulk-panel .table-input,
+.import-bulk-panel .table-select {
+  min-height: 30px;
+}
+
+@media (max-width: 760px) {
+  .dashboard-contenedor,
+  .main-panel {
+    padding: 18px 14px;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+}

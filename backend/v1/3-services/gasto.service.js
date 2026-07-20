@@ -151,22 +151,41 @@ const limpiarCamposVacios = (data) => {
   return limpio;
 };
 
+const esNumeroValido = (valor) => {
+  if (valor === "" || valor === null || valor === undefined) {
+    return false;
+  }
+
+  return Number.isFinite(Number(valor));
+};
+
+const esMontoBancarioValido = (valor) => {
+  return esNumeroValido(valor) && Number(valor) !== 0;
+};
+
+const esPorcentajeValido = (valor) => {
+  if (!esNumeroValido(valor)) {
+    return false;
+  }
+
+  const numero = Number(valor);
+  return numero >= 0 && numero <= 100;
+};
+
 const gastoEstaCompleto = (gasto) => {
   return (
     gasto.detalle &&
     gasto.cuentaId &&
     gasto.fecha &&
-    gasto.montoBancario !== null &&
-    gasto.montoBancario !== undefined &&
-    gasto.porcentaje !== null &&
-    gasto.porcentaje !== undefined &&
+    esMontoBancarioValido(gasto.montoBancario) &&
+    esPorcentajeValido(gasto.porcentaje) &&
     gasto.categoriaId &&
     gasto.subcategoriaId
   );
 };
 
 const calcularMontoReal = (gasto) => {
-  if (!gastoEstaCompleto(gasto)) {
+  if (!esMontoBancarioValido(gasto.montoBancario) || !esPorcentajeValido(gasto.porcentaje)) {
     return 0;
   }
 
@@ -181,4 +200,6 @@ const calcularMontoReal = (gasto) => {
 
   return montoBancario * (porcentaje / 100);
 };
+
+
 

@@ -17,6 +17,21 @@ const fechaParaInput = (fecha) => {
   return String(fecha).slice(0, 10);
 };
 
+const esNumeroValido = (valor) => {
+  if (valor === "" || valor === null || valor === undefined) return false;
+  return Number.isFinite(Number(valor));
+};
+
+const esMontoBancarioValido = (valor) => {
+  return esNumeroValido(valor) && Number(valor) !== 0;
+};
+
+const esPorcentajeValido = (valor) => {
+  if (!esNumeroValido(valor)) return false;
+  const numero = Number(valor);
+  return numero >= 0 && numero <= 100;
+};
+
 const obtenerCamposFaltantes = (gasto) => {
   const campos = [];
 
@@ -24,20 +39,12 @@ const obtenerCamposFaltantes = (gasto) => {
   if (!obtenerId(gasto?.cuentaId)) campos.push("cuenta");
   if (!gasto?.fecha) campos.push("fecha");
 
-  if (
-    gasto?.montoBancario === "" ||
-    gasto?.montoBancario === null ||
-    gasto?.montoBancario === undefined
-  ) {
-    campos.push("monto bancario");
+  if (!esMontoBancarioValido(gasto?.montoBancario)) {
+    campos.push("monto bancario distinto de 0");
   }
 
-  if (
-    gasto?.porcentaje === "" ||
-    gasto?.porcentaje === null ||
-    gasto?.porcentaje === undefined
-  ) {
-    campos.push("porcentaje");
+  if (!esPorcentajeValido(gasto?.porcentaje)) {
+    campos.push("porcentaje entre 0 y 100");
   }
 
   if (!obtenerId(gasto?.categoriaId)) campos.push("categoria");
@@ -175,7 +182,7 @@ const DetalleGastoPage = () => {
 
       dispatch(actualizarGasto(response.data.gasto));
       setForm(response.data.gasto);
-      setMensaje("Gasto actualizado a creado.");
+      setMensaje("");
     } catch (err) {
       console.error("Error al actualizar estado del gasto:", err);
       setErrorActualizar(
@@ -345,6 +352,10 @@ const DetalleGastoPage = () => {
           <h2>Resumen</h2>
           <dl>
             <div>
+              <dt>Monto bancario</dt>
+              <dd>$ {form.montoBancario ?? 0}</dd>
+            </div>
+            <div>
               <dt>Monto real</dt>
               <dd>$ {form.montoReal ?? 0}</dd>
             </div>
@@ -389,5 +400,8 @@ const DetalleGastoPage = () => {
 };
 
 export default DetalleGastoPage;
+
+
+
 
 

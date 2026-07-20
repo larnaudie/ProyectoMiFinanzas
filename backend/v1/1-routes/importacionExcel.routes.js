@@ -1,7 +1,8 @@
-import express from "express";
+﻿import express from "express";
 import { uploadExcel } from "../middlewares/uploadExcel.middleware.js";
 import {
   importarExcel,
+  importarExcelPersonal,
   obtenerMovimientosImportados,
   ignorarMovimientoImportado,
   vincularMovimientoAGasto,
@@ -16,6 +17,12 @@ router.post(
   importarExcel
 );
 
+
+router.post(
+  "/cuentas/:cuentaId/excel-personal",
+  uploadExcel.single("excel"),
+  importarExcelPersonal
+);
 router.get(
   "/cuentas/:cuentaId/movimientos",
   obtenerMovimientosImportados

@@ -1,6 +1,7 @@
 import XLSX from "xlsx";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
+import Subcategoria from "../0.1-models/subcategoria.model.js";
 import { crearGastoService } from "./gasto.service.js";
 
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
@@ -75,6 +76,54 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   };
 };
 
+
+export const importarExcelPersonalService = async ({ usuarioId, cuentaId, file }) => {
+  if (!file) {
+    throw new Error("No se recibio ningun archivo Excel");
+  }
+
+  const movimientos = obtenerMovimientosPersonales(file.buffer);
+  const gastosProcesados = [];
+
+  for (const movimiento of movimientos) {
+    const subcategoria = movimiento.nombreSubcategoria
+      ? await Subcategoria.findOne({
+          usuarioId,
+          nombreSubcategoria: new RegExp(`^${escaparRegex(movimiento.nombreSubcategoria)}$`, "i"),
+        })
+      : null;
+
+    const gasto = await crearGastoService(
+      {
+        detalle: movimiento.detalle,
+        cuentaId,
+        fecha: movimiento.fecha,
+        montoBancario: movimiento.montoBancario,
+        porcentaje: movimiento.porcentaje,
+        incluirMontoReal: true,
+        subcategoriaId: subcategoria?._id,
+        cambiarEstado: false,
+        origen: {
+          tipo: "excel",
+          referenciaId: null,
+        },
+      },
+      usuarioId
+    );
+
+    gastosProcesados.push({
+      gasto,
+      subcategoriaEncontrada: Boolean(subcategoria),
+      nombreSubcategoria: movimiento.nombreSubcategoria,
+    });
+  }
+
+  return {
+    totalLeidos: movimientos.length,
+    totalProcesados: gastosProcesados.length,
+    gastos: gastosProcesados,
+  };
+};
 const obtenerMovimientos = (buffer) => {
   const workbook = XLSX.read(buffer, {
     type: "buffer",
@@ -119,6 +168,138 @@ const obtenerMovimientos = (buffer) => {
     });
 };
 
+
+const obtenerMovimientosPersonales = (buffer) => {
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: false,
+  });
+
+  const primeraHoja = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[primeraHoja];
+
+  const filas = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+    raw: true,
+  });
+
+  const bloques = encontrarBloquesPersonales(filas);
+
+  if (bloques.length === 0) {
+    throw new Error("No se encontraron bloques personales validos en el Excel");
+  }
+
+  const filasEncabezado = [...new Set(bloques.map((bloque) => bloque.filaIndex))]
+    .sort((a, b) => a - b);
+  const movimientos = [];
+
+  bloques.forEach((bloque) => {
+    const siguienteFilaEncabezado = filasEncabezado.find(
+      (filaIndex) => filaIndex > bloque.filaIndex
+    ) ?? filas.length;
+
+    for (let i = bloque.filaIndex + 1; i < siguienteFilaEncabezado; i += 1) {
+      const fila = filas[i];
+      const fecha = parsearFechaFlexible(fila[bloque.columnaIndex]);
+      const detalle = String(fila[bloque.columnaIndex + 1] || "").trim();
+      const montoBancario = parsearMontoFlexible(fila[bloque.columnaIndex + 2]);
+      const montoReal = parsearMontoFlexible(fila[bloque.columnaIndex + 3]);
+      const nombreSubcategoria = String(fila[bloque.columnaIndex + 4] || "").trim();
+
+      if (!fecha && !detalle && montoBancario === null && montoReal === null && !nombreSubcategoria) {
+        continue;
+      }
+
+      if (!fecha || !detalle || montoBancario === null || montoBancario === 0) {
+        continue;
+      }
+
+      const porcentaje = montoReal !== null
+        ? Number(Math.abs((montoReal / montoBancario) * 100).toFixed(2))
+        : 0;
+
+      movimientos.push({
+        fecha,
+        detalle,
+        montoBancario,
+        porcentaje,
+        nombreSubcategoria,
+      });
+    }
+  });
+
+  return movimientos;
+};
+
+const encontrarBloquesPersonales = (filas) => {
+  const bloques = [];
+
+  filas.forEach((fila, filaIndex) => {
+    fila.forEach((celda, columnaIndex) => {
+      if (normalizarTexto(celda) !== "fecha") return;
+
+      const encabezados = fila
+        .slice(columnaIndex, columnaIndex + 5)
+        .map(normalizarTexto);
+
+      const esBloquePersonal =
+        encabezados[1] === "detalle" &&
+        encabezados[2] === "flujo bancario" &&
+        encabezados[3].includes("economia real") &&
+        encabezados[4] === "categoria";
+
+      if (esBloquePersonal) {
+        bloques.push({ filaIndex, columnaIndex });
+      }
+    });
+  });
+
+  return bloques;
+};
+const parsearFechaFlexible = (valor) => {
+  if (valor === null || valor === undefined || valor === "") return null;
+
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) return valor;
+
+  if (typeof valor === "number") {
+    const fechaExcel = XLSX.SSF.parse_date_code(valor);
+    if (!fechaExcel) return null;
+    return new Date(fechaExcel.y, fechaExcel.m - 1, fechaExcel.d);
+  }
+
+  const texto = String(valor).trim();
+
+  if (!texto) return null;
+
+  if (texto.includes("/")) {
+    const partes = texto.split("/").map(Number);
+    const [dia, mes, anio] = partes;
+    const anioCompleto = anio < 100 ? 2000 + anio : anio;
+    return new Date(anioCompleto, mes - 1, dia);
+  }
+
+  const fecha = new Date(texto);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+};
+
+const parsearMontoFlexible = (valor) => {
+  if (valor === null || valor === undefined || valor === "") return null;
+  if (typeof valor === "number") return valor;
+
+  const normalizado = String(valor)
+    .replace("$", "")
+    .replace(/\s/g, "")
+    .replace(/[^0-9,.-]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".")
+    .trim();
+
+  if (!normalizado) return null;
+
+  const numero = Number(normalizado);
+  return Number.isNaN(numero) ? null : numero;
+};
 const buscarPosiblesDuplicados = async ({
   usuarioId,
   cuentaId,
@@ -169,6 +350,9 @@ const crearHashBanco = ({
   ].join("|");
 };
 
+const escaparRegex = (texto) => {
+  return String(texto).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
 const normalizarTexto = (texto) => {
   return String(texto || "")
     .toLowerCase()
