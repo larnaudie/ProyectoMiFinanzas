@@ -1,17 +1,37 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { agregarGasto, actualizarGasto } from "../../features/slices/gastosSlice.js";
-import { obtenerCuentas, seleccionarCuenta } from "../../features/slices/cuentasSlice.js";
+import { guardarCuentas, obtenerCuentas, seleccionarCuenta } from "../../features/slices/cuentasSlice.js";
 import { api } from "../../services/api.js";
 
 const fechaDeHoy = () => new Date().toISOString().slice(0, 10);
+
+const moverCuenta = (cuentas, idOrigen, idDestino) => {
+  const origenIndex = cuentas.findIndex((cuenta) => cuenta._id === idOrigen);
+  const destinoIndex = cuentas.findIndex((cuenta) => cuenta._id === idDestino);
+
+  if (origenIndex === -1 || destinoIndex === -1 || origenIndex === destinoIndex) {
+    return cuentas;
+  }
+
+  const cuentasOrdenadas = [...cuentas];
+  const [cuentaMovida] = cuentasOrdenadas.splice(origenIndex, 1);
+  cuentasOrdenadas.splice(destinoIndex, 0, cuentaMovida);
+
+  return cuentasOrdenadas;
+};
 
 function HomePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const carouselRef = useRef(null);
   const { cuentas, loading, error } = useSelector((state) => state.cuentas);
+
+  const [cuentaArrastradaId, setCuentaArrastradaId] = useState(null);
+  const [cuentaDestinoId, setCuentaDestinoId] = useState(null);
+  const [guardandoOrden, setGuardandoOrden] = useState(false);
+  const [errorOrden, setErrorOrden] = useState("");
 
   const [gastoRapido, setGastoRapido] = useState({
     cuentaId: "",
@@ -53,6 +73,65 @@ function HomePage() {
     event.preventDefault();
     dispatch(seleccionarCuenta(cuenta));
     navigate(`/cuentas/${cuenta._id}/gastos`);
+  };
+
+  const empezarArrastreCuenta = (event, cuentaId) => {
+    setCuentaArrastradaId(cuentaId);
+    setCuentaDestinoId(null);
+    setErrorOrden("");
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", cuentaId);
+  };
+
+  const pasarSobreCuenta = (event, cuentaId) => {
+    event.preventDefault();
+
+    if (cuentaArrastradaId && cuentaArrastradaId !== cuentaId) {
+      setCuentaDestinoId(cuentaId);
+    }
+  };
+
+  const soltarCuenta = async (event, cuentaDestino) => {
+    event.preventDefault();
+
+    const idOrigen = event.dataTransfer.getData("text/plain") || cuentaArrastradaId;
+    const idDestino = cuentaDestino._id;
+
+    setCuentaArrastradaId(null);
+    setCuentaDestinoId(null);
+
+    if (!idOrigen || idOrigen === idDestino) return;
+
+    const ordenAnterior = cuentas;
+    const nuevoOrden = moverCuenta(cuentas, idOrigen, idDestino);
+
+    if (nuevoOrden === cuentas) return;
+
+    dispatch(guardarCuentas(nuevoOrden));
+
+    try {
+      setGuardandoOrden(true);
+      const response = await api.patch("/cuentas/orden", {
+        cuentas: nuevoOrden.map((cuenta, index) => ({
+          id: cuenta._id,
+          orden: index,
+        })),
+      });
+
+      dispatch(guardarCuentas(response.data.cuentas));
+    } catch (error) {
+      console.error("Error al guardar el orden de cuentas:", error);
+      dispatch(guardarCuentas(ordenAnterior));
+      setErrorOrden("No se pudo guardar el nuevo orden. Se volvió al orden anterior.");
+    } finally {
+      setGuardandoOrden(false);
+    }
+  };
+
+  const terminarArrastreCuenta = () => {
+    setCuentaArrastradaId(null);
+    setCuentaDestinoId(null);
   };
 
   const moverCarousel = (direccion) => {
@@ -145,6 +224,8 @@ function HomePage() {
 
       {loading && <p>Cargando cuentas...</p>}
       {error && <p className="error-text">{error}</p>}
+      {errorOrden && <p className="error-text">{errorOrden}</p>}
+      {guardandoOrden && <p className="order-saving-text">Guardando orden...</p>}
 
       <div className="account-carousel-shell">
         <button
@@ -158,18 +239,36 @@ function HomePage() {
 
         <div className="account-carousel" ref={carouselRef}>
           {cuentas.map((cuenta) => (
-            <Link
-              className="account-card"
+            <article
+              className={`account-card${cuentaArrastradaId === cuenta._id ? " account-card-dragging" : ""}${cuentaDestinoId === cuenta._id ? " account-card-drop-target" : ""}`}
               key={cuenta._id}
-              to={`/cuentas/${cuenta._id}/gastos`}
-              onClick={(event) => abrirCuenta(event, cuenta)}
+              onDragOver={(event) => pasarSobreCuenta(event, cuenta._id)}
+              onDrop={(event) => soltarCuenta(event, cuenta)}
             >
-              <span className="account-card-topline">Cuenta</span>
-              <strong>{cuenta.nombreCuenta}</strong>
-              <span className="account-card-meta">Moneda</span>
-              <span className="account-card-currency">{cuenta.moneda || "UYU"}</span>
-              <span className="account-card-action">Abrir cuenta</span>
-            </Link>
+              <button
+                className="account-drag-handle"
+                type="button"
+                draggable="true"
+                aria-label={`Mover ${cuenta.nombreCuenta}`}
+                title="Arrastrar para ordenar"
+                onDragStart={(event) => empezarArrastreCuenta(event, cuenta._id)}
+                onDragEnd={terminarArrastreCuenta}
+              >
+                ⋮⋮
+              </button>
+
+              <Link
+                className="account-card-link"
+                to={`/cuentas/${cuenta._id}/gastos`}
+                onClick={(event) => abrirCuenta(event, cuenta)}
+              >
+                <span className="account-card-topline">Cuenta</span>
+                <strong>{cuenta.nombreCuenta}</strong>
+                <span className="account-card-meta">Moneda</span>
+                <span className="account-card-currency">{cuenta.moneda || "UYU"}</span>
+                <span className="account-card-action">Abrir cuenta</span>
+              </Link>
+            </article>
           ))}
         </div>
 
@@ -250,5 +349,3 @@ function HomePage() {
 }
 
 export default HomePage;
-
-

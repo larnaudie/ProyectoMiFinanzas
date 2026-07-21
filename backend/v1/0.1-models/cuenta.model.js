@@ -11,6 +11,10 @@ const cuentaSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    orden: {
+        type: Number,
+        default: 0
+    },
     gastos: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "Gasto"

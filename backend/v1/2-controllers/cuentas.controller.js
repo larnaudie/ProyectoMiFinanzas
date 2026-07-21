@@ -2,6 +2,7 @@ import {
   obtenerCuentasService,
   actualizarCuentaService,
   crearCuentaService,
+  actualizarOrdenCuentasService,
   eliminarCuentaService,
   eliminarTodasLasCuentasService,
 } from "../3-services/cuenta.service.js";
@@ -57,6 +58,18 @@ export const actualizarCuenta = async (req, res, next) => {
   }
 };
 
+export const actualizarOrdenCuentas = async (req, res, next) => {
+  try {
+    const usuarioId = req.user.id;
+    const cuentasOrdenadas = await actualizarOrdenCuentasService(usuarioId, req.body.cuentas || []);
+    res.status(200).json({
+      message: "Orden de cuentas actualizado",
+      cuentas: cuentasOrdenadas,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 export const eliminarCuenta = async (req, res, next) => {
   try {
     const { id } = req.params;
