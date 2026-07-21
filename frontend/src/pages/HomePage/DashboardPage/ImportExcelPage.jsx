@@ -104,11 +104,24 @@ const gastoCompletoParaCrear = (gasto) => {
     Number.isFinite(Number(gasto.porcentaje)) &&
     Number(gasto.porcentaje) >= 0 &&
     Number(gasto.porcentaje) <= 100 &&
-    gasto.categoriaId &&
     gasto.subcategoriaId
   );
 };
 
+const gastoValidoParaPendienteImportado = (gasto) => {
+  const montoBancario = Number(gasto.montoBancario);
+  const porcentaje = Number(gasto.porcentaje);
+
+  return (
+    gasto.detalle &&
+    gasto.fecha &&
+    Number.isFinite(montoBancario) &&
+    montoBancario !== 0 &&
+    Number.isFinite(porcentaje) &&
+    porcentaje >= 0 &&
+    porcentaje <= 100
+  );
+};
 const obtenerNombresSubcategoriasNuevas = (gastos, subcategorias) => {
   const existentes = new Set(
     subcategorias.map((subcategoria) => normalizarTexto(subcategoria.nombreSubcategoria)),
@@ -170,6 +183,7 @@ function ImportExcelPage() {
     incluirMontoReal: "",
   });
   const [aplicandoBulkBancario, setAplicandoBulkBancario] = useState(false);
+  const [creandoSeleccionadosBancario, setCreandoSeleccionadosBancario] = useState(false);
   const [categorias, setCategorias] = useState([]);
   const [subcategorias, setSubcategorias] = useState([]);
   const [subcategoriasDetectadas, setSubcategoriasDetectadas] = useState([]);
@@ -377,7 +391,7 @@ function ImportExcelPage() {
   const crearGastoPersonal = (gasto) => {
     if (!gastoCompletoParaCrear(gasto)) {
       setMensajePersonal(
-        "Para pasar a creado faltan datos: detalle, fecha, monto bancario distinto de 0, porcentaje valido, categoria y subcategoria.",
+        "Para pasar a creado faltan datos: detalle, fecha, monto bancario distinto de 0, porcentaje valido y subcategoria.",
       );
       return;
     }
@@ -483,24 +497,68 @@ function ImportExcelPage() {
     setMensajeBancario("Cambios aplicados a los movimientos seleccionados.");
   };
 
-  const crearGastoBancario = (gasto) => {
-    if (!gastoCompletoParaCrear(gasto)) {
+  const eliminarMovimientosBancariosSeleccionados = async () => {
+    const movimientosAEliminar = gastosBancariosSeleccionados.filter((id) => {
+      const movimiento = gastosBancarios.find((gasto) => gasto._id === id);
+      return movimiento && !movimiento.gastoId;
+    });
+
+    const cantidad = movimientosAEliminar.length;
+    if (cantidad === 0) return;
+
+    const confirmaEliminar = window.confirm(
+      `Vas a eliminar ${cantidad} movimiento${cantidad === 1 ? "" : "s"} pendiente${cantidad === 1 ? "" : "s"} de esta vista.`,
+    );
+
+    if (!confirmaEliminar) return;
+
+    setMensajeBancario("");
+
+    try {
+      await Promise.all(
+        movimientosAEliminar.map((movimientoId) =>
+          api.patch(`/importaciones/movimientos/${movimientoId}/ignorar`),
+        ),
+      );
+
+      setGastosBancarios((actuales) =>
+        actuales.filter((gasto) => !movimientosAEliminar.includes(gasto._id)),
+      );
+      setGastosBancariosSeleccionados([]);
       setMensajeBancario(
-        "Para crear el gasto faltan datos: detalle, fecha, monto bancario distinto de 0, porcentaje valido, categoria y subcategoria.",
+        `${cantidad} movimiento${cantidad === 1 ? "" : "s"} eliminado${cantidad === 1 ? "" : "s"} de pendientes.`,
+      );
+    } catch (apiError) {
+      setMensajeBancario(
+        obtenerMensajeError(apiError, "No se pudieron eliminar los movimientos seleccionados."),
+      );
+    }
+  };
+  const armarPayloadGastoBancario = (gasto) => {
+    const payload = {
+      detalle: gasto.detalle,
+      fecha: gasto.fecha,
+      porcentaje: Number(gasto.porcentaje),
+      incluirMontoReal: Boolean(gasto.incluirMontoReal),
+      cambiarEstado: false,
+    };
+
+    if (gasto.categoriaId) payload.categoriaId = gasto.categoriaId;
+    if (gasto.subcategoriaId) payload.subcategoriaId = gasto.subcategoriaId;
+
+    return payload;
+  };
+
+  const crearGastoBancario = (gasto) => {
+    if (!gastoValidoParaPendienteImportado(gasto)) {
+      setMensajeBancario(
+        "Para crear el gasto pendiente completa detalle, fecha, monto bancario distinto de 0 y porcentaje entre 0 y 100.",
       );
       return;
     }
 
     api
-      .post(`/importaciones/movimientos/${gasto._id}/crear-gasto`, {
-        detalle: gasto.detalle,
-        fecha: gasto.fecha,
-        porcentaje: Number(gasto.porcentaje),
-        incluirMontoReal: Boolean(gasto.incluirMontoReal),
-        categoriaId: gasto.categoriaId,
-        subcategoriaId: gasto.subcategoriaId,
-        cambiarEstado: true,
-      })
+      .post(`/importaciones/movimientos/${gasto._id}/crear-gasto`, armarPayloadGastoBancario(gasto))
       .then((response) => {
         const gastoCreado = response.data.gasto;
         setGastosBancarios((actuales) =>
@@ -510,7 +568,7 @@ function ImportExcelPage() {
               : item,
           ),
         );
-        setMensajeBancario("Gasto creado desde el movimiento bancario.");
+        setMensajeBancario("Gasto pendiente creado desde el movimiento bancario.");
         setGastosBancariosSeleccionados((actuales) => actuales.filter((id) => id !== gasto._id));
       })
       .catch((apiError) => {
@@ -520,6 +578,77 @@ function ImportExcelPage() {
       });
   };
 
+  const crearGastosBancariosSeleccionados = async () => {
+    const movimientosSeleccionados = gastosBancarios.filter(
+      (gasto) => gastosBancariosSeleccionados.includes(gasto._id) && !gasto.gastoId,
+    );
+
+    if (movimientosSeleccionados.length === 0) {
+      setMensajeBancario("Selecciona al menos un movimiento pendiente para crear.");
+      return;
+    }
+
+    const movimientosInvalidos = movimientosSeleccionados.filter(
+      (gasto) => !gastoValidoParaPendienteImportado(gasto),
+    );
+
+    if (movimientosInvalidos.length > 0) {
+      setMensajeBancario(
+        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario distinto de 0 y porcentaje entre 0 y 100.`,
+      );
+      return;
+    }
+
+    setCreandoSeleccionadosBancario(true);
+    setMensajeBancario("");
+
+    try {
+      const resultados = await Promise.allSettled(
+        movimientosSeleccionados.map((gasto) =>
+          api
+            .post(`/importaciones/movimientos/${gasto._id}/crear-gasto`, armarPayloadGastoBancario(gasto))
+            .then((response) => ({ movimientoId: gasto._id, gastoCreado: response.data.gasto })),
+        ),
+      );
+
+      const creados = resultados
+        .filter((resultado) => resultado.status === "fulfilled")
+        .map((resultado) => resultado.value);
+      const errores = resultados.filter((resultado) => resultado.status === "rejected");
+      const creadosPorMovimiento = new Map(
+        creados.map((item) => [item.movimientoId, item.gastoCreado]),
+      );
+
+      if (creados.length > 0) {
+        setGastosBancarios((actuales) =>
+          actuales.map((gasto) =>
+            creadosPorMovimiento.has(gasto._id)
+              ? {
+                  ...gasto,
+                  estado: "vinculado",
+                  gastoId: creadosPorMovimiento.get(gasto._id)?._id,
+                }
+              : gasto,
+          ),
+        );
+        setGastosBancariosSeleccionados((actuales) =>
+          actuales.filter((id) => !creadosPorMovimiento.has(id)),
+        );
+      }
+
+      setMensajeBancario(
+        errores.length === 0
+          ? `${creados.length} gasto${creados.length === 1 ? "" : "s"} pendiente${creados.length === 1 ? "" : "s"} creado${creados.length === 1 ? "" : "s"}.`
+          : `${creados.length} creado${creados.length === 1 ? "" : "s"}; ${errores.length} no se pudo${errores.length === 1 ? "" : "ieron"} crear.`,
+      );
+    } catch (apiError) {
+      setMensajeBancario(
+        obtenerMensajeError(apiError, "No se pudieron crear los gastos seleccionados."),
+      );
+    } finally {
+      setCreandoSeleccionadosBancario(false);
+    }
+  };
   const cambiarCategoriaSubcategoriaDetectada = (nombreSubcategoria, categoria) => {
     setSubcategoriasDetectadas((actuales) =>
       actuales.map((item) =>
@@ -888,12 +1017,15 @@ function ImportExcelPage() {
             seleccionados={gastosBancariosSeleccionados}
             bulk={bulkBancario}
             aplicandoBulk={aplicandoBulkBancario}
+            creandoSeleccionados={creandoSeleccionadosBancario}
             onChange={cambiarGastoBancario}
             onCrear={crearGastoBancario}
             onToggleSeleccion={cambiarSeleccionGastoBancario}
             onToggleTodos={cambiarSeleccionTodosGastosBancarios}
             onBulkChange={cambiarBulkBancario}
             onAplicarBulk={aplicarCambiosBulkBancario}
+            onCrearSeleccionados={crearGastosBancariosSeleccionados}
+            onEliminarSeleccionados={eliminarMovimientosBancariosSeleccionados}
           />
         )}
       </section>
@@ -1168,12 +1300,15 @@ function TablaGastosBancarios({
   seleccionados,
   bulk,
   aplicandoBulk,
+  creandoSeleccionados,
   onChange,
   onCrear,
   onToggleSeleccion,
   onToggleTodos,
   onBulkChange,
   onAplicarBulk,
+  onCrearSeleccionados,
+  onEliminarSeleccionados,
 }) {
   const movimientosEditables = gastos.filter((gasto) => !gasto.gastoId);
 
@@ -1258,6 +1393,22 @@ function TablaGastosBancarios({
             disabled={aplicandoBulk}
           >
             {aplicandoBulk ? "Aplicando..." : "Aplicar a seleccionados"}
+          </button>
+          <button
+            type="button"
+            className="selection-action"
+            onClick={onCrearSeleccionados}
+            disabled={creandoSeleccionados}
+          >
+            {creandoSeleccionados ? "Creando..." : "Crear seleccionados"}
+          </button>
+          <button
+            type="button"
+            className="selection-action delete-action"
+            onClick={onEliminarSeleccionados}
+            disabled={creandoSeleccionados}
+          >
+            Eliminar seleccionados
           </button>
         </div>
       )}
@@ -1445,5 +1596,6 @@ function ModalSubcategoriasDetectadas({
 }
 
 export default ImportExcelPage;
+
 
 

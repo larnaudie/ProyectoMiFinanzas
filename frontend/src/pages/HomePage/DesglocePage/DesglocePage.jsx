@@ -123,7 +123,6 @@ const obtenerCamposFaltantesNuevoGasto = (gasto) => {
   if (!gasto.fecha) campos.push("fecha");
   if (!esMontoBancarioValido(gasto.montoBancario)) campos.push("monto bancario distinto de 0");
   if (!esPorcentajeValido(gasto.porcentaje)) campos.push("porcentaje entre 0 y 100");
-  if (!gasto.categoriaId) campos.push("categoria");
   if (!gasto.subcategoriaId) campos.push("subcategoria");
 
   return campos;
@@ -437,13 +436,21 @@ function DesglocePage() {
   };
 
   const guardarNuevaSubcategoria = () => {
-    if (!formSubcategoria.nombreSubcategoria.trim() || !formSubcategoria.categoria) {
-      setErrorModal("Nombre y categoria son obligatorios.");
+    if (!formSubcategoria.nombreSubcategoria.trim()) {
+      setErrorModal("El nombre de la subcategoria es obligatorio.");
       return;
     }
 
+    const payload = {
+      nombreSubcategoria: formSubcategoria.nombreSubcategoria.trim(),
+    };
+
+    if (formSubcategoria.categoria) {
+      payload.categoria = formSubcategoria.categoria;
+    }
+
     api
-      .post("/subcategorias", formSubcategoria)
+      .post("/subcategorias", payload)
       .then((response) => {
         dispatch(agregarSubcategoria(response.data.subcategoria));
         cerrarModal();
@@ -1055,7 +1062,7 @@ function DesglocePage() {
                 value={formGasto.categoriaId}
                 onChange={(event) => cambiarFormGasto("categoriaId", event.target.value)}
               >
-                <option value="">Seleccionar categoria</option>
+                <option value="">Sin categoria</option>
                 {categorias.map((categoria) => (
                   <option key={categoria._id} value={categoria._id}>
                     {categoria.nombreCategoria}
@@ -1174,7 +1181,7 @@ function DesglocePage() {
             </label>
 
             <label>
-              Categoria
+              Categoria (opcional)
               <select
                 value={formSubcategoria.categoria}
                 onChange={(event) =>
@@ -1184,7 +1191,7 @@ function DesglocePage() {
                   })
                 }
               >
-                <option value="">Seleccionar categoria</option>
+                <option value="">Sin categoria</option>
                 {categorias.map((categoria) => (
                   <option key={categoria._id} value={categoria._id}>
                     {categoria.nombreCategoria}

@@ -31,6 +31,10 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       hashBanco,
     });
 
+    if (movimientoExistente) {
+      await liberarMovimientoSiGastoFueEliminado(movimientoExistente);
+    }
+
     const posiblesDuplicados = await buscarPosiblesDuplicados({
       usuarioId,
       cuentaId,
@@ -353,6 +357,28 @@ const crearHashBanco = ({
 const escaparRegex = (texto) => {
   return String(texto).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
+
+const liberarMovimientoSiGastoFueEliminado = async (movimiento) => {
+  if (movimiento.estadoImportacion !== "vinculado" || !movimiento.gastoId) {
+    return movimiento;
+  }
+
+  const gastoExiste = await Gasto.exists({
+    _id: movimiento.gastoId,
+    usuarioId: movimiento.usuarioId,
+  });
+
+  if (gastoExiste) {
+    return movimiento;
+  }
+
+  movimiento.estadoImportacion = "pendiente";
+  movimiento.gastoId = null;
+  await movimiento.save();
+
+  return movimiento;
+};
+
 const normalizarTexto = (texto) => {
   return String(texto || "")
     .toLowerCase()
@@ -383,11 +409,27 @@ const parsearFecha = (valor) => {
   return new Date(Number(anio), Number(mes) - 1, Number(dia));
 };
 
+
+const limpiarMovimientosVinculadosSinGasto = async ({ usuarioId, cuentaId }) => {
+  const movimientos = await MovimientoImportado.find({
+    usuarioId,
+    cuentaId,
+    estadoImportacion: "vinculado",
+    gastoId: { $ne: null },
+  });
+
+  for (const movimiento of movimientos) {
+    await liberarMovimientoSiGastoFueEliminado(movimiento);
+  }
+};
+
 export const obtenerMovimientosImportadosService = async ({
   usuarioId,
   cuentaId,
   estadoImportacion,
 }) => {
+  await limpiarMovimientosVinculadosSinGasto({ usuarioId, cuentaId });
+
   const filtro = {
     usuarioId,
     cuentaId,
@@ -397,9 +439,19 @@ export const obtenerMovimientosImportadosService = async ({
     filtro.estadoImportacion = estadoImportacion;
   }
 
-  return MovimientoImportado.find(filtro)
+  const movimientos = await MovimientoImportado.find(filtro)
     .populate("gastoId")
     .sort({ fechaBanco: -1 });
+
+  for (const movimiento of movimientos) {
+    if (movimiento.estadoImportacion === "vinculado" && !movimiento.gastoId) {
+      movimiento.estadoImportacion = "pendiente";
+      movimiento.gastoId = null;
+      await movimiento.save();
+    }
+  }
+
+  return movimientos;
 };
 
 export const ignorarMovimientoImportadoService = async ({ usuarioId, id }) => {

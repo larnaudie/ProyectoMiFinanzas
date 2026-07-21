@@ -1,4 +1,5 @@
-﻿import Gasto from "../0.1-models/gasto.model.js";
+import Gasto from "../0.1-models/gasto.model.js";
+import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import cloudinary from "../config/cloudinary.config.js";
 
 export const obtenerGastosService = async (usuarioId) => {
@@ -89,11 +90,30 @@ export const crearGastoService = async (data, usuarioId) => {
 };
 export const eliminarGastoService = async (usuarioId, id) => {
   const gastoEliminado = await Gasto.findOneAndDelete({ _id: id, usuarioId });
+
+  if (gastoEliminado) {
+    await MovimientoImportado.updateMany(
+      { usuarioId, gastoId: id },
+      { estadoImportacion: "pendiente", gastoId: null }
+    );
+  }
+
   return gastoEliminado;
 };
 
 export const eliminarTodosLosGastosService = async (usuarioId) => {
+  const gastos = await Gasto.find({ usuarioId }).select("_id");
+  const gastoIds = gastos.map((gasto) => gasto._id);
+
   const gastosEliminados = await Gasto.deleteMany({ usuarioId });
+
+  if (gastoIds.length > 0) {
+    await MovimientoImportado.updateMany(
+      { usuarioId, gastoId: { $in: gastoIds } },
+      { estadoImportacion: "pendiente", gastoId: null }
+    );
+  }
+
   return gastosEliminados;
 };
 
@@ -179,7 +199,6 @@ const gastoEstaCompleto = (gasto) => {
     gasto.fecha &&
     esMontoBancarioValido(gasto.montoBancario) &&
     esPorcentajeValido(gasto.porcentaje) &&
-    gasto.categoriaId &&
     gasto.subcategoriaId
   );
 };

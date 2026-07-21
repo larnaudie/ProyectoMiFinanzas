@@ -1,4 +1,4 @@
-﻿import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useRef, useState } from "react";
@@ -47,7 +47,6 @@ const obtenerCamposFaltantes = (gasto) => {
     campos.push("porcentaje entre 0 y 100");
   }
 
-  if (!obtenerId(gasto?.categoriaId)) campos.push("categoria");
   if (!obtenerId(gasto?.subcategoriaId)) campos.push("subcategoria");
 
   return campos;
@@ -81,10 +80,13 @@ const DetalleGastoPage = () => {
   const [archivoFactura, setArchivoFactura] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [subiendoFactura, setSubiendoFactura] = useState(false);
+  const [camaraActiva, setCamaraActiva] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
   const [errorActualizar, setErrorActualizar] = useState("");
   const timerRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -117,7 +119,10 @@ const DetalleGastoPage = () => {
   }, [gastoActual]);
 
   useEffect(() => {
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      detenerCamara();
+    };
   }, []);
 
   const guardarCampo = (campo, valor) => {
@@ -192,6 +197,58 @@ const DetalleGastoPage = () => {
     } finally {
       setGuardando(false);
     }
+  };
+
+  const detenerCamara = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    setCamaraActiva(false);
+  };
+
+  const iniciarCamara = async () => {
+    try {
+      setError("");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+      });
+
+      streamRef.current = stream;
+      setCamaraActiva(true);
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 0);
+    } catch (err) {
+      console.error("Error al abrir la camara:", err);
+      setError("No se pudo abrir la camara. Podes seleccionar una imagen desde archivo.");
+    }
+  };
+
+  const sacarFoto = () => {
+    const video = videoRef.current;
+
+    if (!video) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setError("No se pudo capturar la foto.");
+        return;
+      }
+
+      const archivo = new File([blob], `factura-${Date.now()}.jpg`, { type: "image/jpeg" });
+      setArchivoFactura(archivo);
+      detenerCamara();
+    }, "image/jpeg", 0.9);
   };
 
   const subirFactura = async () => {
@@ -384,15 +441,39 @@ const DetalleGastoPage = () => {
           )}
 
           <div className="factura-upload-row">
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              onChange={(event) => setArchivoFactura(event.target.files?.[0] || null)}
-            />
+            <label className="file-action-button">
+              Elegir archivo
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(event) => setArchivoFactura(event.target.files?.[0] || null)}
+              />
+            </label>
+
+            <button type="button" className="file-action-button" onClick={iniciarCamara}>
+              Sacar foto
+            </button>
+
+            {archivoFactura && <span className="selected-file-name">{archivoFactura.name}</span>}
+
             <button type="button" disabled={subiendoFactura} onClick={subirFactura}>
               {subiendoFactura ? "Subiendo..." : "Subir factura"}
             </button>
           </div>
+
+          {camaraActiva && (
+            <div className="camera-panel">
+              <video ref={videoRef} autoPlay playsInline />
+              <div className="camera-actions">
+                <button type="button" onClick={sacarFoto}>
+                  Usar foto
+                </button>
+                <button type="button" className="secondary-button" onClick={detenerCamara}>
+                  Cancelar camara
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </section>
