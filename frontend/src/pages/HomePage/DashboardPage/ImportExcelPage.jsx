@@ -13,11 +13,6 @@ const fechaParaInput = (fecha) => {
   return String(fecha).slice(0, 10);
 };
 
-const formatearFecha = (fecha) => {
-  if (!fecha) return "";
-  return new Date(fecha).toLocaleDateString("es-UY");
-};
-
 const formatearMonto = (monto) => {
   if (monto === "" || monto === null || monto === undefined) return "";
   const numero = Number(monto || 0);
@@ -251,6 +246,8 @@ function ImportExcelPage() {
       });
 
     cargarSubcategorias();
+  // Estas funciones sólo dependen del cuentaId que dispara la recarga.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentaId]);
 
   const importar = async (event) => {
@@ -615,6 +612,28 @@ function ImportExcelPage() {
         .filter((resultado) => resultado.status === "fulfilled")
         .map((resultado) => resultado.value);
       const errores = resultados.filter((resultado) => resultado.status === "rejected");
+      const mensajesErrores = [
+        ...new Set(
+          errores.map((resultado) =>
+            obtenerMensajeError(
+              resultado.reason,
+              "No se pudo crear el gasto desde el movimiento.",
+            ),
+          ),
+        ),
+      ];
+      const todosErroresSonDuplicados = errores.length > 0 && errores.every(
+        (resultado) => {
+          const mensaje = obtenerMensajeError(resultado.reason, "");
+          return resultado.reason?.response?.status === 409
+            && mensaje.toLowerCase().includes("ya existe");
+        },
+      );
+      const detalleErrores = todosErroresSonDuplicados
+        ? errores.length === 1
+          ? "El gasto ya existe."
+          : "Los gastos seleccionados ya existen."
+        : mensajesErrores.join(" ");
       const creadosPorMovimiento = new Map(
         creados.map((item) => [item.movimientoId, item.gastoCreado]),
       );
@@ -639,7 +658,7 @@ function ImportExcelPage() {
       setMensajeBancario(
         errores.length === 0
           ? `${creados.length} gasto${creados.length === 1 ? "" : "s"} pendiente${creados.length === 1 ? "" : "s"} creado${creados.length === 1 ? "" : "s"}.`
-          : `${creados.length} creado${creados.length === 1 ? "" : "s"}; ${errores.length} no se pudo${errores.length === 1 ? "" : "ieron"} crear.`,
+          : `${creados.length} creado${creados.length === 1 ? "" : "s"}; ${errores.length} no se pudo${errores.length === 1 ? "" : "ieron"} crear. ${detalleErrores}`,
       );
     } catch (apiError) {
       setMensajeBancario(

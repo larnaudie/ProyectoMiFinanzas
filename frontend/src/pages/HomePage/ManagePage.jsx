@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../../services/api";
 import {
@@ -25,6 +25,12 @@ import {
   eliminarSubcategoria,
   guardarSubcategorias,
 } from "../../features/slices/subcategoriasSlice";
+import {
+  actualizarTarjeta,
+  agregarTarjeta,
+  eliminarTarjeta,
+  guardarTarjetas,
+} from "../../features/slices/tarjetasSlice.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -77,6 +83,7 @@ function ManagePage() {
     api.get("/cuentas").then((response) => dispatch(guardarCuentas(response.data.cuentas))).catch((error) => console.error("Error al obtener cuentas:", error));
     api.get("/categorias").then((response) => dispatch(guardarCategorias(response.data.categorias))).catch((error) => console.error("Error al obtener categorias:", error));
     api.get("/subcategorias").then((response) => dispatch(guardarSubcategorias(response.data.subcategorias))).catch((error) => console.error("Error al obtener subcategorias:", error));
+    api.get("/tarjetas").then((response) => dispatch(guardarTarjetas(response.data.tarjetas))).catch((error) => console.error("Error al obtener tarjetas:", error));
   }, [dispatch]);
 
   const entidades = {
@@ -97,7 +104,37 @@ function ManagePage() {
       items: cuentas,
       responseKey: "cuenta",
       nombreKey: "nombreCuenta",
-      campos: [{ name: "nombreCuenta", label: "Nombre de la cuenta", type: "text" }],
+      campos: [
+        { name: "nombreCuenta", label: "Nombre de la cuenta", type: "text" },
+        {
+          name: "tipoCuenta",
+          label: "Tipo de cuenta",
+          type: "select",
+          defaultValue: "debito",
+          options: [
+            { _id: "debito", nombreCategoria: "Cuenta bancaria" },
+            { _id: "credito", nombreCategoria: "Tarjeta de crédito" },
+          ],
+        },
+        {
+          name: "bancoId",
+          label: "Banco",
+          type: "select",
+          options: bancos,
+          optionLabel: "nombreBanco",
+          required: false,
+        },
+        {
+          name: "moneda",
+          label: "Moneda",
+          type: "select",
+          defaultValue: "UYU",
+          options: [
+            { _id: "UYU", nombreCategoria: "UYU" },
+            { _id: "USD", nombreCategoria: "USD" },
+          ],
+        },
+      ],
       agregar: agregarCuenta,
       actualizar: actualizarCuenta,
       eliminar: eliminarCuenta,
@@ -130,10 +167,43 @@ function ManagePage() {
     },
     tarjetas: {
       titulo: "Tarjetas",
+      endpoint: "/tarjetas",
       items: tarjetas,
+      responseKey: "tarjeta",
       nombreKey: "nombreTarjeta",
-      disabled: true,
-      disabledText: "Pendiente de backend",
+      campos: [
+        { name: "nombreTarjeta", label: "Nombre de la tarjeta", type: "text" },
+        {
+          name: "cuentaId",
+          label: "Cuenta asociada",
+          type: "select",
+          options: cuentas,
+          optionLabel: "nombreCuenta",
+        },
+        {
+          name: "bancoId",
+          label: "Banco",
+          type: "select",
+          options: bancos,
+          optionLabel: "nombreBanco",
+          required: false,
+        },
+        { name: "ultimosDigitos", label: "Últimos 4 dígitos", type: "text", required: false },
+        {
+          name: "activa",
+          label: "Estado",
+          type: "select",
+          defaultValue: "true",
+          options: [
+            { _id: "true", nombreCategoria: "Activa" },
+            { _id: "false", nombreCategoria: "Inactiva" },
+          ],
+        },
+      ],
+      agregar: agregarTarjeta,
+      actualizar: actualizarTarjeta,
+      eliminar: eliminarTarjeta,
+      extra: (item) => item.cuentaId?.nombreCuenta || "Sin cuenta",
     },
     prestamos: {
       titulo: "Prestamos",
@@ -149,7 +219,10 @@ function ManagePage() {
     const valoresIniciales = {};
 
     entidad.campos?.forEach((campo) => {
-      valoresIniciales[campo.name] = item ? obtenerId(item[campo.name]) || item[campo.name] || "" : "";
+      const valorActual = item?.[campo.name];
+      valoresIniciales[campo.name] = item
+        ? (typeof valorActual === "object" ? obtenerId(valorActual) : valorActual ?? "")
+        : campo.defaultValue ?? "";
     });
 
     setModal({ tipo, entidadKey, item });
@@ -169,7 +242,9 @@ function ManagePage() {
 
   const guardarEntidad = () => {
     const entidad = entidades[modal.entidadKey];
-    const camposVacios = entidad.campos.filter((campo) => !String(form[campo.name] || "").trim());
+    const camposVacios = entidad.campos.filter(
+      (campo) => campo.required !== false && !String(form[campo.name] ?? "").trim(),
+    );
 
     if (camposVacios.length > 0) {
       setError(`Falta completar: ${camposVacios.map((campo) => campo.label).join(", ")}.`);
@@ -316,7 +391,7 @@ function ManagePage() {
                       <option value="">Seleccionar</option>
                       {campo.options.map((option) => (
                         <option key={option._id} value={option._id}>
-                          {option.nombreCategoria}
+                          {option[campo.optionLabel || "nombreCategoria"]}
                         </option>
                       ))}
                     </select>

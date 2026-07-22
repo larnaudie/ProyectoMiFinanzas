@@ -37,7 +37,7 @@ function LoginPage() {
       localStorage.setItem("usuario", JSON.stringify(usuario));
 
       navigate("/home");
-    } catch (error) {
+    } catch {
       dispatch(loginError("Usuario o password incorrectos"));
     }
   };

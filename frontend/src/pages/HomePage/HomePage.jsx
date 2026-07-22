@@ -22,6 +22,8 @@ const moverCuenta = (cuentas, idOrigen, idDestino) => {
   return cuentasOrdenadas;
 };
 
+const obtenerRutaCuenta = (cuenta) => `/cuentas/${cuenta._id}/gastos`;
+
 function HomePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -41,16 +43,20 @@ function HomePage() {
   const [facturaRapida, setFacturaRapida] = useState(null);
   const [creandoRapido, setCreandoRapido] = useState(false);
   const [errorRapido, setErrorRapido] = useState("");
+  const cuentasParaGastoRapido = cuentas;
 
   useEffect(() => {
-    api.get("/cuentas")
+    api
+      .get("/cuentas")
       .then((response) => {
         const cuentasRecibidas = response.data.cuentas;
         dispatch(obtenerCuentas(cuentasRecibidas));
 
-        if (!gastoRapido.cuentaId && cuentasRecibidas.length > 0) {
-          setGastoRapido((form) => ({ ...form, cuentaId: cuentasRecibidas[0]._id }));
-        }
+        setGastoRapido((form) =>
+          !form.cuentaId && cuentasRecibidas.length > 0
+            ? { ...form, cuentaId: cuentasRecibidas[0]._id }
+            : form,
+        );
       })
       .catch((error) => {
         console.error("Error al obtener las cuentas:", error);
@@ -58,8 +64,8 @@ function HomePage() {
   }, [dispatch]);
 
   const abrirCuenta = (event, cuenta) => {
-    // Si el usuario usa Ctrl, Cmd, Shift, click del medio o click derecho,
-    // dejamos que el navegador maneje el link para abrir otra pestaña.
+    // Si el usuario usa Ctrl, Cmd, Shift, Alt o click del medio,
+    // dejamos que el navegador maneje el link para abrir otra pestana.
     if (
       event.metaKey ||
       event.ctrlKey ||
@@ -72,7 +78,7 @@ function HomePage() {
 
     event.preventDefault();
     dispatch(seleccionarCuenta(cuenta));
-    navigate(`/cuentas/${cuenta._id}/gastos`);
+    navigate(obtenerRutaCuenta(cuenta));
   };
 
   const empezarArrastreCuenta = (event, cuentaId) => {
@@ -123,7 +129,7 @@ function HomePage() {
     } catch (error) {
       console.error("Error al guardar el orden de cuentas:", error);
       dispatch(guardarCuentas(ordenAnterior));
-      setErrorOrden("No se pudo guardar el nuevo orden. Se volvió al orden anterior.");
+      setErrorOrden("No se pudo guardar el nuevo orden. Se volvio al orden anterior.");
     } finally {
       setGuardandoOrden(false);
     }
@@ -152,17 +158,17 @@ function HomePage() {
     event.preventDefault();
 
     if (!gastoRapido.cuentaId) {
-      setErrorRapido("Elegí una cuenta para guardar el gasto rápido.");
+      setErrorRapido("Elegi una cuenta para guardar el gasto rapido.");
       return;
     }
 
     if (!gastoRapido.detalle.trim()) {
-      setErrorRapido("Escribí un detalle para identificar el gasto.");
+      setErrorRapido("Escribi un detalle para identificar el gasto.");
       return;
     }
 
     if (!gastoRapido.fecha) {
-      setErrorRapido("Elegí una fecha para el gasto.");
+      setErrorRapido("Elegi una fecha para el gasto.");
       return;
     }
 
@@ -202,11 +208,11 @@ function HomePage() {
 
       navigate(`/cuentas/${gastoCreado.cuentaId}/gastos/gasto/${gastoCreado._id}`);
     } catch (error) {
-      console.error("Error al crear gasto rápido:", error);
+      console.error("Error al crear gasto rapido:", error);
       setErrorRapido(
         error.response?.data?.message ||
           error.response?.data?.mensaje ||
-          "No se pudo crear el gasto rápido.",
+          "No se pudo crear el gasto rapido.",
       );
     } finally {
       setCreandoRapido(false);
@@ -234,7 +240,7 @@ function HomePage() {
           aria-label="Ver cuentas anteriores"
           onClick={() => moverCarousel(-1)}
         >
-          ‹
+          &lt;
         </button>
 
         <div className="account-carousel" ref={carouselRef}>
@@ -254,19 +260,23 @@ function HomePage() {
                 onDragStart={(event) => empezarArrastreCuenta(event, cuenta._id)}
                 onDragEnd={terminarArrastreCuenta}
               >
-                ⋮⋮
+                ::
               </button>
 
               <Link
                 className="account-card-link"
-                to={`/cuentas/${cuenta._id}/gastos`}
+                to={obtenerRutaCuenta(cuenta)}
                 onClick={(event) => abrirCuenta(event, cuenta)}
               >
-                <span className="account-card-topline">Cuenta</span>
+                <span className="account-card-topline">
+                  {cuenta.tipoCuenta === "credito" ? "Tarjeta de crédito" : "Cuenta"}
+                </span>
                 <strong>{cuenta.nombreCuenta}</strong>
                 <span className="account-card-meta">Moneda</span>
                 <span className="account-card-currency">{cuenta.moneda || "UYU"}</span>
-                <span className="account-card-action">Abrir cuenta</span>
+                <span className="account-card-action">
+                  {cuenta.tipoCuenta === "credito" ? "Abrir tarjeta" : "Abrir cuenta"}
+                </span>
               </Link>
             </article>
           ))}
@@ -278,16 +288,16 @@ function HomePage() {
           aria-label="Ver mas cuentas"
           onClick={() => moverCarousel(1)}
         >
-          ›
+          &gt;
         </button>
       </div>
 
       <section className="quick-expense-panel">
         <div className="quick-expense-copy">
           <span>Crear Gasto Rapido</span>
-          <h2>¿Estas apurado?</h2>
+          <h2>Estas apurado?</h2>
           <p>
-            ¿Estas apurado y quieres crear un gasto solamente con un detalle,
+            Estas apurado y queres crear un gasto solamente con un detalle,
             fecha y factura? Usa esta funcionalidad.
           </p>
         </div>
@@ -300,7 +310,7 @@ function HomePage() {
               onChange={(event) => cambiarGastoRapido("cuentaId", event.target.value)}
             >
               <option value="">Seleccionar cuenta</option>
-              {cuentas.map((cuenta) => (
+              {cuentasParaGastoRapido.map((cuenta) => (
                 <option key={cuenta._id} value={cuenta._id}>
                   {cuenta.nombreCuenta}
                 </option>
@@ -339,7 +349,7 @@ function HomePage() {
 
           {errorRapido && <p className="error-text quick-expense-error">{errorRapido}</p>}
 
-          <button type="submit" disabled={creandoRapido || cuentas.length === 0}>
+          <button type="submit" disabled={creandoRapido || cuentasParaGastoRapido.length === 0}>
             {creandoRapido ? "Creando..." : "Crear Gasto Rapido"}
           </button>
         </form>

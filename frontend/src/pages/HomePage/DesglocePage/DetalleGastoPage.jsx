@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+﻿import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useRef, useState } from "react";
@@ -52,8 +52,6 @@ const obtenerCamposFaltantes = (gasto) => {
   return campos;
 };
 
-const esGastoCompleto = (gasto) => obtenerCamposFaltantes(gasto).length === 0;
-
 const valorParaBackend = (campo, valor) => {
   if (["montoBancario", "porcentaje"].includes(campo)) {
     return valor === "" ? "" : Number(valor);
@@ -63,7 +61,7 @@ const valorParaBackend = (campo, valor) => {
 };
 
 const DetalleGastoPage = () => {
-  const { cuentaId, gastoId } = useParams();
+  const { cuentaId, tarjetaId, resumenId, gastoId } = useParams();
   const dispatch = useDispatch();
 
   const gastos = useSelector((state) => state.gastos.gastos);
@@ -75,6 +73,10 @@ const DetalleGastoPage = () => {
 
   const gastoActual = gastos.find((gasto) => gasto._id === gastoId);
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
+  const volverUrl = resumenId && tarjetaId
+    ? `/cuentas/${cuentaId}/tarjetas/${tarjetaId}/resumenes/${resumenId}`
+    : `/cuentas/${cuentaId}/gastos`;
+  const volverTexto = resumenId ? "Volver al resumen" : "Volver a gastos";
 
   const [form, setForm] = useState(null);
   const [archivoFactura, setArchivoFactura] = useState(null);
@@ -91,15 +93,15 @@ const DetalleGastoPage = () => {
   useEffect(() => {
     const cargarDatos = async () => {
       try {
-        const [gastosRes, cuentasRes, categoriasRes, subcategoriasRes] =
+        const [gastoRes, cuentasRes, categoriasRes, subcategoriasRes] =
           await Promise.all([
-            api.get("/gastos"),
+            api.get(`/gastos/${gastoId}`),
             api.get("/cuentas"),
             api.get("/categorias"),
             api.get("/subcategorias"),
           ]);
 
-        dispatch(guardarGastos(gastosRes.data.gastos));
+        dispatch(guardarGastos([gastoRes.data.gasto]));
         dispatch(guardarCuentas(cuentasRes.data.cuentas));
         dispatch(guardarCategorias(categoriasRes.data.categorias));
         dispatch(guardarSubcategorias(subcategoriasRes.data.subcategorias));
@@ -110,7 +112,7 @@ const DetalleGastoPage = () => {
     };
 
     cargarDatos();
-  }, [dispatch]);
+  }, [dispatch, gastoId]);
 
   useEffect(() => {
     if (gastoActual) {
@@ -121,7 +123,10 @@ const DetalleGastoPage = () => {
   useEffect(() => {
     return () => {
       clearTimeout(timerRef.current);
-      detenerCamara();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
@@ -145,7 +150,7 @@ const DetalleGastoPage = () => {
         console.error("Error al actualizar gasto:", err);
         setError(
           err.response?.data?.message ||
-            "No se pudo guardar el cambio. Revisá si el gasto creado quedó incompleto.",
+            "No se pudo guardar el cambio. RevisÃ¡ si el gasto creado quedÃ³ incompleto.",
         );
       } finally {
         setGuardando(false);
@@ -192,7 +197,7 @@ const DetalleGastoPage = () => {
       console.error("Error al actualizar estado del gasto:", err);
       setErrorActualizar(
         err.response?.data?.message ||
-          "No se pudo actualizar a creado. Revisá los campos requeridos.",
+          "No se pudo actualizar a creado. RevisÃ¡ los campos requeridos.",
       );
     } finally {
       setGuardando(false);
@@ -253,7 +258,7 @@ const DetalleGastoPage = () => {
 
   const subirFactura = async () => {
     if (!archivoFactura) {
-      setError("Seleccioná una factura antes de subirla.");
+      setError("SeleccionÃ¡ una factura antes de subirla.");
       return;
     }
 
@@ -286,15 +291,14 @@ const DetalleGastoPage = () => {
   const categoriaSeleccionada = obtenerId(form.categoriaId);
   const subcategoriaSeleccionada = obtenerId(form.subcategoriaId);
   const facturaUrl = form.factura?.url;
-  const completo = esGastoCompleto(form);
   const estaCreado = form.estado === "creado";
 
   return (
     <section className="page-section detail-page">
       <header className="page-header detail-header">
         <div>
-          <Link className="secondary-link compact-link" to={`/cuentas/${cuentaId}/gastos`}>
-            Volver a gastos
+          <Link className="secondary-link compact-link" to={volverUrl}>
+            {volverTexto}
           </Link>
           <h1>Detalle del gasto</h1>
           <p>{cuentaActual?.nombreCuenta || form.cuentaId?.nombreCuenta || "Cuenta seleccionada"}</p>
@@ -437,7 +441,7 @@ const DetalleGastoPage = () => {
               </a>
             </div>
           ) : (
-            <p>Este gasto todavía no tiene una factura asociada.</p>
+            <p>Este gasto todavÃ­a no tiene una factura asociada.</p>
           )}
 
           <div className="factura-upload-row">
@@ -481,8 +485,5 @@ const DetalleGastoPage = () => {
 };
 
 export default DetalleGastoPage;
-
-
-
 
 

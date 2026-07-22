@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color: #18212f;
   background: #f6f7f9;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -528,6 +528,22 @@ button:disabled {
 .delete-action:hover {
   border-color: #f0b8b1;
   background: #fff1ef;
+}
+
+.selection-action.create-action {
+  border-color: #176b5a;
+  background: #176b5a;
+  color: #fff;
+}
+
+.selection-action.create-action:hover:not(:disabled) {
+  border-color: #125749;
+  background: #125749;
+}
+
+.selection-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .detail-name-cell {
   min-width: 220px;
@@ -1497,10 +1513,12 @@ td {
   border-radius: 5px;
 }
 
+.icon-button svg,
 .edit-detail-button svg,
 .manage-icon-button svg {
   width: 15px;
   height: 15px;
+  fill: currentColor;
 }
 
 .detail-popover {
@@ -1672,6 +1690,12 @@ td {
   white-space: nowrap;
 }
 
+.table-shell th,
+.import-expenses-table th {
+  color: #233f3a;
+  font-weight: 800;
+}
+
 .import-expenses-table .table-input-wide {
   min-width: 150px;
   max-width: 190px;
@@ -1750,3 +1774,480 @@ td {
   flex-wrap: wrap;
 }
 
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #60716e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.credit-card-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.credit-card-panel h2 {
+  margin: 0 0 4px;
+}
+
+.credit-card-panel p {
+  margin: 0;
+  color: #425956;
+}
+
+.link-payment-modal {
+  width: min(860px, 100%);
+}
+
+.link-payment-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.link-payment-filters label {
+  display: grid;
+  gap: 4px;
+  font-weight: 700;
+}
+
+.link-payment-filters input,
+.link-payment-filters select {
+  min-height: 30px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+}
+
+.link-payment-table {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.link-payment-table table {
+  min-width: 720px;
+}
+
+.link-payment-table tr {
+  cursor: pointer;
+}
+
+.link-payment-table .selected-row {
+  background: #edf6f3;
+}
+
+
+.reference-link {
+  color: #0b6b5a;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.reference-link:hover {
+  text-decoration: underline;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.credit-summaries-page {
+  display: grid;
+  gap: 18px;
+}
+
+.credit-summaries-header {
+  align-items: center;
+}
+
+.credit-summary-list {
+  display: grid;
+  gap: 16px;
+}
+
+.credit-summary-card,
+.credit-summary-empty {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #d6e0dd;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(27, 68, 58, 0.05);
+}
+
+.credit-summary-empty {
+  justify-items: start;
+  padding: 28px;
+}
+
+.credit-summary-empty h2,
+.credit-summary-empty p,
+.credit-summary-card h2,
+.credit-summary-card p {
+  margin: 0;
+}
+
+.credit-summary-card-header,
+.credit-summary-card-footer,
+.credit-summary-currency-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.credit-summary-card-header p:not(.eyebrow),
+.credit-summary-breakdown,
+.credit-summary-card-footer > span {
+  color: #526864;
+  font-size: 12px;
+}
+
+.credit-summary-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #edf5f2;
+  color: #175f51;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.credit-summary-currencies {
+  display: grid;
+  gap: 12px;
+}
+
+.credit-summary-currency {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e0e7e5;
+  border-radius: 8px;
+  background: #f9fbfa;
+}
+
+.credit-summary-currency-title > strong {
+  color: #174b41;
+  font-size: 13px;
+}
+
+.credit-summary-currency-title > span {
+  color: #60716e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.credit-summary-amounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.credit-summary-amounts > div {
+  display: grid;
+  gap: 4px;
+}
+
+.credit-summary-amounts span {
+  color: #60716e;
+  font-size: 11px;
+}
+
+.credit-summary-amounts strong {
+  color: #183d36;
+  font-size: 18px;
+}
+
+.credit-summary-amounts .credit-summary-debt {
+  color: #9b3f35;
+}
+
+.credit-summary-amounts .credit-summary-available {
+  color: #16705e;
+}
+
+.credit-summary-amounts .credit-summary-credit-balance {
+  color: #16705e;
+}
+
+.credit-summary-progress {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe9e6;
+}
+
+.credit-summary-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #197662;
+}
+
+.credit-summary-card-footer {
+  padding-top: 2px;
+}
+
+.credit-import-filters {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.credit-import-tools-header,
+.credit-import-visible-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.credit-import-tools-header h3,
+.credit-import-tools-header p {
+  margin: 0;
+}
+
+.credit-import-tools-header p {
+  color: #60716e;
+  font-size: 12px;
+}
+
+.credit-import-tools-header .secondary-button {
+  min-height: 30px;
+  padding: 5px 10px;
+}
+
+.credit-import-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.credit-import-filter-grid label,
+.credit-import-bulk label {
+  display: grid;
+  gap: 4px;
+  color: #24453e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.credit-import-filter-grid input,
+.credit-import-filter-grid select,
+.credit-import-bulk input,
+.credit-import-bulk select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.credit-import-visible-actions {
+  justify-content: flex-start;
+}
+
+.credit-import-bulk {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(125px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #cfe0db;
+  border-radius: 8px;
+  background: #eef5f2;
+}
+
+.credit-import-bulk > strong {
+  align-self: center;
+  color: #174b41;
+  white-space: nowrap;
+}
+
+.credit-import-bulk .table-input,
+.credit-import-bulk .table-select {
+  min-width: 0;
+  min-height: 32px;
+}
+
+.credit-import-bulk .bulk-message {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+
+.credit-import-empty-row {
+  padding: 24px !important;
+  color: #60716e;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .credit-summary-card-header,
+  .credit-summary-card-footer,
+  .credit-summaries-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .credit-summary-amounts {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-import-filter-grid,
+  .credit-import-bulk {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-import-bulk .bulk-message {
+    grid-column: auto;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .credit-summary-amounts {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .credit-import-filter-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+
+  .credit-import-bulk {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+.linked-expense-cell {
+  min-width: 170px;
+}
+
+.linked-expense-content {
+  display: grid;
+  gap: 7px;
+}
+
+.linked-expense-content .reference-link {
+  display: block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linked-expense-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.linked-expense-actions .selection-action {
+  min-height: 26px;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.row-create-expense-button {
+  min-width: 74px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #176b5a;
+  border-radius: 6px;
+  background: #176b5a;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+}
+
+.row-create-expense-button:disabled {
+  border-color: #d5ddda;
+  background: #e8eeec;
+  color: #71817e;
+  cursor: not-allowed;
+}
+
+.credit-link-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.credit-link-modal .modal-header {
+  align-items: flex-start;
+}
+
+.credit-link-modal .modal-header p {
+  margin: 4px 0 0;
+  color: #526864;
+}
+
+.credit-link-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.credit-link-form label {
+  display: grid;
+  gap: 5px;
+  color: #24453e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.credit-link-form input,
+.credit-link-form select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cfd7d5;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #fff;
+  font: inherit;
+}
+
+.credit-link-form select:disabled {
+  background: #eef2f1;
+  color: #71817e;
+}
+
+.credit-link-expense-select {
+  grid-column: 1 / -1;
+}
+
+.credit-link-help {
+  margin: 0;
+  color: #60716e;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .credit-link-form {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-link-expense-select {
+    grid-column: auto;
+  }
+}

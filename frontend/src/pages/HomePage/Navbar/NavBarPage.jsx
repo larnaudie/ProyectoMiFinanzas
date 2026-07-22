@@ -1,8 +1,4 @@
-﻿import { Link, useParams } from "react-router-dom";
-import { api } from "../../../services/api";
-import { useDispatch, useSelector } from "react-redux";
-import { useEffect } from "react";
-import { guardarGastos } from "../../../features/slices/gastosSlice";
+import { Link } from "react-router-dom";
 
 const Navbar = ({ alternarMenu }) => {
   const usuarioGuardado = localStorage.getItem("usuario");
@@ -11,15 +7,10 @@ const Navbar = ({ alternarMenu }) => {
 
   return (
     <header className="navbar">
-      <button onClick={alternarMenu} className="menu-hamburguesa">
-        ☰
-      </button>
-
+      <button type="button" onClick={alternarMenu} className="menu-hamburguesa" aria-label="Abrir o cerrar menú">☰</button>
       <div className="usuario-info">
         <span>Bienvenido {nombreUsuario}</span>
-        <Link to="/perfil" className="avatar">
-          👤
-        </Link>
+        <Link to="/perfil" className="avatar" aria-label="Perfil">👤</Link>
       </div>
     </header>
   );

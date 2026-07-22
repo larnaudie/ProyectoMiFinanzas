@@ -164,7 +164,7 @@ const subcategoriaInicial = {
 };
 
 function DesglocePage() {
-  const { cuentaId } = useParams();
+  const { cuentaId, resumenId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
@@ -209,6 +209,19 @@ function DesglocePage() {
   const [formSubcategoria, setFormSubcategoria] = useState(subcategoriaInicial);
   const [errorModal, setErrorModal] = useState("");
   const [resultadoBulk, setResultadoBulk] = useState("");
+  const [resumenActual, setResumenActual] = useState(null);
+  const [gastoProcesandoId, setGastoProcesandoId] = useState("");
+  const [creandoSeleccionados, setCreandoSeleccionados] = useState(false);
+  const [gastoVinculando, setGastoVinculando] = useState(null);
+  const [candidatosVinculo, setCandidatosVinculo] = useState([]);
+  const [referenciaId, setReferenciaId] = useState("");
+  const [cuentaVinculoId, setCuentaVinculoId] = useState("");
+  const [mesVinculo, setMesVinculo] = useState("");
+  const [detalleVinculo, setDetalleVinculo] = useState("");
+  const [cargandoCandidatos, setCargandoCandidatos] = useState(false);
+  const [procesandoVinculo, setProcesandoVinculo] = useState(false);
+  const [mensajeAccion, setMensajeAccion] = useState("");
+  const [errorAccion, setErrorAccion] = useState("");
 
   // edicionesRapidas guarda lo que el usuario esta escribiendo antes de que llegue la respuesta del backend.
   const [edicionesRapidas, setEdicionesRapidas] = useState({});
@@ -219,8 +232,12 @@ function DesglocePage() {
 
   useEffect(() => {
     // Cargamos todo lo que la tabla editable necesita para funcionar.
+    const gastosUrl = resumenId
+      ? `/gastos?cuentaId=${cuentaId}&resumenTarjetaId=${resumenId}`
+      : "/gastos";
+
     api
-      .get("/gastos")
+      .get(gastosUrl)
       .then((response) => {
         dispatch(guardarGastos(response.data.gastos));
       })
@@ -254,11 +271,26 @@ function DesglocePage() {
       .catch((error) => {
         console.error("Error al obtener las subcategorias:", error);
       });
-  }, [dispatch]);
+  }, [dispatch, cuentaId, resumenId]);
+
+  useEffect(() => {
+    if (!resumenId) {
+      setResumenActual(null);
+      return;
+    }
+
+    api.get(`/importaciones/cuentas/${cuentaId}/resumenes-tarjeta/${resumenId}`)
+      .then((response) => setResumenActual(response.data.resumen))
+      .catch((error) => {
+        console.error("Error al obtener el resumen:", error);
+        setResumenActual(null);
+      });
+  }, [cuentaId, resumenId]);
 
   // Paso 1: nos quedamos solo con gastos de la cuenta actual.
   const gastosDeLaCuenta = gastos.filter((gasto) => {
-    return obtenerId(gasto.cuentaId) === cuentaId;
+    return obtenerId(gasto.cuentaId) === cuentaId
+      && (!resumenId || obtenerId(gasto.resumenTarjetaId) === resumenId);
   });
 
   // Los meses son fijos; los anios salen de los gastos cargados y siempre suman el anio actual.
@@ -639,8 +671,12 @@ function DesglocePage() {
   };
 
 
-  const calcularTotal = (gastosVisibles, campo) => {
-    return gastosVisibles.reduce((total, gasto) => total + Number(gasto[campo] || 0), 0);
+  const calcularTotal = (gastosVisibles, campo, moneda = null) => {
+    return gastosVisibles.reduce((total, gasto) => {
+      const monedaGasto = gasto.moneda === "USD" ? "USD" : "UYU";
+      if (moneda && monedaGasto !== moneda) return total;
+      return total + Number(gasto[campo] || 0);
+    }, 0);
   };
 
   const formatearMonto = (monto) => {
@@ -650,11 +686,191 @@ function DesglocePage() {
     });
   };
 
+  const crearGastoIndividual = async (gasto) => {
+    if (gasto.estado === "creado") return;
+
+    setGastoProcesandoId(gasto._id);
+    setMensajeAccion("");
+    setErrorAccion("");
+    try {
+      const response = await api.patch(`/gastos/${gasto._id}`, {
+        cambiarEstado: true,
+      });
+      dispatch(actualizarGasto(response.data.gasto));
+      setSeleccionados((actuales) => actuales.filter((id) => id !== gasto._id));
+      setMensajeAccion(`Gasto "${gasto.detalle}" creado correctamente.`);
+    } catch (error) {
+      setErrorAccion(obtenerMensajeErrorGasto(error));
+    } finally {
+      setGastoProcesandoId("");
+    }
+  };
+
+  const crearGastosSeleccionados = async (gastosSeleccionadosVisibles) => {
+    const pendientes = gastosSeleccionadosVisibles.filter(
+      (gasto) => gasto.estado !== "creado",
+    );
+    if (pendientes.length === 0 || creandoSeleccionados) return;
+
+    setCreandoSeleccionados(true);
+    setMensajeAccion("");
+    setErrorAccion("");
+
+    try {
+      const resultados = await Promise.allSettled(
+        pendientes.map((gasto) =>
+          api.patch(`/gastos/${gasto._id}`, { cambiarEstado: true }),
+        ),
+      );
+      const exitosos = resultados.filter(
+        (resultado) => resultado.status === "fulfilled",
+      );
+      const fallidos = resultados.filter(
+        (resultado) => resultado.status === "rejected",
+      );
+
+      exitosos.forEach((resultado) => {
+        dispatch(actualizarGasto(resultado.value.data.gasto));
+      });
+
+      const idsCreados = exitosos.map(
+        (resultado) => resultado.value.data.gasto._id,
+      );
+      setSeleccionados((actuales) =>
+        actuales.filter((id) => !idsCreados.includes(id)),
+      );
+
+      if (exitosos.length > 0) {
+        setMensajeAccion(
+          `${exitosos.length} gasto${exitosos.length === 1 ? "" : "s"} creado${exitosos.length === 1 ? "" : "s"} correctamente.`,
+        );
+      }
+
+      if (fallidos.length > 0) {
+        const primerError = obtenerMensajeErrorGasto(fallidos[0].reason);
+        setErrorAccion(
+          `${fallidos.length} gasto${fallidos.length === 1 ? "" : "s"} ${fallidos.length === 1 ? "no se pudo" : "no se pudieron"} crear. ${primerError}`,
+        );
+      }
+    } finally {
+      setCreandoSeleccionados(false);
+    }
+  };
+
+  const abrirVinculo = async (gasto) => {
+    if (gasto.tipoMovimiento !== "pago") {
+      setErrorAccion("Sólo los movimientos de tipo Pago pueden vincularse.");
+      return;
+    }
+
+    const referenciaActual = gasto.origen?.referenciaId;
+    setGastoVinculando(gasto);
+    setReferenciaId(obtenerId(referenciaActual));
+    setCuentaVinculoId(obtenerId(referenciaActual?.cuentaId));
+    setMesVinculo("");
+    setDetalleVinculo("");
+    setCandidatosVinculo([]);
+    setCargandoCandidatos(true);
+    setMensajeAccion("");
+    setErrorAccion("");
+
+    try {
+      const response = await api.get("/gastos?estado=creado");
+      setCandidatosVinculo(
+        (response.data.gastos || []).filter(
+          (candidato) =>
+            candidato._id !== gasto._id
+            && obtenerId(candidato.cuentaId) !== cuentaId,
+        ),
+      );
+    } catch (error) {
+      setErrorAccion(
+        error.response?.data?.message
+        || "No se pudieron cargar los gastos disponibles para vincular.",
+      );
+    } finally {
+      setCargandoCandidatos(false);
+    }
+  };
+
+  const cerrarVinculo = () => {
+    setGastoVinculando(null);
+    setReferenciaId("");
+    setCuentaVinculoId("");
+    setMesVinculo("");
+    setDetalleVinculo("");
+    setCandidatosVinculo([]);
+  };
+
+  const guardarVinculo = async () => {
+    if (!gastoVinculando || !referenciaId) return;
+
+    setProcesandoVinculo(true);
+    setMensajeAccion("");
+    setErrorAccion("");
+    try {
+      const response = await api.patch(`/gastos/${gastoVinculando._id}`, {
+        origen: { tipo: "tarjeta", referenciaId },
+        tipoMovimiento: "pago",
+      });
+      dispatch(actualizarGasto(response.data.gasto));
+      setMensajeAccion(`Gasto "${gastoVinculando.detalle}" vinculado correctamente.`);
+      cerrarVinculo();
+    } catch (error) {
+      setErrorAccion(
+        error.response?.data?.message
+        || "No se pudo vincular el gasto seleccionado.",
+      );
+    } finally {
+      setProcesandoVinculo(false);
+    }
+  };
+
+  const quitarVinculo = async (gasto) => {
+    setProcesandoVinculo(true);
+    setMensajeAccion("");
+    setErrorAccion("");
+    try {
+      const response = await api.patch(`/gastos/${gasto._id}`, {
+        origen: { tipo: "tarjeta", referenciaId: null },
+      });
+      dispatch(actualizarGasto(response.data.gasto));
+      setMensajeAccion(`Se quitó el vínculo de "${gasto.detalle}".`);
+    } catch (error) {
+      setErrorAccion(
+        error.response?.data?.message
+        || "No se pudo quitar el vínculo del gasto.",
+      );
+    } finally {
+      setProcesandoVinculo(false);
+    }
+  };
+
+  const cuentasVinculables = cuentas.filter((cuenta) => cuenta._id !== cuentaId);
+  const candidatosVinculoFiltrados = candidatosVinculo.filter((candidato) => {
+    if (!cuentaVinculoId || obtenerId(candidato.cuentaId) !== cuentaVinculoId) {
+      return false;
+    }
+
+    const fecha = fechaParaInput(candidato.fecha);
+    if (mesVinculo && fecha.slice(0, 7) !== mesVinculo) return false;
+
+    const termino = detalleVinculo.trim().toLowerCase();
+    return !termino
+      || String(candidato.detalle || "").toLowerCase().includes(termino);
+  });
+
   const renderTablaGastos = (titulo, gastosVisibles, mostrarTotales = false) => {
-    const totalMontoBancario = calcularTotal(gastosVisibles, "montoBancario");
-    const totalMontoReal = calcularTotal(gastosVisibles, "montoReal");
+    const monedasTotales = ["UYU", "USD"].filter((moneda) =>
+      gastosVisibles.some(
+        (gasto) => (gasto.moneda === "USD" ? "USD" : "UYU") === moneda,
+      ),
+    );
     const gastosSeleccionadosVisibles = gastosVisibles.filter((gasto) =>
       seleccionados.includes(gasto._id),
+    );
+    const pendientesSeleccionadosVisibles = gastosSeleccionadosVisibles.filter(
+      (gasto) => gasto.estado !== "creado",
     );
 
     return (
@@ -672,14 +888,28 @@ function DesglocePage() {
             <span>Cantidad</span>
             <strong>{gastosVisibles.length}</strong>
           </article>
-          <article>
-            <span>Total monto bancario</span>
-            <strong>$ {formatearMonto(totalMontoBancario)}</strong>
-          </article>
-          <article>
-            <span>Total monto real</span>
-            <strong>$ {formatearMonto(totalMontoReal)}</strong>
-          </article>
+          {monedasTotales.map((moneda) => (
+            <article key={`bancario-${moneda}`}>
+              <span>Total monto bancario {moneda}</span>
+              <strong>
+                {moneda === "USD" ? "US$" : "$"}{" "}
+                {formatearMonto(
+                  calcularTotal(gastosVisibles, "montoBancario", moneda),
+                )}
+              </strong>
+            </article>
+          ))}
+          {monedasTotales.map((moneda) => (
+            <article key={`real-${moneda}`}>
+              <span>Total monto real {moneda}</span>
+              <strong>
+                {moneda === "USD" ? "US$" : "$"}{" "}
+                {formatearMonto(
+                  calcularTotal(gastosVisibles, "montoReal", moneda),
+                )}
+              </strong>
+            </article>
+          ))}
         </div>
       )}
 
@@ -692,11 +922,24 @@ function DesglocePage() {
           <button
             className="selection-action delete-action"
             type="button"
+            disabled={creandoSeleccionados}
             onClick={() => eliminarGastosSeleccionados(gastosSeleccionadosVisibles)}
           >
             Eliminar
           </button>
-          {gastosSeleccionadosVisibles.length === 1 && (
+          {pendientesSeleccionadosVisibles.length > 0 && (
+            <button
+              className="selection-action create-action"
+              type="button"
+              disabled={creandoSeleccionados || Boolean(gastoProcesandoId)}
+              onClick={() =>
+                crearGastosSeleccionados(pendientesSeleccionadosVisibles)
+              }
+            >
+              {creandoSeleccionados ? "Creando..." : "Crear seleccionados"}
+            </button>
+          )}
+          {!resumenId && gastosSeleccionadosVisibles.length === 1 && (
             <button
               className="selection-action"
               type="button"
@@ -729,12 +972,15 @@ function DesglocePage() {
               </th>
               <th>Fecha</th>
               <th>Detalle</th>
+              {resumenId && <th>Tipo</th>}
               <th>Bancario</th>
               <th>%</th>
               <th>Real</th>
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
+              {resumenId && <th>Vincular gasto</th>}
+              {resumenId && <th>Acciones</th>}
             </tr>
           </thead>
           <tbody>
@@ -744,6 +990,12 @@ function DesglocePage() {
                 gasto,
                 "subcategoriaId",
               );
+              const tipoMovimientoActual = obtenerValorVisible(
+                gasto,
+                "tipoMovimiento",
+              );
+              const referencia = gasto.origen?.referenciaId;
+              const referenciaCuentaId = obtenerId(referencia?.cuentaId);
 
               return (
                 <tr key={gasto._id}>
@@ -820,6 +1072,28 @@ function DesglocePage() {
                       )}
                     </div>
                   </td>
+                  {resumenId && (
+                    <td>
+                      <select
+                        className="table-select"
+                        value={tipoMovimientoActual || "compra"}
+                        disabled={Boolean(referencia)}
+                        title={referencia ? "Quitá el vínculo antes de cambiar el tipo" : ""}
+                        onChange={(event) =>
+                          guardarCambioRapido(
+                            gasto,
+                            "tipoMovimiento",
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="compra">Compra</option>
+                        <option value="cuota">Cuota</option>
+                        <option value="pago">Pago</option>
+                        <option value="reintegro">Reintegro</option>
+                      </select>
+                    </td>
+                  )}
                   <td>
                     <input
                       className="table-input table-input-number"
@@ -912,6 +1186,87 @@ function DesglocePage() {
                     />
                   </td>
 
+                  {resumenId && (
+                    <td className="linked-expense-cell">
+                      {referencia ? (
+                        <div className="linked-expense-content">
+                          {referenciaCuentaId ? (
+                            <Link
+                              className="reference-link"
+                              to={`/cuentas/${referenciaCuentaId}/gastos/gasto/${obtenerId(referencia)}`}
+                            >
+                              {referencia.detalle || "Ver gasto vinculado"}
+                            </Link>
+                          ) : (
+                            <span>{referencia.detalle || "Gasto vinculado"}</span>
+                          )}
+                          <div className="linked-expense-actions">
+                            <button
+                              type="button"
+                              className="selection-action"
+                              disabled={procesandoVinculo}
+                              onClick={() => abrirVinculo({
+                                ...gasto,
+                                tipoMovimiento: tipoMovimientoActual,
+                              })}
+                            >
+                              Cambiar
+                            </button>
+                            <button
+                              type="button"
+                              className="selection-action delete-action"
+                              disabled={procesandoVinculo}
+                              onClick={() => quitarVinculo(gasto)}
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="selection-action"
+                          disabled={
+                            procesandoVinculo
+                            || tipoMovimientoActual !== "pago"
+                          }
+                          title={
+                            tipoMovimientoActual === "pago"
+                              ? "Vincular con un gasto de otra cuenta"
+                              : "Disponible sólo para movimientos de tipo Pago"
+                          }
+                          onClick={() => abrirVinculo({
+                            ...gasto,
+                            tipoMovimiento: tipoMovimientoActual,
+                          })}
+                        >
+                          {tipoMovimientoActual === "pago" ? "Vincular" : "Sólo pagos"}
+                        </button>
+                      )}
+                    </td>
+                  )}
+
+                  {resumenId && (
+                    <td>
+                      <button
+                        type="button"
+                        className="row-create-expense-button"
+                        disabled={
+                          gasto.estado === "creado"
+                          || gastoProcesandoId === gasto._id
+                          || creandoSeleccionados
+                        }
+                        onClick={() => crearGastoIndividual(gasto)}
+                      >
+                        {gasto.estado === "creado"
+                          ? "Creado"
+                          : gastoProcesandoId === gasto._id
+                            ? "Creando..."
+                            : "Crear"}
+                      </button>
+                    </td>
+                  )}
+
                 </tr>
               );
             })}
@@ -988,23 +1343,46 @@ function DesglocePage() {
   return (
     <section className="page-section">
       <div>
-        <h1>{cuentaActual?.nombreCuenta || ""}</h1>
+        <h1>
+          {resumenId
+            ? `Resumen ${resumenActual?.periodo || "de tarjeta"}`
+            : cuentaActual?.nombreCuenta || ""}
+        </h1>
+        {resumenId && (
+          <p>
+            {cuentaActual?.nombreCuenta || "Cuenta de crédito"}
+            {resumenActual?.cierre
+              ? ` · cierre ${fechaParaInput(resumenActual.cierre)}`
+              : ""}
+          </p>
+        )}
       </div>
 
       <div className="action-row">
-        <button type="button" onClick={() => abrirModal("gasto")}>
-          Crear gasto
-        </button>
+        {resumenId ? (
+          <Link className="secondary-link" to={`/cuentas/${cuentaId}/gastos`}>
+            Volver a resúmenes
+          </Link>
+        ) : (
+          <button type="button" onClick={() => abrirModal("gasto")}>
+            Crear gasto
+          </button>
+        )}
         <button type="button" onClick={() => abrirModal("subcategoria")}>
           Crear subcategoria
         </button>
         <button type="button" onClick={() => abrirModal("categoria")}>
           Crear categoria
         </button>
-        <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
-          Importar Excel
-        </Link>
+        {!resumenId && (
+          <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
+            Importar Excel
+          </Link>
+        )}
       </div>
+
+      {mensajeAccion && <p className="detail-feedback">{mensajeAccion}</p>}
+      {errorAccion && <p className="inline-error">{errorAccion}</p>}
 
       {modalActivo === "gasto" && (
         <div className="modal-backdrop">
@@ -1210,6 +1588,121 @@ function DesglocePage() {
                 Crear
               </button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {gastoVinculando && (
+        <div className="modal-backdrop">
+          <section className="modal-card link-payment-modal credit-link-modal">
+            <header className="modal-header">
+              <div>
+                <h2>Vincular gasto</h2>
+                <p>
+                  Elegí un gasto creado de otra cuenta para relacionarlo con
+                  {` "${gastoVinculando.detalle}".`}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={cerrarVinculo}
+              >
+                Cerrar
+              </button>
+            </header>
+
+            <div className="credit-link-form">
+              <label>
+                Cuenta
+                <select
+                  value={cuentaVinculoId}
+                  onChange={(event) => {
+                    setCuentaVinculoId(event.target.value);
+                    setReferenciaId("");
+                  }}
+                >
+                  <option value="">Seleccionar cuenta</option>
+                  {cuentasVinculables.map((cuenta) => (
+                    <option key={cuenta._id} value={cuenta._id}>
+                      {cuenta.nombreCuenta}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Mes (opcional)
+                <input
+                  type="month"
+                  value={mesVinculo}
+                  onChange={(event) => {
+                    setMesVinculo(event.target.value);
+                    setReferenciaId("");
+                  }}
+                />
+              </label>
+
+              <label>
+                Detalle (opcional)
+                <input
+                  type="search"
+                  value={detalleVinculo}
+                  onChange={(event) => {
+                    setDetalleVinculo(event.target.value);
+                    setReferenciaId("");
+                  }}
+                  placeholder="Ej: Pago tarjeta"
+                />
+              </label>
+
+              <label className="credit-link-expense-select">
+                Gasto
+                <select
+                  value={referenciaId}
+                  disabled={!cuentaVinculoId || cargandoCandidatos}
+                  onChange={(event) => setReferenciaId(event.target.value)}
+                >
+                  <option value="">
+                    {!cuentaVinculoId
+                      ? "Elegí una cuenta primero"
+                      : candidatosVinculoFiltrados.length > 0
+                        ? "Seleccionar gasto"
+                        : "No hay gastos para estos filtros"}
+                  </option>
+                  {candidatosVinculoFiltrados.map((candidato) => (
+                    <option key={candidato._id} value={candidato._id}>
+                      {`${fechaParaInput(candidato.fecha)} · ${candidato.detalle} · $ ${formatearMonto(Number(candidato.montoBancario || 0))} ${candidato.moneda || "UYU"}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <p className="credit-link-help">
+              Mes y detalle son opcionales. El vínculo sólo está disponible para
+              movimientos de tipo Pago.
+            </p>
+
+            {cargandoCandidatos && <p>Cargando gastos disponibles...</p>}
+            {errorAccion && <p className="inline-error">{errorAccion}</p>}
+
+            <footer className="modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={cerrarVinculo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!referenciaId || procesandoVinculo || cargandoCandidatos}
+                onClick={guardarVinculo}
+              >
+                {procesandoVinculo ? "Vinculando..." : "Confirmar vínculo"}
+              </button>
+            </footer>
           </section>
         </div>
       )}

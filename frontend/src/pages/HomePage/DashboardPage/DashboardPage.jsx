@@ -2,7 +2,7 @@
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect } from "react";
-import { guardarGastos } from "../../../features/slices/gastosSlice";
+import { guardarCuentas } from "../../../features/slices/cuentasSlice.js";
 
 function DashboardPage() {
   const { cuentaId } = useParams();
@@ -23,7 +23,7 @@ function DashboardPage() {
         dispatch(guardarCuentas(response.data.cuentas));
       });
     }
-  }, []);
+  }, [cuentas.length, dispatch]);
 
   return (
     <section className="page-section">
