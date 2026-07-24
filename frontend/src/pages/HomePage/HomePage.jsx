@@ -274,10 +274,22 @@ function HomePage() {
                 <strong>{cuenta.nombreCuenta}</strong>
                 <span className="account-card-meta">Moneda</span>
                 <span className="account-card-currency">{cuenta.moneda || "UYU"}</span>
-                <span className="account-card-action">
-                  {cuenta.tipoCuenta === "credito" ? "Abrir tarjeta" : "Abrir cuenta"}
-                </span>
               </Link>
+              <div className="account-card-actions">
+                <Link
+                  className="account-card-action"
+                  to={obtenerRutaCuenta(cuenta)}
+                  onClick={(event) => abrirCuenta(event, cuenta)}
+                >
+                  {cuenta.tipoCuenta === "credito" ? "Abrir tarjeta" : "Abrir cuenta"}
+                </Link>
+                <Link
+                  className="account-card-dashboard-link"
+                  to={`/cuentas/${cuenta._id}/dashboard`}
+                >
+                  Ver dashboard
+                </Link>
+              </div>
             </article>
           ))}
         </div>

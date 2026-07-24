@@ -8,8 +8,7 @@ const bancoSchema = new mongoose.Schema({
     },
     nombreBanco: {
         type: String,
-        required: true,
-        unique: true
+        required: true
     },
     cuentas: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -17,5 +16,7 @@ const bancoSchema = new mongoose.Schema({
     }],
 
 });
+
+bancoSchema.index({ usuarioId: 1, nombreBanco: 1 }, { unique: true });
 
 export default mongoose.model("Banco", bancoSchema, "bancos");

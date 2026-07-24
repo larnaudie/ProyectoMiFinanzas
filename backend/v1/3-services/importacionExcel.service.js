@@ -1,15 +1,22 @@
-import XLSX from "xlsx";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
+import Cuenta from "../0.1-models/cuenta.model.js";
+import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 import { crearGastoService } from "./gasto.service.js";
+import {
+  parsearExcelBancario,
+  parsearExcelPersonal,
+  parsearExcelTarjeta,
+} from "../utils/excelParsers.js";
+import { calcularTotalesResumen } from "../utils/resumenTarjetaTotales.js";
 
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
   }
 
-  const movimientos = obtenerMovimientos(file.buffer);
+  const { movimientos } = parsearExcelBancario(file.buffer);
 
   const movimientosProcesados = [];
 
@@ -81,15 +88,230 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
 };
 
 
+
+
+const obtenerCuentaCredito = async (usuarioId, cuentaId) => {
+  const cuenta = await Cuenta.findOne({ _id: cuentaId, usuarioId });
+  if (!cuenta) {
+    const error = new Error("Cuenta no encontrada");
+    error.status = 404;
+    throw error;
+  }
+  if (cuenta.tipoCuenta !== "credito") {
+    const error = new Error("Este formato sólo corresponde a cuentas de crédito");
+    error.status = 409;
+    throw error;
+  }
+  return cuenta;
+};
+
+export const importarExcelTarjetaService = async ({ usuarioId, cuentaId, file }) => {
+  if (!file) {
+    throw new Error("No se recibio ningun archivo Excel");
+  }
+
+  await obtenerCuentaCredito(usuarioId, cuentaId);
+
+  const { resumen, movimientos } = parsearExcelTarjeta(file.buffer);
+
+  return {
+    resumen,
+    archivoNombre: file.originalname,
+    totalLeidos: movimientos.length,
+    totalProcesados: movimientos.length,
+    movimientos,
+  };
+};
+
+export const confirmarImportacionTarjetaCuentaService = async ({
+  usuarioId,
+  cuentaId,
+  resumen,
+  movimientos,
+  archivoNombre,
+}) => {
+  await obtenerCuentaCredito(usuarioId, cuentaId);
+
+  const cierre = new Date(resumen.cierre).toISOString().slice(0, 10);
+  const importacionKey = [
+    "tarjeta",
+    cuentaId,
+    resumen.cuentaTarjetaUltimosDigitos || "",
+    resumen.periodo || "",
+    cierre,
+  ].join("|");
+
+  const resumenGuardado = await ResumenTarjeta.findOneAndUpdate(
+    { usuarioId, cuentaId, tarjetaId: null, importacionKey },
+    {
+      $set: {
+        periodo: resumen.periodo,
+        cierre: resumen.cierre,
+        vencimiento: resumen.vencimiento || null,
+        cuentaTarjetaUltimosDigitos: resumen.cuentaTarjetaUltimosDigitos || "",
+        limiteCredito: resumen.limiteCredito,
+        pagoContado: resumen.pagoContado,
+        pagoMinimo: resumen.pagoMinimo,
+        saldoAnterior: resumen.saldoAnterior,
+        saldoFinal: resumen.saldoFinal,
+        archivoNombre,
+      },
+      $setOnInsert: {
+        usuarioId,
+        cuentaId,
+        tarjetaId: null,
+        importacionKey,
+        cantidadMovimientos: 0,
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  );
+
+  const operaciones = movimientos.map((movimiento) => {
+    const hashImportacion = `${importacionKey}|${movimiento.sourceHash}`;
+    const montoReal = movimiento.incluirMontoReal === true
+      ? Number(movimiento.montoBancario) * (Number(movimiento.porcentaje) / 100)
+      : 0;
+
+    return {
+      updateOne: {
+        filter: { usuarioId, cuentaId, hashImportacion },
+        update: {
+          $set: {
+            resumenTarjetaId: resumenGuardado._id,
+            montoBancario: movimiento.montoBancario,
+            montoOriginalTarjeta: movimiento.montoEstadoCuenta,
+            tipoMovimiento: movimiento.tipo,
+          },
+          $setOnInsert: {
+            usuarioId,
+            cuentaId,
+            detalle: movimiento.detalle,
+            fecha: movimiento.fecha,
+            montoReal,
+            porcentaje: movimiento.porcentaje,
+            incluirMontoReal: movimiento.incluirMontoReal,
+            moneda: movimiento.moneda,
+            estado: "pendiente",
+            origen: { tipo: "tarjeta", referenciaId: null },
+            hashImportacion,
+            resumenTarjeta: {
+              tarjeta: resumen.cuentaTarjetaUltimosDigitos,
+              cierre: resumen.cierre,
+              vencimiento: resumen.vencimiento,
+              periodo: resumen.periodo,
+              importacionKey,
+            },
+          },
+        },
+        upsert: true,
+      },
+    };
+  });
+
+  const resultado = operaciones.length > 0
+    ? await Gasto.bulkWrite(operaciones, { ordered: false })
+    : { upsertedCount: 0 };
+  const hashes = movimientos.map((movimiento) => `${importacionKey}|${movimiento.sourceHash}`);
+  const gastos = await Gasto.find({ usuarioId, cuentaId, hashImportacion: { $in: hashes } })
+    .sort({ fecha: 1, _id: 1 });
+
+  resumenGuardado.cantidadMovimientos = await Gasto.countDocuments({
+    usuarioId,
+    cuentaId,
+    resumenTarjetaId: resumenGuardado._id,
+  });
+  await resumenGuardado.save();
+
+  return {
+    resumen: resumenGuardado,
+    totalLeidos: movimientos.length,
+    totalCreados: resultado.upsertedCount || 0,
+    totalDuplicados: movimientos.length - (resultado.upsertedCount || 0),
+    gastos,
+  };
+};
+
+const obtenerGastosDeResumenes = async (usuarioId, resumenes) => {
+  const ids = resumenes.map((resumen) => resumen._id);
+  if (ids.length === 0) return [];
+
+  return Gasto.find({
+    usuarioId,
+    resumenTarjetaId: { $in: ids },
+  }).lean();
+};
+
+const presentarResumenCuentaCredito = (resumen, gastos) => ({
+  ...resumen.toObject(),
+  totales: calcularTotalesResumen(resumen, gastos),
+});
+
+export const obtenerResumenesCuentaCreditoService = async ({ usuarioId, cuentaId }) => {
+  await obtenerCuentaCredito(usuarioId, cuentaId);
+
+  const resumenes = await ResumenTarjeta.find({
+    usuarioId,
+    cuentaId,
+    tarjetaId: null,
+  }).sort({ cierre: -1, _id: -1 });
+  const gastos = await obtenerGastosDeResumenes(usuarioId, resumenes);
+
+  return resumenes.map((resumen) => presentarResumenCuentaCredito(
+    resumen,
+    gastos.filter((gasto) => String(gasto.resumenTarjetaId) === String(resumen._id)),
+  ));
+};
+
+export const obtenerResumenCuentaCreditoService = async ({
+  usuarioId,
+  cuentaId,
+  resumenId,
+}) => {
+  await obtenerCuentaCredito(usuarioId, cuentaId);
+
+  const resumen = await ResumenTarjeta.findOne({
+    _id: resumenId,
+    usuarioId,
+    cuentaId,
+    tarjetaId: null,
+  });
+  if (!resumen) {
+    const error = new Error("Resumen de tarjeta no encontrado");
+    error.status = 404;
+    throw error;
+  }
+
+  const gastos = await Gasto.find({
+    usuarioId,
+    cuentaId,
+    resumenTarjetaId: resumen._id,
+  }).lean();
+
+  return presentarResumenCuentaCredito(resumen, gastos);
+};
+
 export const importarExcelPersonalService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
   }
 
-  const movimientos = obtenerMovimientosPersonales(file.buffer);
+  const { movimientos } = parsearExcelPersonal(file.buffer);
   const gastosProcesados = [];
 
   for (const movimiento of movimientos) {
+    const hashImportacion = `personal|${cuentaId}|${movimiento.sourceHash}`;
+    const gastoExistente = await Gasto.findOne({ usuarioId, hashImportacion });
+    if (gastoExistente) {
+      gastosProcesados.push({
+        gasto: gastoExistente,
+        duplicado: true,
+        subcategoriaEncontrada: Boolean(gastoExistente.subcategoriaId),
+        nombreSubcategoria: movimiento.nombreSubcategoria,
+      });
+      continue;
+    }
+
     const subcategoria = movimiento.nombreSubcategoria
       ? await Subcategoria.findOne({
           usuarioId,
@@ -111,12 +333,14 @@ export const importarExcelPersonalService = async ({ usuarioId, cuentaId, file }
           tipo: "excel",
           referenciaId: null,
         },
+        hashImportacion,
       },
       usuarioId
     );
 
     gastosProcesados.push({
       gasto,
+      duplicado: false,
       subcategoriaEncontrada: Boolean(subcategoria),
       nombreSubcategoria: movimiento.nombreSubcategoria,
     });
@@ -127,182 +351,6 @@ export const importarExcelPersonalService = async ({ usuarioId, cuentaId, file }
     totalProcesados: gastosProcesados.length,
     gastos: gastosProcesados,
   };
-};
-const obtenerMovimientos = (buffer) => {
-  const workbook = XLSX.read(buffer, {
-    type: "buffer",
-    cellDates: false,
-  });
-
-  const primeraHoja = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[primeraHoja];
-
-  const filas = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-
-  const filaEncabezadosIndex = filas.findIndex((fila) =>
-    fila.includes("Fecha") &&
-    fila.includes("Referencia") &&
-    fila.includes("Tipo Movimiento")
-  );
-
-  if (filaEncabezadosIndex === -1) {
-    throw new Error("No se encontraron encabezados validos en el Excel");
-  }
-
-  const filasMovimientos = filas.slice(filaEncabezadosIndex + 1);
-
-  return filasMovimientos
-    .filter((fila) => fila[1] && fila[2] && fila[3])
-    .map((fila) => {
-      const debito = parsearMonto(fila[6]);
-      const credito = parsearMonto(fila[8]);
-      const montoBancario = debito !== 0 ? debito : credito;
-
-      return {
-        fechaBanco: parsearFecha(fila[1]),
-        referenciaBanco: String(fila[2]),
-        detalleOriginal: String(fila[3]),
-        montoBancario,
-        moneda: "UYU",
-      };
-    });
-};
-
-
-const obtenerMovimientosPersonales = (buffer) => {
-  const workbook = XLSX.read(buffer, {
-    type: "buffer",
-    cellDates: false,
-  });
-
-  const primeraHoja = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[primeraHoja];
-
-  const filas = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    defval: "",
-    raw: true,
-  });
-
-  const bloques = encontrarBloquesPersonales(filas);
-
-  if (bloques.length === 0) {
-    throw new Error("No se encontraron bloques personales validos en el Excel");
-  }
-
-  const filasEncabezado = [...new Set(bloques.map((bloque) => bloque.filaIndex))]
-    .sort((a, b) => a - b);
-  const movimientos = [];
-
-  bloques.forEach((bloque) => {
-    const siguienteFilaEncabezado = filasEncabezado.find(
-      (filaIndex) => filaIndex > bloque.filaIndex
-    ) ?? filas.length;
-
-    for (let i = bloque.filaIndex + 1; i < siguienteFilaEncabezado; i += 1) {
-      const fila = filas[i];
-      const fecha = parsearFechaFlexible(fila[bloque.columnaIndex]);
-      const detalle = String(fila[bloque.columnaIndex + 1] || "").trim();
-      const montoBancario = parsearMontoFlexible(fila[bloque.columnaIndex + 2]);
-      const montoReal = parsearMontoFlexible(fila[bloque.columnaIndex + 3]);
-      const nombreSubcategoria = String(fila[bloque.columnaIndex + 4] || "").trim();
-
-      if (!fecha && !detalle && montoBancario === null && montoReal === null && !nombreSubcategoria) {
-        continue;
-      }
-
-      if (!fecha || !detalle || montoBancario === null || montoBancario === 0) {
-        continue;
-      }
-
-      const porcentaje = montoReal !== null
-        ? Number(Math.abs((montoReal / montoBancario) * 100).toFixed(2))
-        : 0;
-
-      movimientos.push({
-        fecha,
-        detalle,
-        montoBancario,
-        porcentaje,
-        nombreSubcategoria,
-      });
-    }
-  });
-
-  return movimientos;
-};
-
-const encontrarBloquesPersonales = (filas) => {
-  const bloques = [];
-
-  filas.forEach((fila, filaIndex) => {
-    fila.forEach((celda, columnaIndex) => {
-      if (normalizarTexto(celda) !== "fecha") return;
-
-      const encabezados = fila
-        .slice(columnaIndex, columnaIndex + 5)
-        .map(normalizarTexto);
-
-      const esBloquePersonal =
-        encabezados[1] === "detalle" &&
-        encabezados[2] === "flujo bancario" &&
-        encabezados[3].includes("economia real") &&
-        encabezados[4] === "categoria";
-
-      if (esBloquePersonal) {
-        bloques.push({ filaIndex, columnaIndex });
-      }
-    });
-  });
-
-  return bloques;
-};
-const parsearFechaFlexible = (valor) => {
-  if (valor === null || valor === undefined || valor === "") return null;
-
-  if (valor instanceof Date && !Number.isNaN(valor.getTime())) return valor;
-
-  if (typeof valor === "number") {
-    const fechaExcel = XLSX.SSF.parse_date_code(valor);
-    if (!fechaExcel) return null;
-    return new Date(fechaExcel.y, fechaExcel.m - 1, fechaExcel.d);
-  }
-
-  const texto = String(valor).trim();
-
-  if (!texto) return null;
-
-  if (texto.includes("/")) {
-    const partes = texto.split("/").map(Number);
-    const [dia, mes, anio] = partes;
-    const anioCompleto = anio < 100 ? 2000 + anio : anio;
-    return new Date(anioCompleto, mes - 1, dia);
-  }
-
-  const fecha = new Date(texto);
-  return Number.isNaN(fecha.getTime()) ? null : fecha;
-};
-
-const parsearMontoFlexible = (valor) => {
-  if (valor === null || valor === undefined || valor === "") return null;
-  if (typeof valor === "number") return valor;
-
-  const normalizado = String(valor)
-    .replace("$", "")
-    .replace(/\s/g, "")
-    .replace(/[^0-9,.-]/g, "")
-    .replace(/\.(?=\d{3}(\D|$))/g, "")
-    .replace(",", ".")
-    .trim();
-
-  if (!normalizado) return null;
-
-  const numero = Number(normalizado);
-  return Number.isNaN(numero) ? null : numero;
 };
 const buscarPosiblesDuplicados = async ({
   usuarioId,
@@ -388,27 +436,6 @@ const normalizarTexto = (texto) => {
     .replace(/\s+/g, " ")
     .trim();
 };
-
-const parsearMonto = (valor) => {
-  if (!valor) {
-    return 0;
-  }
-
-  return Number(
-    String(valor)
-      .replace("$", "")
-      .replace(/\./g, "")
-      .replace(",", ".")
-      .trim()
-  );
-};
-
-const parsearFecha = (valor) => {
-  const [dia, mes, anio] = String(valor).split("/");
-
-  return new Date(Number(anio), Number(mes) - 1, Number(dia));
-};
-
 
 const limpiarMovimientosVinculadosSinGasto = async ({ usuarioId, cuentaId }) => {
   const movimientos = await MovimientoImportado.find({
@@ -517,28 +544,65 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
     throw new Error("Movimiento importado no encontrado");
   }
 
+  await liberarMovimientoSiGastoFueEliminado(movimiento);
+
   if (movimiento.estadoImportacion === "vinculado") {
-    throw new Error("El movimiento ya esta vinculado a un gasto");
+    const error = new Error("El gasto de este movimiento bancario ya existe");
+    error.status = 409;
+    throw error;
   }
 
-  const gasto = await crearGastoService(
-    {
-      detalle: data.detalle || movimiento.detalleOriginal,
-      cuentaId: movimiento.cuentaId,
-      fecha: data.fecha || movimiento.fechaBanco,
-      montoBancario: movimiento.montoBancario,
-      porcentaje: data.porcentaje,
-      incluirMontoReal: data.incluirMontoReal,
-      categoriaId: data.categoriaId,
-      subcategoriaId: data.subcategoriaId,
-      cambiarEstado: data.cambiarEstado,
-      origen: {
-        tipo: "excel",
-        referenciaId: movimiento._id,
+  const hashImportacion = `bancario|${movimiento.hashBanco}`;
+  const gastoExistente = await Gasto.findOne({
+    usuarioId,
+    $or: [
+      {
+        "origen.tipo": "excel",
+        "origen.referenciaId": movimiento._id,
       },
-    },
-    usuarioId
-  );
+      { hashImportacion },
+    ],
+  }).select("_id");
+
+  if (gastoExistente) {
+    movimiento.gastoId = gastoExistente._id;
+    movimiento.estadoImportacion = "vinculado";
+    await movimiento.save();
+
+    const error = new Error("El gasto de este movimiento bancario ya existe");
+    error.status = 409;
+    throw error;
+  }
+
+  let gasto;
+  try {
+    gasto = await crearGastoService(
+      {
+        detalle: data.detalle || movimiento.detalleOriginal,
+        cuentaId: movimiento.cuentaId,
+        fecha: data.fecha || movimiento.fechaBanco,
+        montoBancario: movimiento.montoBancario,
+        porcentaje: data.porcentaje,
+        incluirMontoReal: data.incluirMontoReal,
+        categoriaId: data.categoriaId,
+        subcategoriaId: data.subcategoriaId,
+        cambiarEstado: data.cambiarEstado,
+        origen: {
+          tipo: "excel",
+          referenciaId: movimiento._id,
+        },
+        hashImportacion,
+      },
+      usuarioId,
+    );
+  } catch (error) {
+    if (error?.code === 11000) {
+      const conflicto = new Error("El gasto de este movimiento bancario ya existe");
+      conflicto.status = 409;
+      throw conflicto;
+    }
+    throw error;
+  }
 
   movimiento.gastoId = gasto._id;
   movimiento.estadoImportacion = "vinculado";

@@ -188,7 +188,7 @@ function ResumenTarjetaPage() {
                     <td><input type="checkbox" disabled={gasto.estado === "creado"} checked={seleccionados.includes(gasto._id)} onChange={(e) => setSeleccionados((actuales) => e.target.checked ? [...actuales, gasto._id] : actuales.filter((id) => id !== gasto._id))} /></td>
                     <td><span className={`status-badge ${gasto.estado === "creado" ? "status-created" : "status-pending"}`}>{gasto.estado}</span></td>
                     <td><input className="table-input" type="date" value={fechaInput(gasto.fecha)} onChange={(e) => guardarCampo(gasto, "fecha", e.target.value)} /></td>
-                    <td><input className="table-input table-input-wide" value={gasto.detalle || ""} onChange={(e) => reemplazarGasto({ ...gasto, detalle: e.target.value })} onBlur={(e) => guardarCampo(gasto, "detalle", e.target.value)} /></td>
+                    <td><textarea className="table-input table-input-wide table-detail-textarea" rows={1} value={gasto.detalle || ""} onChange={(e) => reemplazarGasto({ ...gasto, detalle: e.target.value })} onBlur={(e) => guardarCampo(gasto, "detalle", e.target.value)} /></td>
                     <td>
                       <select className="table-select" value={gasto.tipoMovimiento} onChange={(e) => guardarCampo(gasto, "tipoMovimiento", e.target.value)}>
                         <option value="compra">Compra</option><option value="cuota">Cuota</option>

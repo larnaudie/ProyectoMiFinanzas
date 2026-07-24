@@ -1,41 +1,40 @@
 import Joi from "joi";
 
+const resumenTarjetaSchema = Joi.object({
+  tarjeta: Joi.string().allow("", null),
+  cierre: Joi.date().allow("", null),
+  vencimiento: Joi.date().allow("", null),
+  periodo: Joi.string().allow("", null),
+  importacionKey: Joi.string().allow("", null),
+}).optional();
+
+const origenSchema = Joi.object({
+  tipo: Joi.string().valid("manual", "tarjeta", "prestamo", "excel").default("manual"),
+  referenciaId: Joi.string().allow(null, ""),
+}).optional();
+
 export const gastosSchema = Joi.object({
-  detalle: Joi.string().trim().min(3).max(30).required().messages({
+  detalle: Joi.string().trim().min(3).max(120).required().messages({
     "string.min": "El nombre del gasto debe tener al menos 3 caracteres",
-    "string.max": "El nombre del gasto no puede exceder los 30 caracteres",
+    "string.max": "El nombre del gasto no puede exceder los 120 caracteres",
     "string.required": "El nombre del gasto es obligatorio",
   }),
   cuentaId: Joi.string().required().messages({
     "string.required": "La cuenta es obligatoria",
   }),
-  fecha: Joi.date().allow("", null).messages({
-    "date.required": "La fecha es obligatoria",
-  }),
-  montoBancario: Joi.number().allow("", null).messages({
-    "number.required": "El monto es obligatorio",
-  }),
-  porcentaje: Joi.number().min(0).max(100).default(0).allow("", null).messages({
-    "number.min": "El porcentaje no puede ser negativo",
-    "number.max": "El porcentaje no puede exceder el 100%",
-  }),
-  incluirMontoReal: Joi.boolean().default(false).messages({
-    "boolean.default":
-      "El valor predeterminado para incluir monto real es false",
-  }),
-  categoriaId: Joi.string().allow("", null).messages({
-    "string.required": "La categoría es obligatoria",
-  }),
-  subcategoriaId: Joi.string().allow("", null).messages({
-    "string.required": "La subcategoría es obligatoria",
-  }),
+  fecha: Joi.date().allow("", null),
+  montoBancario: Joi.number().allow("", null),
+  porcentaje: Joi.number().min(0).max(100).default(0).allow("", null),
+  incluirMontoReal: Joi.boolean().default(false),
+  moneda: Joi.string().valid("UYU", "USD").default("UYU"),
+  categoriaId: Joi.string().allow("", null),
+  subcategoriaId: Joi.string().allow("", null),
   cambiarEstado: Joi.boolean(),
-  origen: Joi.object({
-    tipo: Joi.string()
-      .valid("manual", "tarjeta", "prestamo", "excel")
-      .default("manual"),
-    referenciaId: Joi.string().allow(null, ""),
-  }).optional(),
+  tipoMovimiento: Joi.string()
+    .valid("manual", "compra", "pago", "cuota", "reintegro")
+    .default("manual"),
+  origen: origenSchema,
+  resumenTarjeta: resumenTarjetaSchema,
 });
 
 export const actualizarGastoSchema = Joi.object({
@@ -45,7 +44,22 @@ export const actualizarGastoSchema = Joi.object({
   montoBancario: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).allow("", null),
   incluirMontoReal: Joi.boolean(),
+  moneda: Joi.string().valid("UYU", "USD"),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().allow("", null),
   cambiarEstado: Joi.boolean(),
+  tipoMovimiento: Joi.string().valid("manual", "compra", "pago", "cuota", "reintegro"),
+  origen: origenSchema,
+  resumenTarjeta: resumenTarjetaSchema,
 }).min(1);
+
+export const crearGastoVinculadoSchema = Joi.object({
+  cuentaId: Joi.string().required(),
+  detalle: Joi.string().trim().min(3).max(120).required(),
+  fecha: Joi.date().required(),
+  montoBancario: Joi.number().invalid(0).required(),
+  categoriaId: Joi.string().allow("", null),
+  subcategoriaId: Joi.string().allow("", null),
+});
+
+export const crearGastoVinculadoPagoSchema = crearGastoVinculadoSchema;

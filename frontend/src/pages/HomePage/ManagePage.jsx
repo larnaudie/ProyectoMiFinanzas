@@ -25,12 +25,6 @@ import {
   eliminarSubcategoria,
   guardarSubcategorias,
 } from "../../features/slices/subcategoriasSlice";
-import {
-  actualizarTarjeta,
-  agregarTarjeta,
-  eliminarTarjeta,
-  guardarTarjetas,
-} from "../../features/slices/tarjetasSlice.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -71,7 +65,6 @@ function ManagePage() {
   const cuentas = useSelector((state) => state.cuentas.cuentas);
   const categorias = useSelector((state) => state.categorias.categorias);
   const subcategorias = useSelector((state) => state.subcategorias.subcategorias);
-  const tarjetas = useSelector((state) => state.tarjetas.tarjetas);
   const prestamos = useSelector((state) => state.prestamos.prestamos);
 
   const [modal, setModal] = useState(null);
@@ -83,8 +76,10 @@ function ManagePage() {
     api.get("/cuentas").then((response) => dispatch(guardarCuentas(response.data.cuentas))).catch((error) => console.error("Error al obtener cuentas:", error));
     api.get("/categorias").then((response) => dispatch(guardarCategorias(response.data.categorias))).catch((error) => console.error("Error al obtener categorias:", error));
     api.get("/subcategorias").then((response) => dispatch(guardarSubcategorias(response.data.subcategorias))).catch((error) => console.error("Error al obtener subcategorias:", error));
-    api.get("/tarjetas").then((response) => dispatch(guardarTarjetas(response.data.tarjetas))).catch((error) => console.error("Error al obtener tarjetas:", error));
   }, [dispatch]);
+
+  const cuentasBancarias = cuentas.filter((cuenta) => cuenta.tipoCuenta !== "credito");
+  const cuentasCredito = cuentas.filter((cuenta) => cuenta.tipoCuenta === "credito");
 
   const entidades = {
     bancos: {
@@ -101,21 +96,12 @@ function ManagePage() {
     cuentas: {
       titulo: "Cuentas",
       endpoint: "/cuentas",
-      items: cuentas,
+      items: cuentasBancarias,
       responseKey: "cuenta",
       nombreKey: "nombreCuenta",
+      valoresFijos: { tipoCuenta: "debito" },
       campos: [
         { name: "nombreCuenta", label: "Nombre de la cuenta", type: "text" },
-        {
-          name: "tipoCuenta",
-          label: "Tipo de cuenta",
-          type: "select",
-          defaultValue: "debito",
-          options: [
-            { _id: "debito", nombreCategoria: "Cuenta bancaria" },
-            { _id: "credito", nombreCategoria: "Tarjeta de crédito" },
-          ],
-        },
         {
           name: "bancoId",
           label: "Banco",
@@ -167,19 +153,13 @@ function ManagePage() {
     },
     tarjetas: {
       titulo: "Tarjetas",
-      endpoint: "/tarjetas",
-      items: tarjetas,
-      responseKey: "tarjeta",
-      nombreKey: "nombreTarjeta",
+      endpoint: "/cuentas",
+      items: cuentasCredito,
+      responseKey: "cuenta",
+      nombreKey: "nombreCuenta",
+      valoresFijos: { tipoCuenta: "credito" },
       campos: [
-        { name: "nombreTarjeta", label: "Nombre de la tarjeta", type: "text" },
-        {
-          name: "cuentaId",
-          label: "Cuenta asociada",
-          type: "select",
-          options: cuentas,
-          optionLabel: "nombreCuenta",
-        },
+        { name: "nombreCuenta", label: "Nombre de la tarjeta", type: "text" },
         {
           name: "bancoId",
           label: "Banco",
@@ -188,22 +168,20 @@ function ManagePage() {
           optionLabel: "nombreBanco",
           required: false,
         },
-        { name: "ultimosDigitos", label: "Últimos 4 dígitos", type: "text", required: false },
         {
-          name: "activa",
-          label: "Estado",
+          name: "moneda",
+          label: "Moneda",
           type: "select",
-          defaultValue: "true",
+          defaultValue: "UYU",
           options: [
-            { _id: "true", nombreCategoria: "Activa" },
-            { _id: "false", nombreCategoria: "Inactiva" },
+            { _id: "UYU", nombreCategoria: "UYU" },
+            { _id: "USD", nombreCategoria: "USD" },
           ],
         },
       ],
-      agregar: agregarTarjeta,
-      actualizar: actualizarTarjeta,
-      eliminar: eliminarTarjeta,
-      extra: (item) => item.cuentaId?.nombreCuenta || "Sin cuenta",
+      agregar: agregarCuenta,
+      actualizar: actualizarCuenta,
+      eliminar: eliminarCuenta,
     },
     prestamos: {
       titulo: "Prestamos",
@@ -251,9 +229,10 @@ function ManagePage() {
       return;
     }
 
+    const payload = { ...form, ...entidad.valoresFijos };
     const request = modal.tipo === "crear"
-      ? api.post(entidad.endpoint, form)
-      : api.patch(`${entidad.endpoint}/${modal.item._id}`, form);
+      ? api.post(entidad.endpoint, payload)
+      : api.patch(`${entidad.endpoint}/${modal.item._id}`, payload);
 
     request
       .then((response) => {

@@ -1,6 +1,10 @@
 ﻿import {
   importarExcelService,
   importarExcelPersonalService,
+  importarExcelTarjetaService,
+  confirmarImportacionTarjetaCuentaService,
+  obtenerResumenesCuentaCreditoService,
+  obtenerResumenCuentaCreditoService,
   obtenerMovimientosImportadosService,
   ignorarMovimientoImportadoService,
   vincularMovimientoAGastoService,
@@ -44,6 +48,71 @@ export const importarExcelPersonal = async (req, res, next) => {
     res.status(201).json({
       message: "Excel personal importado correctamente",
       ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const importarExcelTarjeta = async (req, res, next) => {
+  try {
+    const usuarioId = req.user.id;
+    const { cuentaId } = req.params;
+    const file = req.file;
+
+    const resultado = await importarExcelTarjetaService({ usuarioId, cuentaId, file });
+
+    res.status(201).json({
+      message: "Excel de tarjeta importado correctamente",
+      ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmarImportacionTarjetaCuenta = async (req, res, next) => {
+  try {
+    const resultado = await confirmarImportacionTarjetaCuentaService({
+      usuarioId: req.user.id,
+      cuentaId: req.params.cuentaId,
+      ...req.body,
+    });
+
+    res.status(201).json({
+      message: "Movimientos de tarjeta importados correctamente",
+      ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const obtenerResumenesCuentaCredito = async (req, res, next) => {
+  try {
+    const resumenes = await obtenerResumenesCuentaCreditoService({
+      usuarioId: req.user.id,
+      cuentaId: req.params.cuentaId,
+    });
+    res.status(200).json({
+      message: "Resúmenes de tarjeta obtenidos",
+      resumenes,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const obtenerResumenCuentaCredito = async (req, res, next) => {
+  try {
+    const resumen = await obtenerResumenCuentaCreditoService({
+      usuarioId: req.user.id,
+      cuentaId: req.params.cuentaId,
+      resumenId: req.params.resumenId,
+    });
+    res.status(200).json({
+      message: "Resumen de tarjeta obtenido",
+      resumen,
     });
   } catch (error) {
     next(error);

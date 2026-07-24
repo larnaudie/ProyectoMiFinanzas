@@ -55,9 +55,14 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
           <h1>{cuenta.nombreCuenta}</h1>
           <p>Los resúmenes están ordenados desde el cierre más reciente.</p>
         </div>
-        <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
-          Importar Excel
-        </Link>
+        <div className="action-row">
+          <Link className="secondary-link" to={`/cuentas/${cuentaId}/dashboard`}>
+            Ver dashboard
+          </Link>
+          <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
+            Importar Excel
+          </Link>
+        </div>
       </header>
 
       {loading && <p>Cargando resúmenes...</p>}

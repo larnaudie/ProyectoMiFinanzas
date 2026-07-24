@@ -218,6 +218,15 @@ function DesglocePage() {
   const [cuentaVinculoId, setCuentaVinculoId] = useState("");
   const [mesVinculo, setMesVinculo] = useState("");
   const [detalleVinculo, setDetalleVinculo] = useState("");
+  const [mostrarCrearGastoVinculo, setMostrarCrearGastoVinculo] = useState(false);
+  const [creandoGastoVinculo, setCreandoGastoVinculo] = useState(false);
+  const [formGastoVinculo, setFormGastoVinculo] = useState({
+    detalle: "",
+    fecha: "",
+    montoBancario: "",
+    categoriaId: "",
+    subcategoriaId: "",
+  });
   const [cargandoCandidatos, setCargandoCandidatos] = useState(false);
   const [procesandoVinculo, setProcesandoVinculo] = useState(false);
   const [mensajeAccion, setMensajeAccion] = useState("");
@@ -680,7 +689,11 @@ function DesglocePage() {
   };
 
   const formatearMonto = (monto) => {
-    return monto.toLocaleString("es-UY", {
+    const numero = Number(monto);
+
+    if (!Number.isFinite(numero)) return "0";
+
+    return numero.toLocaleString("es-UY", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
@@ -758,17 +771,30 @@ function DesglocePage() {
   };
 
   const abrirVinculo = async (gasto) => {
-    if (gasto.tipoMovimiento !== "pago") {
+    if (resumenId && gasto.tipoMovimiento !== "pago") {
       setErrorAccion("Sólo los movimientos de tipo Pago pueden vincularse.");
       return;
     }
 
     const referenciaActual = gasto.origen?.referenciaId;
+    const montoOrigen = Number(gasto.montoBancario);
     setGastoVinculando(gasto);
     setReferenciaId(obtenerId(referenciaActual));
     setCuentaVinculoId(obtenerId(referenciaActual?.cuentaId));
     setMesVinculo("");
     setDetalleVinculo("");
+    setMostrarCrearGastoVinculo(false);
+    setFormGastoVinculo({
+      detalle: resumenId
+        ? `Pago ${cuentaActual?.nombreCuenta || gasto.detalle}`
+        : `Transferencia ${cuentaActual?.nombreCuenta || gasto.detalle}`,
+      fecha: fechaParaInput(gasto.fecha),
+      montoBancario: montoOrigen
+        ? (montoOrigen >= 0 ? -Math.abs(montoOrigen) : Math.abs(montoOrigen))
+        : "",
+      categoriaId: "",
+      subcategoriaId: "",
+    });
     setCandidatosVinculo([]);
     setCargandoCandidatos(true);
     setMensajeAccion("");
@@ -799,6 +825,14 @@ function DesglocePage() {
     setCuentaVinculoId("");
     setMesVinculo("");
     setDetalleVinculo("");
+    setMostrarCrearGastoVinculo(false);
+    setFormGastoVinculo({
+      detalle: "",
+      fecha: "",
+      montoBancario: "",
+      categoriaId: "",
+      subcategoriaId: "",
+    });
     setCandidatosVinculo([]);
   };
 
@@ -810,19 +844,81 @@ function DesglocePage() {
     setErrorAccion("");
     try {
       const response = await api.patch(`/gastos/${gastoVinculando._id}`, {
-        origen: { tipo: "tarjeta", referenciaId },
-        tipoMovimiento: "pago",
+        origen: {
+          tipo: gastoVinculando.origen?.tipo || "manual",
+          referenciaId,
+        },
+        ...(resumenId ? { tipoMovimiento: "pago" } : {}),
       });
       dispatch(actualizarGasto(response.data.gasto));
-      setMensajeAccion(`Gasto "${gastoVinculando.detalle}" vinculado correctamente.`);
+      setMensajeAccion(`Movimiento "${gastoVinculando.detalle}" vinculado correctamente.`);
       cerrarVinculo();
     } catch (error) {
       setErrorAccion(
         error.response?.data?.message
-        || "No se pudo vincular el gasto seleccionado.",
+        || "No se pudo vincular el movimiento seleccionado.",
       );
     } finally {
       setProcesandoVinculo(false);
+    }
+  };
+
+  const crearGastoYVincular = async () => {
+    if (!gastoVinculando || !cuentaVinculoId) {
+      setErrorAccion("Elegí la cuenta donde se creará el gasto.");
+      return;
+    }
+
+    if (!formGastoVinculo.detalle.trim()) {
+      setErrorAccion("El detalle del nuevo gasto es obligatorio.");
+      return;
+    }
+
+    if (!formGastoVinculo.fecha) {
+      setErrorAccion("La fecha del nuevo gasto es obligatoria.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(Number(formGastoVinculo.montoBancario))
+      || Number(formGastoVinculo.montoBancario) === 0
+    ) {
+      setErrorAccion("El monto bancario debe ser distinto de 0.");
+      return;
+    }
+
+    setCreandoGastoVinculo(true);
+    setMensajeAccion("");
+    setErrorAccion("");
+
+    try {
+      const response = await api.post(
+        `/gastos/${gastoVinculando._id}/crear-vinculo`,
+        {
+          ...formGastoVinculo,
+          cuentaId: cuentaVinculoId,
+          montoBancario: Number(formGastoVinculo.montoBancario),
+        },
+      );
+      dispatch(actualizarGasto(response.data.gastoOrigen));
+
+      const cuentaDestino = cuentasVinculables.find(
+        (cuenta) => cuenta._id === cuentaVinculoId,
+      );
+      const estado = response.data.gastoCreado?.estado === "creado"
+        ? "creado"
+        : "guardado como pendiente";
+      setMensajeAccion(
+        `Movimiento ${estado} en ${cuentaDestino?.nombreCuenta || "la cuenta seleccionada"} y vinculado correctamente.`,
+      );
+      cerrarVinculo();
+    } catch (error) {
+      setErrorAccion(
+        error.response?.data?.message
+        || "No se pudo crear y vincular el nuevo movimiento.",
+      );
+    } finally {
+      setCreandoGastoVinculo(false);
     }
   };
 
@@ -832,7 +928,7 @@ function DesglocePage() {
     setErrorAccion("");
     try {
       const response = await api.patch(`/gastos/${gasto._id}`, {
-        origen: { tipo: "tarjeta", referenciaId: null },
+        origen: { tipo: gasto.origen?.tipo || "manual", referenciaId: null },
       });
       dispatch(actualizarGasto(response.data.gasto));
       setMensajeAccion(`Se quitó el vínculo de "${gasto.detalle}".`);
@@ -847,8 +943,27 @@ function DesglocePage() {
   };
 
   const cuentasVinculables = cuentas.filter((cuenta) => cuenta._id !== cuentaId);
+  const cuentaDestinoVinculo = cuentasVinculables.find(
+    (cuenta) => cuenta._id === cuentaVinculoId,
+  );
+  const subcategoriasGastoVinculo = subcategorias.filter((subcategoria) => (
+    !formGastoVinculo.categoriaId
+    || obtenerId(subcategoria.categoria) === formGastoVinculo.categoriaId
+  ));
+  const idsMovimientosVinculados = new Set();
+  candidatosVinculo.forEach((candidato) => {
+    const candidatoReferenciaId = obtenerId(candidato.origen?.referenciaId);
+    if (!candidatoReferenciaId) return;
+    idsMovimientosVinculados.add(candidato._id);
+    idsMovimientosVinculados.add(candidatoReferenciaId);
+  });
   const candidatosVinculoFiltrados = candidatosVinculo.filter((candidato) => {
     if (!cuentaVinculoId || obtenerId(candidato.cuentaId) !== cuentaVinculoId) {
+      return false;
+    }
+
+    const referenciaActualId = obtenerId(gastoVinculando?.origen?.referenciaId);
+    if (idsMovimientosVinculados.has(candidato._id) && candidato._id !== referenciaActualId) {
       return false;
     }
 
@@ -858,6 +973,13 @@ function DesglocePage() {
     const termino = detalleVinculo.trim().toLowerCase();
     return !termino
       || String(candidato.detalle || "").toLowerCase().includes(termino);
+  });
+  const vinculosEntrantesPorGastoId = new Map();
+  gastos.forEach((gasto) => {
+    const referenciaEntranteId = obtenerId(gasto.origen?.referenciaId);
+    if (referenciaEntranteId) {
+      vinculosEntrantesPorGastoId.set(referenciaEntranteId, gasto);
+    }
   });
 
   const renderTablaGastos = (titulo, gastosVisibles, mostrarTotales = false) => {
@@ -979,7 +1101,7 @@ function DesglocePage() {
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
-              {resumenId && <th>Vincular gasto</th>}
+              <th>{resumenId ? "Vincular gasto" : "Transferencia interna"}</th>
               {resumenId && <th>Acciones</th>}
             </tr>
           </thead>
@@ -994,7 +1116,16 @@ function DesglocePage() {
                 gasto,
                 "tipoMovimiento",
               );
-              const referencia = gasto.origen?.referenciaId;
+              const referenciaDirectaId = obtenerId(gasto.origen?.referenciaId);
+              const referenciaDirecta = referenciaDirectaId
+                ? gastos.find((item) => item._id === referenciaDirectaId)
+                  || gasto.origen?.referenciaId
+                : null;
+              const gastoOrigenVinculo = !referenciaDirectaId
+                ? vinculosEntrantesPorGastoId.get(gasto._id)
+                : null;
+              const esVinculoEntrante = Boolean(gastoOrigenVinculo);
+              const referencia = referenciaDirecta || gastoOrigenVinculo;
               const referenciaCuentaId = obtenerId(referencia?.cuentaId);
 
               return (
@@ -1045,8 +1176,9 @@ function DesglocePage() {
                         <div className="detail-popover">
                           <label>
                             Detalle
-                            <input
-                              type="text"
+                            <textarea
+                              className="table-detail-textarea detail-popover-textarea"
+                              rows={2}
                               value={detalleEnEdicion.valor}
                               onChange={(event) =>
                                 setDetalleEnEdicion({
@@ -1124,7 +1256,7 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>{gasto.montoReal}</td>
+                  <td>{formatearMonto(gasto.montoReal)}</td>
                   <td>
                     <select
                       className="table-select"
@@ -1186,8 +1318,7 @@ function DesglocePage() {
                     />
                   </td>
 
-                  {resumenId && (
-                    <td className="linked-expense-cell">
+                  <td className="linked-expense-cell">
                       {referencia ? (
                         <div className="linked-expense-content">
                           {referenciaCuentaId ? (
@@ -1198,25 +1329,27 @@ function DesglocePage() {
                               {referencia.detalle || "Ver gasto vinculado"}
                             </Link>
                           ) : (
-                            <span>{referencia.detalle || "Gasto vinculado"}</span>
+                            <span>{referencia.detalle || "Movimiento vinculado"}</span>
                           )}
                           <div className="linked-expense-actions">
-                            <button
-                              type="button"
-                              className="selection-action"
-                              disabled={procesandoVinculo}
-                              onClick={() => abrirVinculo({
-                                ...gasto,
-                                tipoMovimiento: tipoMovimientoActual,
-                              })}
-                            >
-                              Cambiar
-                            </button>
+                            {!esVinculoEntrante && (
+                              <button
+                                type="button"
+                                className="selection-action"
+                                disabled={procesandoVinculo}
+                                onClick={() => abrirVinculo({
+                                  ...gasto,
+                                  tipoMovimiento: tipoMovimientoActual,
+                                })}
+                              >
+                                Cambiar
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="selection-action delete-action"
                               disabled={procesandoVinculo}
-                              onClick={() => quitarVinculo(gasto)}
+                              onClick={() => quitarVinculo(gastoOrigenVinculo || gasto)}
                             >
                               Quitar
                             </button>
@@ -1228,11 +1361,11 @@ function DesglocePage() {
                           className="selection-action"
                           disabled={
                             procesandoVinculo
-                            || tipoMovimientoActual !== "pago"
+                            || (Boolean(resumenId) && tipoMovimientoActual !== "pago")
                           }
                           title={
-                            tipoMovimientoActual === "pago"
-                              ? "Vincular con un gasto de otra cuenta"
+                            !resumenId || tipoMovimientoActual === "pago"
+                              ? "Vincular con un movimiento de otra cuenta"
                               : "Disponible sólo para movimientos de tipo Pago"
                           }
                           onClick={() => abrirVinculo({
@@ -1240,11 +1373,12 @@ function DesglocePage() {
                             tipoMovimiento: tipoMovimientoActual,
                           })}
                         >
-                          {tipoMovimientoActual === "pago" ? "Vincular" : "Sólo pagos"}
+                          {!resumenId || tipoMovimientoActual === "pago"
+                            ? "Vincular"
+                            : "Sólo pagos"}
                         </button>
                       )}
                     </td>
-                  )}
 
                   {resumenId && (
                     <td>
@@ -1359,6 +1493,9 @@ function DesglocePage() {
       </div>
 
       <div className="action-row">
+        <Link className="secondary-link" to={`/cuentas/${cuentaId}/dashboard`}>
+          Ver dashboard
+        </Link>
         {resumenId ? (
           <Link className="secondary-link" to={`/cuentas/${cuentaId}/gastos`}>
             Volver a resúmenes
@@ -1597,9 +1734,9 @@ function DesglocePage() {
           <section className="modal-card link-payment-modal credit-link-modal">
             <header className="modal-header">
               <div>
-                <h2>Vincular gasto</h2>
+                <h2>{resumenId ? "Vincular pago de tarjeta" : "Vincular transferencia interna"}</h2>
                 <p>
-                  Elegí un gasto creado de otra cuenta para relacionarlo con
+                  Elegí un movimiento creado de otra cuenta para relacionarlo con
                   {` "${gastoVinculando.detalle}".`}
                 </p>
               </div>
@@ -1657,7 +1794,7 @@ function DesglocePage() {
               </label>
 
               <label className="credit-link-expense-select">
-                Gasto
+                Movimiento
                 <select
                   value={referenciaId}
                   disabled={!cuentaVinculoId || cargandoCandidatos}
@@ -1667,8 +1804,8 @@ function DesglocePage() {
                     {!cuentaVinculoId
                       ? "Elegí una cuenta primero"
                       : candidatosVinculoFiltrados.length > 0
-                        ? "Seleccionar gasto"
-                        : "No hay gastos para estos filtros"}
+                        ? "Seleccionar movimiento"
+                        : "No hay movimientos para estos filtros"}
                   </option>
                   {candidatosVinculoFiltrados.map((candidato) => (
                     <option key={candidato._id} value={candidato._id}>
@@ -1679,12 +1816,144 @@ function DesglocePage() {
               </label>
             </div>
 
+            <section className="credit-link-create-section">
+              <div className="credit-link-create-header">
+                <div>
+                  <h3>¿El movimiento todavía no existe?</h3>
+                  <p>Crealo en la cuenta seleccionada y vinculalo automáticamente.</p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!cuentaVinculoId || procesandoVinculo}
+                  onClick={() =>
+                    setMostrarCrearGastoVinculo((mostrar) => !mostrar)
+                  }
+                >
+                  {mostrarCrearGastoVinculo ? "Ocultar creación" : "Crear nuevo movimiento"}
+                </button>
+              </div>
+
+              {mostrarCrearGastoVinculo && (
+                <div className="credit-link-create-form">
+                  <p className="credit-link-create-account">
+                    Se creará en <strong>{cuentaDestinoVinculo?.nombreCuenta}</strong>
+                    {cuentaDestinoVinculo?.moneda
+                      ? ` (${cuentaDestinoVinculo.moneda})`
+                      : ""}.
+                  </p>
+
+                  <label>
+                    Detalle
+                    <input
+                      type="text"
+                      value={formGastoVinculo.detalle}
+                      onChange={(event) =>
+                        setFormGastoVinculo((actual) => ({
+                          ...actual,
+                          detalle: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Fecha
+                    <input
+                      type="date"
+                      value={formGastoVinculo.fecha}
+                      onChange={(event) =>
+                        setFormGastoVinculo((actual) => ({
+                          ...actual,
+                          fecha: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Monto bancario
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formGastoVinculo.montoBancario}
+                      onChange={(event) =>
+                        setFormGastoVinculo((actual) => ({
+                          ...actual,
+                          montoBancario: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Categoría (opcional)
+                    <select
+                      value={formGastoVinculo.categoriaId}
+                      onChange={(event) =>
+                        setFormGastoVinculo((actual) => ({
+                          ...actual,
+                          categoriaId: event.target.value,
+                          subcategoriaId: "",
+                        }))
+                      }
+                    >
+                      <option value="">Sin categoría</option>
+                      {categorias.map((categoria) => (
+                        <option key={categoria._id} value={categoria._id}>
+                          {categoria.nombreCategoria}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Subcategoría (opcional)
+                    <select
+                      value={formGastoVinculo.subcategoriaId}
+                      onChange={(event) =>
+                        setFormGastoVinculo((actual) => ({
+                          ...actual,
+                          subcategoriaId: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Guardar como pendiente</option>
+                      {subcategoriasGastoVinculo.map((subcategoria) => (
+                        <option key={subcategoria._id} value={subcategoria._id}>
+                          {subcategoria.nombreSubcategoria}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <p className="credit-link-create-help">
+                    El monto se guardará con el signo opuesto al movimiento original.
+                    Sin subcategoría, el movimiento quedará
+                    pendiente para completarlo después.
+                  </p>
+
+                  <button
+                    type="button"
+                    className="credit-link-create-button"
+                    disabled={creandoGastoVinculo || procesandoVinculo}
+                    onClick={crearGastoYVincular}
+                  >
+                    {creandoGastoVinculo
+                      ? "Creando y vinculando..."
+                      : "Crear movimiento y vincular"}
+                  </button>
+                </div>
+              )}
+            </section>
+
             <p className="credit-link-help">
-              Mes y detalle son opcionales. El vínculo sólo está disponible para
-              movimientos de tipo Pago.
+              {resumenId
+                ? "Mes y detalle son opcionales. En tarjetas, el vínculo sólo está disponible para movimientos de tipo Pago."
+                : "Mes y detalle son opcionales. Este vínculo representa una transferencia interna entre cuentas."}
             </p>
 
-            {cargandoCandidatos && <p>Cargando gastos disponibles...</p>}
+            {cargandoCandidatos && <p>Cargando movimientos disponibles...</p>}
             {errorAccion && <p className="inline-error">{errorAccion}</p>}
 
             <footer className="modal-actions">

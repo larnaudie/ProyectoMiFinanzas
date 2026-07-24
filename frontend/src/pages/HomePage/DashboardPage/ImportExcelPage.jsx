@@ -250,6 +250,18 @@ function ImportExcelPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentaId]);
 
+  useEffect(() => {
+    if (resultado && gastosBancarios.length === 0) {
+      setResultado(null);
+    }
+  }, [gastosBancarios.length, resultado]);
+
+  useEffect(() => {
+    if (resultadoPersonal && gastosPersonales.length === 0) {
+      setResultadoPersonal(null);
+    }
+  }, [gastosPersonales.length, resultadoPersonal]);
+
   const importar = async (event) => {
     event.preventDefault();
 
@@ -955,7 +967,7 @@ function ImportExcelPage() {
         </form>
       </section>
 
-      {resultado && (
+      {resultado && gastosBancarios.length > 0 && (
         <section className="table-shell import-result-panel">
           <h2>Resultado de la importacion bancaria</h2>
           <div className="import-result-grid">
@@ -971,7 +983,7 @@ function ImportExcelPage() {
         </section>
       )}
 
-      {resultadoPersonal && (
+      {resultadoPersonal && gastosPersonales.length > 0 && (
         <section className="table-shell import-result-panel">
           <h2>Resultado de la importacion personal</h2>
           <div className="import-result-grid">
@@ -1225,16 +1237,10 @@ function TablaGastosPersonales({
                     onChange={(event) => onChange(gasto._id, "fecha", event.target.value)}
                   />
                 </td>
-                <td className="detail-name-cell">
-                  <Link
-                    className="detail-name-text detail-name-link"
-                    to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}
-                  >
-                    {gasto.detalle || "Sin detalle"}
-                  </Link>
-                  <input
-                    className="table-input table-input-wide"
-                    type="text"
+                <td className="detail-name-cell import-detail-cell">
+                  <textarea
+                    className="table-input table-input-wide table-detail-textarea"
+                    rows={Math.max(2, Math.ceil(String(gasto.detalle || "").length / 34))}
                     value={gasto.detalle}
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}
                   />
@@ -1477,10 +1483,10 @@ function TablaGastosBancarios({
                     onChange={(event) => onChange(gasto._id, "fecha", event.target.value)}
                   />
                 </td>
-                <td>
-                  <input
-                    className="table-input table-input-wide"
-                    type="text"
+                <td className="import-detail-cell">
+                  <textarea
+                    className="table-input table-input-wide table-detail-textarea"
+                    rows={Math.max(2, Math.ceil(String(gasto.detalle || "").length / 34))}
                     value={gasto.detalle}
                     disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}

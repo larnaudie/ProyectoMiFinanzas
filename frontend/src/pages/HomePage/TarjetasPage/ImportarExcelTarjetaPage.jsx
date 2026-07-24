@@ -150,7 +150,7 @@ function ImportarExcelTarjetaPage() {
                     <tr key={movimiento.sourceHash}>
                       <td><input type="checkbox" checked={movimiento.seleccionado} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "seleccionado", e.target.checked)} /></td>
                       <td><input className="table-input" type="date" value={movimiento.fecha} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "fecha", e.target.value)} /></td>
-                      <td><input className="table-input table-input-wide" value={movimiento.detalle} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "detalle", e.target.value)} /></td>
+                      <td><textarea className="table-input table-input-wide table-detail-textarea" rows={1} value={movimiento.detalle} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "detalle", e.target.value)} /></td>
                       <td>
                         <select className="table-select" value={movimiento.tipo} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "tipo", e.target.value)}>
                           <option value="compra">Compra</option><option value="cuota">Cuota</option>

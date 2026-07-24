@@ -8,8 +8,21 @@ const cuentaSchema = new mongoose.Schema({
     },
     nombreCuenta: {
         type: String,
-        required: true,
-        unique: true
+        required: true
+    },
+    bancoId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Banco",
+        default: null
+    },
+    tipoCuenta: {
+        type: String,
+        enum: ["debito", "credito"],
+        default: "debito"
+    },
+    moneda: {
+        type: String,
+        default: "UYU"
     },
     orden: {
         type: Number,
@@ -36,5 +49,7 @@ const cuentaSchema = new mongoose.Schema({
         ref: "Prestamo"
     }],
 });
+
+cuentaSchema.index({ usuarioId: 1, nombreCuenta: 1 }, { unique: true });
 
 export default mongoose.model("Cuenta", cuentaSchema, "cuentas");
