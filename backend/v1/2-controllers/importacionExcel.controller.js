@@ -1,6 +1,8 @@
 ﻿import {
   importarExcelService,
   importarExcelPersonalService,
+  crearGastoDesdeExcelPersonalService,
+  obtenerHojasExcelPersonalService,
   importarExcelTarjetaService,
   confirmarImportacionTarjetaCuentaService,
   obtenerResumenesCuentaCreditoService,
@@ -43,12 +45,39 @@ export const importarExcelPersonal = async (req, res, next) => {
       usuarioId,
       cuentaId,
       file,
+      nombreHoja: req.body.nombreHoja,
+    });
+
+    res.status(200).json({
+      message: "Excel personal previsualizado correctamente",
+      ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const crearGastoDesdeExcelPersonal = async (req, res, next) => {
+  try {
+    const gasto = await crearGastoDesdeExcelPersonalService({
+      usuarioId: req.user.id,
+      cuentaId: req.params.cuentaId,
+      data: req.body,
     });
 
     res.status(201).json({
-      message: "Excel personal importado correctamente",
-      ...resultado,
+      message: "Gasto creado desde la previsualizacion personal",
+      gasto,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const obtenerHojasExcelPersonal = async (req, res, next) => {
+  try {
+    const hojas = obtenerHojasExcelPersonalService({ file: req.file });
+    res.status(200).json({ hojas });
   } catch (error) {
     next(error);
   }

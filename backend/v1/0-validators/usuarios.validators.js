@@ -19,5 +19,15 @@ export const agregarUsuarioSchema = Joi.object({
       "string.pattern.base":
         "La contraseña debe contener al menos una letra y un número",
       "any.required": "La contraseña es obligatoria",
-    }),
+  }),
+});
+
+export const actualizarPerfilSchema = Joi.object({
+  username: Joi.string().trim().min(3).max(30).required().messages({
+    "string.base": "Ingresá un nombre de usuario válido",
+    "string.empty": "Ingresá un nombre de usuario válido",
+    "string.min": "El nombre debe tener al menos {#limit} caracteres",
+    "string.max": "El nombre no puede tener más de {#limit} caracteres",
+    "any.required": "Ingresá un nombre de usuario válido",
+  }),
 });

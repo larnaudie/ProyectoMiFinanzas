@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { MONEDAS_SOPORTADAS } from "../utils/monedas.js";
 
 const movimientoImportadoSchema = new mongoose.Schema({
   usuarioId: {
@@ -38,6 +39,7 @@ const movimientoImportadoSchema = new mongoose.Schema({
   },
   moneda: {
     type: String,
+    enum: MONEDAS_SOPORTADAS,
     default: "UYU",
   },
   hashBanco: {

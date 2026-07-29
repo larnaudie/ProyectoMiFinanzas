@@ -1,7 +1,9 @@
 import {
     obtenerUsuarioPorIdService,
     obtenerUsuariosService,
-    actualizarUsuarioService
+    actualizarUsuarioService,
+    actualizarPerfilService,
+    obtenerPerfilService,
 } from "../3-services/usuario.service.js";
 
 export const obtenerUsuarios = async (req, res) => {
@@ -20,3 +22,24 @@ export const actualizarUsuario = async (req, res) => {
     const usuarioActualizado = await actualizarUsuarioService(id, req.body);
     res.status(200).json({ message: `Usuario ${usuarioActualizado.id} actualizado exitosamente`, ...usuarioActualizado });
 }
+
+export const obtenerPerfil = async (req, res, next) => {
+    try {
+        const usuario = await obtenerPerfilService(req.user.id);
+        res.status(200).json({ usuario });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const actualizarPerfil = async (req, res, next) => {
+    try {
+        const usuario = await actualizarPerfilService(req.user.id, req.body.username);
+        res.status(200).json({
+            message: "Nombre de usuario actualizado",
+            usuario,
+        });
+    } catch (error) {
+        next(error);
+    }
+};

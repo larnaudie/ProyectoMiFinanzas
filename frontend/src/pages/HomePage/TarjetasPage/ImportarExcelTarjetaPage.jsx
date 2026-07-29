@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import SortableTableHeader, {
+  useSortableRows,
+} from "../../../components/SortableTableHeader.jsx";
 
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
 const mensajeError = (error) =>
@@ -11,6 +14,12 @@ const prepararMovimiento = (movimiento) => ({
   fecha: fechaInput(movimiento.fecha),
   seleccionado: true,
 });
+
+const columnasOrdenablesMovimientos = {
+  fecha: { type: "date" },
+  detalle: { type: "text" },
+  montoBancario: { type: "number" },
+};
 
 function ImportarExcelTarjetaPage() {
   const { cuentaId, tarjetaId } = useParams();
@@ -24,6 +33,10 @@ function ImportarExcelTarjetaPage() {
   const seleccionados = useMemo(
     () => movimientos.filter((movimiento) => movimiento.seleccionado),
     [movimientos],
+  );
+  const ordenTabla = useSortableRows(
+    movimientos,
+    columnasOrdenablesMovimientos,
   );
 
   const previsualizar = async (event) => {
@@ -141,12 +154,30 @@ function ImportarExcelTarjetaPage() {
                 <thead>
                   <tr>
                     <th><span className="sr-only">Seleccionar</span></th>
-                    <th>Fecha</th><th>Detalle</th><th>Tipo</th><th>Moneda</th>
-                    <th>Monto</th><th>% real</th><th>Incluir real</th>
+                    <SortableTableHeader
+                      label="Fecha"
+                      sortKey="fecha"
+                      sortConfig={ordenTabla.sortConfig}
+                      onSort={ordenTabla.requestSort}
+                    />
+                    <SortableTableHeader
+                      label="Detalle"
+                      sortKey="detalle"
+                      sortConfig={ordenTabla.sortConfig}
+                      onSort={ordenTabla.requestSort}
+                    />
+                    <th>Tipo</th><th>Moneda</th>
+                    <SortableTableHeader
+                      label="Monto"
+                      sortKey="montoBancario"
+                      sortConfig={ordenTabla.sortConfig}
+                      onSort={ordenTabla.requestSort}
+                    />
+                    <th>% real</th><th>Incluir real</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {movimientos.map((movimiento) => (
+                  {ordenTabla.sortedRows.map((movimiento) => (
                     <tr key={movimiento.sourceHash}>
                       <td><input type="checkbox" checked={movimiento.seleccionado} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "seleccionado", e.target.checked)} /></td>
                       <td><input className="table-input" type="date" value={movimiento.fecha} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "fecha", e.target.value)} /></td>

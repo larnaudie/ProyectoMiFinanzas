@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { logout } from "../../../features/slices/authSlice.js";
 
@@ -9,8 +9,15 @@ const Navbar = ({
   menuFijado,
   alEntrarMenu,
   alSalirMenu,
+  cuentaActual,
+  cuentaId,
+  cargandoCuentaActual,
 }) => {
   const dispatch = useDispatch();
+  const {
+    usuario: nombreUsuarioEstado,
+    rol: rolUsuarioEstado,
+  } = useSelector((state) => state.auth);
   const navigate = useNavigate();
   const menuUsuarioRef = useRef(null);
   const disparadorRef = useRef(null);
@@ -24,7 +31,8 @@ const Navbar = ({
     usuario = null;
   }
 
-  const nombreUsuario = usuario?.username || "Usuario";
+  const nombreUsuario = nombreUsuarioEstado || usuario?.username || "Usuario";
+  const rolUsuario = rolUsuarioEstado || usuario?.rol;
   const inicialUsuario = nombreUsuario.trim().charAt(0).toUpperCase() || "U";
 
   useEffect(() => {
@@ -86,6 +94,29 @@ const Navbar = ({
         </div>
       </div>
 
+      <div className="navbar-account-slot">
+        {cuentaId && (
+          <Link
+            className="navbar-account-context"
+            to={`/cuentas/${cuentaId}/gastos`}
+            title={cuentaActual?.nombreCuenta || "Cuenta actual"}
+          >
+            <span className="navbar-account-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8M8 16h5" />
+              </svg>
+            </span>
+            <span className="navbar-account-copy">
+              <small>Cuenta actual</small>
+              <strong>
+                {cuentaActual?.nombreCuenta
+                  || (cargandoCuentaActual ? "Cargando cuenta..." : "Cuenta no encontrada")}
+              </strong>
+            </span>
+          </Link>
+        )}
+      </div>
+
       <div className="user-menu" ref={menuUsuarioRef}>
         <button
           ref={disparadorRef}
@@ -111,7 +142,7 @@ const Navbar = ({
               <span className="avatar user-dropdown-avatar" aria-hidden="true">{inicialUsuario}</span>
               <span>
                 <strong>{nombreUsuario}</strong>
-                <small>{usuario?.rol === "admin" ? "Administrador" : "Usuario"}</small>
+                <small>{rolUsuario === "admin" ? "Administrador" : "Usuario"}</small>
               </span>
             </div>
             <div className="user-dropdown-divider" />

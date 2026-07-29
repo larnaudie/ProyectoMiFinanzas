@@ -23,7 +23,7 @@ function LoginPage() {
       const usuario = {
         id: response.data.id,
         rol: response.data.rol,
-        username: form.username,
+        username: response.data.username || form.username.trim(),
       };
 
       dispatch(

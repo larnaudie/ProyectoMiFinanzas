@@ -1,5 +1,7 @@
 import Joi from "joi";
 
+import { MONEDAS_SOPORTADAS } from "../utils/monedas.js";
+
 const resumenTarjetaSchema = Joi.object({
   tarjeta: Joi.string().allow("", null),
   cierre: Joi.date().allow("", null),
@@ -24,9 +26,10 @@ export const gastosSchema = Joi.object({
   }),
   fecha: Joi.date().allow("", null),
   montoBancario: Joi.number().allow("", null),
+  montoReal: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).default(0).allow("", null),
   incluirMontoReal: Joi.boolean().default(false),
-  moneda: Joi.string().valid("UYU", "USD").default("UYU"),
+  moneda: Joi.string().valid(...MONEDAS_SOPORTADAS),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().allow("", null),
   cambiarEstado: Joi.boolean(),
@@ -42,9 +45,10 @@ export const actualizarGastoSchema = Joi.object({
   cuentaId: Joi.string(),
   fecha: Joi.date().allow("", null),
   montoBancario: Joi.number().allow("", null),
+  montoReal: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).allow("", null),
   incluirMontoReal: Joi.boolean(),
-  moneda: Joi.string().valid("UYU", "USD"),
+  moneda: Joi.string().valid(...MONEDAS_SOPORTADAS),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().allow("", null),
   cambiarEstado: Joi.boolean(),
@@ -63,3 +67,49 @@ export const crearGastoVinculadoSchema = Joi.object({
 });
 
 export const crearGastoVinculadoPagoSchema = crearGastoVinculadoSchema;
+
+export const crearGastoExcelPersonalSchema = Joi.object({
+  sourceHash: Joi.string().hex().length(64).required(),
+  detalle: Joi.string().trim().min(3).max(500).required(),
+  fecha: Joi.date().required(),
+  montoBancario: Joi.number().allow("", null),
+  montoReal: Joi.number().allow("", null),
+  porcentaje: Joi.number().min(0).max(100).allow("", null),
+  incluirMontoReal: Joi.boolean().required(),
+  categoriaId: Joi.string().allow("", null),
+  subcategoriaId: Joi.string().required(),
+}).custom((value, helpers) => {
+  const montoBancario = Number(value.montoBancario);
+  const montoReal = Number(value.montoReal);
+  const tieneMontoBancario =
+    value.montoBancario !== "" &&
+    value.montoBancario !== null &&
+    value.montoBancario !== undefined &&
+    Number.isFinite(montoBancario) &&
+    montoBancario !== 0;
+  const tieneMontoReal =
+    value.montoReal !== "" &&
+    value.montoReal !== null &&
+    value.montoReal !== undefined &&
+    Number.isFinite(montoReal) &&
+    montoReal !== 0;
+
+  if (!tieneMontoBancario && !tieneMontoReal) {
+    return helpers.message({
+      custom: "El gasto debe tener monto bancario o monto real distinto de cero",
+    });
+  }
+
+  if (
+    tieneMontoBancario &&
+    (value.porcentaje === "" ||
+      value.porcentaje === null ||
+      value.porcentaje === undefined)
+  ) {
+    return helpers.message({
+      custom: "El porcentaje es obligatorio cuando hay monto bancario",
+    });
+  }
+
+  return value;
+});

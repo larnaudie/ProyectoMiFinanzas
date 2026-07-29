@@ -1,9 +1,11 @@
 import Joi from "joi";
+import { MONEDAS_SOPORTADAS } from "../utils/monedas.js";
 
 const idSchema = Joi.string().trim().hex().length(24);
 const montoPorMonedaSchema = Joi.object({
   UYU: Joi.number().allow(null).default(null),
   USD: Joi.number().allow(null).default(null),
+  UI: Joi.number().allow(null).default(null),
 });
 
 export const crearTarjetaSchema = Joi.object({
@@ -27,11 +29,31 @@ const resumenSchema = Joi.object({
   periodo: Joi.string().trim().max(80).allow("").default(""),
   cierre: Joi.date().required(),
   vencimiento: Joi.date().allow(null, "").default(null),
-  limiteCredito: montoPorMonedaSchema.default({ UYU: null, USD: null }),
-  pagoContado: montoPorMonedaSchema.default({ UYU: null, USD: null }),
-  pagoMinimo: montoPorMonedaSchema.default({ UYU: null, USD: null }),
-  saldoAnterior: montoPorMonedaSchema.default({ UYU: null, USD: null }),
-  saldoFinal: montoPorMonedaSchema.default({ UYU: null, USD: null }),
+  limiteCredito: montoPorMonedaSchema.default({
+    UYU: null,
+    USD: null,
+    UI: null,
+  }),
+  pagoContado: montoPorMonedaSchema.default({
+    UYU: null,
+    USD: null,
+    UI: null,
+  }),
+  pagoMinimo: montoPorMonedaSchema.default({
+    UYU: null,
+    USD: null,
+    UI: null,
+  }),
+  saldoAnterior: montoPorMonedaSchema.default({
+    UYU: null,
+    USD: null,
+    UI: null,
+  }),
+  saldoFinal: montoPorMonedaSchema.default({
+    UYU: null,
+    USD: null,
+    UI: null,
+  }),
 });
 
 const movimientoSchema = Joi.object({
@@ -44,7 +66,7 @@ const movimientoSchema = Joi.object({
   importeDolares: Joi.number().default(0),
   montoEstadoCuenta: Joi.number().invalid(0).required(),
   montoBancario: Joi.number().invalid(0).required(),
-  moneda: Joi.string().valid("UYU", "USD").required(),
+  moneda: Joi.string().valid(...MONEDAS_SOPORTADAS).required(),
   tipo: Joi.string().valid("compra", "pago", "cuota", "reintegro").required(),
   porcentaje: Joi.number().min(0).max(100).default(100),
   incluirMontoReal: Joi.boolean().default(true),
@@ -55,4 +77,3 @@ export const importarResumenTarjetaSchema = Joi.object({
   movimientos: Joi.array().items(movimientoSchema).min(1).max(1000).required(),
   archivoNombre: Joi.string().trim().max(255).allow("").default(""),
 });
-

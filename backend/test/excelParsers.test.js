@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import XLSX from "xlsx";
 import {
+  listarHojasExcel,
   obtenerTipoMovimientoTarjeta,
   parsearExcelBancario,
   parsearExcelPersonal,
@@ -12,6 +13,14 @@ import {
 const crearBuffer = (filas) => {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(filas), "Datos");
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+};
+
+const crearBufferConHojas = (hojas) => {
+  const workbook = XLSX.utils.book_new();
+  Object.entries(hojas).forEach(([nombre, filas]) => {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(filas), nombre);
+  });
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 };
 
@@ -37,6 +46,38 @@ test("parsea el formato bancario por encabezados y conserva el monto", () => {
   const { movimientos } = parsearExcelBancario(buffer);
   assert.equal(movimientos.length, 1);
   assert.equal(movimientos[0].montoBancario, -8225.14);
+});
+
+test("conserva movimientos bancarios válidos aunque no tengan referencia", () => {
+  const buffer = crearBuffer([
+    ["Moneda"],
+    ["UYU"],
+    ["Fecha", "Referencia", "Tipo Movimiento", "Descripción", "Débito", "Crédito"],
+    [
+      "20/02/2026",
+      "",
+      "EXTORNO COMPRA CON VISA DEBITO",
+      "",
+      "",
+      "232,11",
+    ],
+    [
+      "21/07/2026",
+      "",
+      "COMPRA CON TARJETA DEBITO",
+      "",
+      "-9.830,88",
+      "",
+    ],
+  ]);
+
+  const { movimientos } = parsearExcelBancario(buffer);
+
+  assert.equal(movimientos.length, 2);
+  assert.equal(movimientos[0].referenciaBanco, "");
+  assert.equal(movimientos[0].montoBancario, 232.11);
+  assert.equal(movimientos[1].referenciaBanco, "");
+  assert.equal(movimientos[1].montoBancario, -9830.88);
 });
 
 test("parsea compras y pagos de tarjeta con signos normalizados", () => {
@@ -80,11 +121,50 @@ test("parsea una tabla personal plana sin encabezados y admite fechas serializad
 
   const { movimientos } = parsearExcelPersonal(buffer);
 
-  assert.equal(movimientos.length, 2);
+  assert.equal(movimientos.length, 3);
   assert.equal(movimientos[0].fecha.toISOString().slice(0, 10), "2026-01-30");
   assert.equal(movimientos[0].montoBancario, -1028);
   assert.equal(movimientos[0].porcentaje, 100);
   assert.equal(movimientos[1].fecha.toISOString().slice(0, 10), "2026-01-02");
   assert.equal(movimientos[1].nombreSubcategoria, "Supermercado");
   assert.equal(movimientos[1].porcentaje, 70);
+  assert.equal(movimientos[2].montoBancario, 0);
+  assert.equal(movimientos[2].montoReal, -399.5);
+  assert.equal(movimientos[2].incluirMontoReal, true);
+});
+
+test("lista las hojas y permite elegir cuál importar del Excel personal", () => {
+  const encabezados = [
+    "Fecha",
+    "Detalle",
+    "Flujo Bancario",
+    "% Economia Real",
+    "Categoria",
+  ];
+  const buffer = crearBufferConHojas({
+    Enero: [
+      encabezados,
+      ["10/01/2026", "Compra enero", -100, -100, "Alimentos"],
+    ],
+    Febrero: [
+      encabezados,
+      ["10/02/2026", "Compra febrero", -200, -100, "Salidas"],
+    ],
+    Marzo: [
+      encabezados,
+      ["10/03/2026", "Compra marzo", -300, -300, "Transporte"],
+    ],
+  });
+
+  assert.deepEqual(listarHojasExcel(buffer), ["Enero", "Febrero", "Marzo"]);
+
+  const resultado = parsearExcelPersonal(buffer, "Febrero");
+  assert.equal(resultado.nombreHoja, "Febrero");
+  assert.equal(resultado.movimientos.length, 1);
+  assert.equal(resultado.movimientos[0].detalle, "Compra febrero");
+  assert.equal(resultado.movimientos[0].porcentaje, 50);
+  assert.throws(
+    () => parsearExcelPersonal(buffer, "Abril"),
+    /La hoja seleccionada no existe/,
+  );
 });

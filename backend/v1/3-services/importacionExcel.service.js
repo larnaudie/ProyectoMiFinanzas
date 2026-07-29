@@ -5,15 +5,29 @@ import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 import { crearGastoService } from "./gasto.service.js";
 import {
+  listarHojasExcel,
   parsearExcelBancario,
   parsearExcelPersonal,
   parsearExcelTarjeta,
 } from "../utils/excelParsers.js";
 import { calcularTotalesResumen } from "../utils/resumenTarjetaTotales.js";
+import {
+  normalizarMoneda,
+  obtenerMonedaMovimiento,
+  obtenerMonedasCuenta,
+} from "../utils/monedas.js";
 
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
+  }
+
+  const cuenta = await Cuenta.findOne({ _id: cuentaId, usuarioId })
+    .select("_id moneda tipoCuenta monedas");
+  if (!cuenta) {
+    const error = new Error("Cuenta no encontrada");
+    error.status = 404;
+    throw error;
   }
 
   const { movimientos } = parsearExcelBancario(file.buffer);
@@ -68,7 +82,7 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       detalleOriginal: movimiento.detalleOriginal,
       detalleNormalizado,
       montoBancario: movimiento.montoBancario,
-      moneda: movimiento.moneda,
+      moneda: obtenerMonedaMovimiento(cuenta, movimiento.moneda),
       hashBanco,
       archivoNombre: file.originalname,
     });
@@ -105,14 +119,34 @@ const obtenerCuentaCredito = async (usuarioId, cuentaId) => {
   return cuenta;
 };
 
+const validarMonedasCuentaCredito = (cuenta, movimientos) => {
+  const monedasHabilitadas = obtenerMonedasCuenta(cuenta);
+  const monedasNoHabilitadas = [
+    ...new Set(
+      movimientos
+        .map((movimiento) => normalizarMoneda(movimiento.moneda))
+        .filter((moneda) => !monedasHabilitadas.includes(moneda)),
+    ),
+  ];
+
+  if (monedasNoHabilitadas.length > 0) {
+    const error = new Error(
+      `La tarjeta no tiene habilitada la moneda ${monedasNoHabilitadas.join(", ")}`,
+    );
+    error.status = 409;
+    throw error;
+  }
+};
+
 export const importarExcelTarjetaService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
   }
 
-  await obtenerCuentaCredito(usuarioId, cuentaId);
+  const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);
 
   const { resumen, movimientos } = parsearExcelTarjeta(file.buffer);
+  validarMonedasCuentaCredito(cuenta, movimientos);
 
   return {
     resumen,
@@ -130,7 +164,8 @@ export const confirmarImportacionTarjetaCuentaService = async ({
   movimientos,
   archivoNombre,
 }) => {
-  await obtenerCuentaCredito(usuarioId, cuentaId);
+  const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);
+  validarMonedasCuentaCredito(cuenta, movimientos);
 
   const cierre = new Date(resumen.cierre).toISOString().slice(0, 10);
   const importacionKey = [
@@ -242,13 +277,17 @@ const obtenerGastosDeResumenes = async (usuarioId, resumenes) => {
   }).lean();
 };
 
-const presentarResumenCuentaCredito = (resumen, gastos) => ({
+const presentarResumenCuentaCredito = (resumen, gastos, cuenta) => ({
   ...resumen.toObject(),
-  totales: calcularTotalesResumen(resumen, gastos),
+  totales: calcularTotalesResumen(
+    resumen,
+    gastos,
+    obtenerMonedasCuenta(cuenta),
+  ),
 });
 
 export const obtenerResumenesCuentaCreditoService = async ({ usuarioId, cuentaId }) => {
-  await obtenerCuentaCredito(usuarioId, cuentaId);
+  const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);
 
   const resumenes = await ResumenTarjeta.find({
     usuarioId,
@@ -260,6 +299,7 @@ export const obtenerResumenesCuentaCreditoService = async ({ usuarioId, cuentaId
   return resumenes.map((resumen) => presentarResumenCuentaCredito(
     resumen,
     gastos.filter((gasto) => String(gasto.resumenTarjetaId) === String(resumen._id)),
+    cuenta,
   ));
 };
 
@@ -268,7 +308,7 @@ export const obtenerResumenCuentaCreditoService = async ({
   cuentaId,
   resumenId,
 }) => {
-  await obtenerCuentaCredito(usuarioId, cuentaId);
+  const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);
 
   const resumen = await ResumenTarjeta.findOne({
     _id: resumenId,
@@ -288,69 +328,146 @@ export const obtenerResumenCuentaCreditoService = async ({
     resumenTarjetaId: resumen._id,
   }).lean();
 
-  return presentarResumenCuentaCredito(resumen, gastos);
+  return presentarResumenCuentaCredito(resumen, gastos, cuenta);
 };
 
-export const importarExcelPersonalService = async ({ usuarioId, cuentaId, file }) => {
+export const obtenerHojasExcelPersonalService = ({ file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
   }
 
-  const { movimientos } = parsearExcelPersonal(file.buffer);
-  const gastosProcesados = [];
+  return listarHojasExcel(file.buffer);
+};
 
-  for (const movimiento of movimientos) {
+export const importarExcelPersonalService = async ({
+  usuarioId,
+  cuentaId,
+  file,
+  nombreHoja,
+}) => {
+  if (!file) {
+    throw new Error("No se recibio ningun archivo Excel");
+  }
+
+  const cuenta = await Cuenta.findOne({ _id: cuentaId, usuarioId }).select("_id");
+  if (!cuenta) {
+    const error = new Error("Cuenta no encontrada");
+    error.status = 404;
+    throw error;
+  }
+
+  const {
+    movimientos,
+    nombreHoja: nombreHojaImportada,
+  } = parsearExcelPersonal(file.buffer, nombreHoja);
+
+  const hashesImportacion = movimientos.map(
+    (movimiento) => `personal|${cuentaId}|${movimiento.sourceHash}`,
+  );
+  const [gastosExistentes, subcategorias] = await Promise.all([
+    Gasto.find({
+      usuarioId,
+      cuentaId,
+      hashImportacion: { $in: hashesImportacion },
+    }).select("_id estado hashImportacion"),
+    Subcategoria.find({ usuarioId }).select("_id nombreSubcategoria categoria"),
+  ]);
+  const gastoPorHash = new Map(
+    gastosExistentes.map((gasto) => [gasto.hashImportacion, gasto]),
+  );
+  const subcategoriaPorNombre = new Map(
+    subcategorias.map((subcategoria) => [
+      normalizarTexto(subcategoria.nombreSubcategoria),
+      subcategoria,
+    ]),
+  );
+
+  const movimientosPrevisualizados = movimientos.map((movimiento) => {
     const hashImportacion = `personal|${cuentaId}|${movimiento.sourceHash}`;
-    const gastoExistente = await Gasto.findOne({ usuarioId, hashImportacion });
-    if (gastoExistente) {
-      gastosProcesados.push({
-        gasto: gastoExistente,
-        duplicado: true,
-        subcategoriaEncontrada: Boolean(gastoExistente.subcategoriaId),
-        nombreSubcategoria: movimiento.nombreSubcategoria,
-      });
-      continue;
-    }
+    const gastoExistente = gastoPorHash.get(hashImportacion);
+    const subcategoria = subcategoriaPorNombre.get(
+      normalizarTexto(movimiento.nombreSubcategoria),
+    );
 
-    const subcategoria = movimiento.nombreSubcategoria
-      ? await Subcategoria.findOne({
-          usuarioId,
-          nombreSubcategoria: new RegExp(`^${escaparRegex(movimiento.nombreSubcategoria)}$`, "i"),
-        })
-      : null;
+    return {
+      _id: movimiento.sourceHash,
+      sourceHash: movimiento.sourceHash,
+      fecha: movimiento.fecha,
+      detalle: movimiento.detalle,
+      montoBancario: movimiento.montoBancario,
+      montoReal: movimiento.montoReal,
+      porcentaje: movimiento.porcentaje,
+      incluirMontoReal: movimiento.incluirMontoReal,
+      categoriaId: subcategoria?.categoria || null,
+      subcategoriaId: subcategoria?._id || null,
+      nombreSubcategoria: movimiento.nombreSubcategoria,
+      subcategoriaEncontrada: Boolean(subcategoria),
+      duplicado: Boolean(gastoExistente),
+      gastoId: gastoExistente?._id || null,
+      estado: gastoExistente?.estado || "previsualizado",
+    };
+  });
 
-    const gasto = await crearGastoService(
+  return {
+    nombreHoja: nombreHojaImportada,
+    totalLeidos: movimientos.length,
+    totalPrevisualizados: movimientosPrevisualizados.length,
+    totalDuplicados: gastosExistentes.length,
+    movimientos: movimientosPrevisualizados,
+  };
+};
+
+export const crearGastoDesdeExcelPersonalService = async ({
+  usuarioId,
+  cuentaId,
+  data,
+}) => {
+  const cuenta = await Cuenta.findOne({ _id: cuentaId, usuarioId })
+    .select("_id moneda");
+  if (!cuenta) {
+    const error = new Error("Cuenta no encontrada");
+    error.status = 404;
+    throw error;
+  }
+
+  const hashImportacion = `personal|${cuentaId}|${data.sourceHash}`;
+  const gastoExistente = await Gasto.findOne({
+    usuarioId,
+    cuentaId,
+    hashImportacion,
+  }).select("_id");
+
+  if (gastoExistente) {
+    const error = new Error("Este gasto ya existe");
+    error.status = 409;
+    throw error;
+  }
+
+  const { sourceHash, ...gastoData } = data;
+
+  try {
+    return await crearGastoService(
       {
-        detalle: movimiento.detalle,
+        ...gastoData,
         cuentaId,
-        fecha: movimiento.fecha,
-        montoBancario: movimiento.montoBancario,
-        porcentaje: movimiento.porcentaje,
-        incluirMontoReal: true,
-        subcategoriaId: subcategoria?._id,
-        cambiarEstado: false,
+        moneda: normalizarMoneda(cuenta.moneda),
+        cambiarEstado: true,
         origen: {
           tipo: "excel",
           referenciaId: null,
         },
         hashImportacion,
       },
-      usuarioId
+      usuarioId,
     );
-
-    gastosProcesados.push({
-      gasto,
-      duplicado: false,
-      subcategoriaEncontrada: Boolean(subcategoria),
-      nombreSubcategoria: movimiento.nombreSubcategoria,
-    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const conflicto = new Error("Este gasto ya existe");
+      conflicto.status = 409;
+      throw conflicto;
+    }
+    throw error;
   }
-
-  return {
-    totalLeidos: movimientos.length,
-    totalProcesados: gastosProcesados.length,
-    gastos: gastosProcesados,
-  };
 };
 const buscarPosiblesDuplicados = async ({
   usuarioId,
@@ -400,10 +517,6 @@ const crearHashBanco = ({
     montoBancario,
     detalleNormalizado,
   ].join("|");
-};
-
-const escaparRegex = (texto) => {
-  return String(texto).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
 const liberarMovimientoSiGastoFueEliminado = async (movimiento) => {
@@ -582,6 +695,7 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
         cuentaId: movimiento.cuentaId,
         fecha: data.fecha || movimiento.fechaBanco,
         montoBancario: movimiento.montoBancario,
+        montoReal: data.montoReal,
         porcentaje: data.porcentaje,
         incluirMontoReal: data.incluirMontoReal,
         categoriaId: data.categoriaId,

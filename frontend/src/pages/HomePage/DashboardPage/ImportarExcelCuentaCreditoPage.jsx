@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import SortableTableHeader, {
+  useSortableRows,
+} from "../../../components/SortableTableHeader.jsx";
+import { obtenerMonedasCuenta } from "../../../utils/monedas.js";
 
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
 const mensajeError = (error) =>
@@ -28,6 +32,12 @@ const normalizarTexto = (texto) => String(texto || "")
   .normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "");
 
+const columnasOrdenablesTarjeta = {
+  fecha: { type: "date" },
+  detalle: { type: "text" },
+  montoBancario: { type: "number" },
+};
+
 function ImportarExcelCuentaCreditoPage({ cuenta }) {
   const { cuentaId } = useParams();
   const navigate = useNavigate();
@@ -39,6 +49,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const [bulk, setBulk] = useState(bulkInicial);
   const [mensajeBulk, setMensajeBulk] = useState("");
+  const monedasHabilitadas = obtenerMonedasCuenta(cuenta);
 
   const seleccionados = useMemo(
     () => movimientos.filter((movimiento) => movimiento.seleccionado),
@@ -63,6 +74,10 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
 
     return true;
   }), [filtros, movimientos]);
+  const ordenTabla = useSortableRows(
+    movimientosFiltrados,
+    columnasOrdenablesTarjeta,
+  );
 
   const todosVisiblesSeleccionados = movimientosFiltrados.length > 0
     && movimientosFiltrados.every((movimiento) => movimiento.seleccionado);
@@ -298,8 +313,11 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                 Moneda
                 <select value={filtros.moneda} onChange={(event) => cambiarFiltro("moneda", event.target.value)}>
                   <option value="">Todas</option>
-                  <option value="UYU">UYU</option>
-                  <option value="USD">USD</option>
+                  {monedasHabilitadas.map((moneda) => (
+                    <option key={moneda} value={moneda}>
+                      {moneda}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -384,12 +402,31 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                       checked={todosVisiblesSeleccionados}
                       onChange={(event) => cambiarSeleccionVisibles(event.target.checked)}
                     />
-                  </th><th>Fecha</th><th>Detalle</th>
-                  <th>Tipo</th><th>Moneda</th><th>Monto bancario</th><th>% real</th><th>Incluir real</th>
+                  </th>
+                  <SortableTableHeader
+                    label="Fecha"
+                    sortKey="fecha"
+                    sortConfig={ordenTabla.sortConfig}
+                    onSort={ordenTabla.requestSort}
+                  />
+                  <SortableTableHeader
+                    label="Detalle"
+                    sortKey="detalle"
+                    sortConfig={ordenTabla.sortConfig}
+                    onSort={ordenTabla.requestSort}
+                  />
+                  <th>Tipo</th><th>Moneda</th>
+                  <SortableTableHeader
+                    label="Monto bancario"
+                    sortKey="montoBancario"
+                    sortConfig={ordenTabla.sortConfig}
+                    onSort={ordenTabla.requestSort}
+                  />
+                  <th>% real</th><th>Incluir real</th>
                 </tr>
               </thead>
               <tbody>
-                {movimientosFiltrados.map((movimiento) => (
+                {ordenTabla.sortedRows.map((movimiento) => (
                   <tr key={movimiento.sourceHash}>
                     <td><input type="checkbox" checked={movimiento.seleccionado} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "seleccionado", e.target.checked)} /></td>
                     <td><input className="table-input" type="date" value={movimiento.fecha} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "fecha", e.target.value)} /></td>

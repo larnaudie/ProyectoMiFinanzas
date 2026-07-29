@@ -1,4 +1,7 @@
-const MONEDAS = ["UYU", "USD"];
+import {
+  normalizarListaMonedas,
+  normalizarMoneda,
+} from "./monedas.js";
 
 const numeroFinito = (valor) => {
   const numero = Number(valor);
@@ -19,12 +22,27 @@ export const calcularImpactoDeuda = (gasto) => {
   return ["pago", "reintegro"].includes(gasto.tipoMovimiento) ? -monto : monto;
 };
 
-export const calcularTotalesResumen = (resumen, gastos = []) => {
+export const calcularTotalesResumen = (
+  resumen,
+  gastos = [],
+  monedasHabilitadas,
+) => {
   const totales = {};
+  const monedasBase = monedasHabilitadas === undefined
+    ? ["UYU", "USD"]
+    : monedasHabilitadas;
+  const monedas = normalizarListaMonedas([
+    ...monedasBase,
+    ...Object.keys(resumen?.limiteCredito || {}).filter(
+      (moneda) => resumen?.limiteCredito?.[moneda] !== null
+        && resumen?.limiteCredito?.[moneda] !== undefined,
+    ),
+    ...gastos.map((gasto) => gasto.moneda),
+  ], monedasBase);
 
-  MONEDAS.forEach((moneda) => {
+  monedas.forEach((moneda) => {
     const movimientos = gastos.filter(
-      (gasto) => (gasto.moneda === "USD" ? "USD" : "UYU") === moneda,
+      (gasto) => normalizarMoneda(gasto.moneda) === moneda,
     );
     const limiteInformado = resumen?.limiteCredito?.[moneda];
     const limite = limiteInformado === null || limiteInformado === undefined

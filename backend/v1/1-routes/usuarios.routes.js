@@ -1,15 +1,14 @@
 import express from "express";
 import {
-    obtenerUsuarios,
-    obtenerUsuarioPorId,
-    actualizarUsuario,
+    actualizarPerfil,
+    obtenerPerfil,
 } from "../2-controllers/usuarios.controller.js";
+import { actualizarPerfilSchema } from "../0-validators/usuarios.validators.js";
+import { validateBody } from "../middlewares/validateBody.middleware.js";
 
 const router = express.Router({ mergeParams: true });
 
-//Peticiones a /v1/usuarios
-router.get("/", obtenerUsuarios)
-router.get("/:id", obtenerUsuarioPorId)
-router.patch("/:id", actualizarUsuario)
+router.get("/me", obtenerPerfil);
+router.patch("/me", validateBody(actualizarPerfilSchema), actualizarPerfil);
 
 export default router;

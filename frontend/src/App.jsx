@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Provider } from "react-redux";
 import store from "./app/store.js";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -27,7 +27,10 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/home" element={<HomePage />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route
+                path="/dashboard"
+                element={<Navigate to="/home#dashboard-general" replace />}
+              />
               <Route path="/manage" element={<ManagePage />} />
               <Route path="/prestamos" element={<PrestamosPage />} />
               <Route path="/perfil" element={<ProfilePage />} />

@@ -3,6 +3,8 @@ import { uploadExcel } from "../middlewares/uploadExcel.middleware.js";
 import {
   importarExcel,
   importarExcelPersonal,
+  crearGastoDesdeExcelPersonal,
+  obtenerHojasExcelPersonal,
   importarExcelTarjeta,
   confirmarImportacionTarjetaCuenta,
   obtenerResumenesCuentaCredito,
@@ -13,6 +15,7 @@ import {
   crearGastoDesdeMovimientoImportado,
 } from "../2-controllers/importacionExcel.controller.js";
 import { importarResumenTarjetaSchema } from "../0-validators/tarjeta.validators.js";
+import { crearGastoExcelPersonalSchema } from "../0-validators/gasto.validators.js";
 import { validateBody } from "../middlewares/validateBody.middleware.js";
 
 const router = express.Router({ mergeParams: true });
@@ -43,9 +46,19 @@ router.post(
   confirmarImportacionTarjetaCuenta,
 );
 router.post(
+  "/cuentas/:cuentaId/excel-personal/hojas",
+  uploadExcel.single("excel"),
+  obtenerHojasExcelPersonal,
+);
+router.post(
   "/cuentas/:cuentaId/excel-personal",
   uploadExcel.single("excel"),
   importarExcelPersonal
+);
+router.post(
+  "/cuentas/:cuentaId/excel-personal/gastos",
+  validateBody(crearGastoExcelPersonalSchema),
+  crearGastoDesdeExcelPersonal,
 );
 router.get(
   "/cuentas/:cuentaId/movimientos",

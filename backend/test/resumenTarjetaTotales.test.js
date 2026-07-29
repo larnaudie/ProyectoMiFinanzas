@@ -91,3 +91,22 @@ test("separa el monto bancario creado del pendiente por moneda", () => {
   assert.equal(totales.USD.montoBancarioCreado, -50);
   assert.equal(totales.USD.montoBancarioPendiente, 0);
 });
+
+test("calcula resúmenes usando las monedas habilitadas de la tarjeta", () => {
+  const totales = calcularTotalesResumen(
+    { limiteCredito: { UI: 5000 } },
+    [
+      {
+        moneda: "UI",
+        montoOriginalTarjeta: 1250,
+        montoBancario: -1250,
+        estado: "creado",
+      },
+    ],
+    ["UI"],
+  );
+
+  assert.deepEqual(Object.keys(totales), ["UI"]);
+  assert.equal(totales.UI.deuda, 1250);
+  assert.equal(totales.UI.disponible, 3750);
+});

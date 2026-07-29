@@ -33,10 +33,6 @@ function Sidebar({ abierto, fijado, alEntrar, alSalir }) {
           <NavIcon nombre="home" />
           <span>Inicio</span>
         </NavLink>
-        <NavLink className={claseLink} to="/dashboard" title="Dashboard general" aria-label="Dashboard general">
-          <NavIcon nombre="dashboard" />
-          <span>Dashboard</span>
-        </NavLink>
         <NavLink className={claseLink} to="/manage" title="Administrar" aria-label="Administrar">
           <NavIcon nombre="manage" />
           <span>Administrar</span>

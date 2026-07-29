@@ -1,13 +1,66 @@
 import Cuenta from "../0.1-models/cuenta.model.js";
+import {
+    normalizarListaMonedas,
+    normalizarMoneda,
+    obtenerMonedasCuenta,
+} from "../utils/monedas.js";
+
+const prepararDatosCuenta = (data, cuentaActual = null) => {
+    const tipoCuenta = data.tipoCuenta || cuentaActual?.tipoCuenta || "debito";
+
+    if (tipoCuenta === "credito") {
+        const monedas = normalizarListaMonedas(
+            data.monedas ?? cuentaActual?.monedas,
+            ["UYU", "USD"],
+        );
+        const monedaSolicitada = normalizarMoneda(
+            data.moneda ?? cuentaActual?.moneda,
+        );
+
+        return {
+            ...data,
+            tipoCuenta,
+            monedas,
+            moneda: monedas.includes(monedaSolicitada)
+                ? monedaSolicitada
+                : monedas[0],
+        };
+    }
+
+    return {
+        ...data,
+        tipoCuenta,
+        moneda: normalizarMoneda(data.moneda ?? cuentaActual?.moneda),
+        monedas: [],
+    };
+};
+
+const presentarCuenta = (cuenta) => {
+    const datos = cuenta?.toObject?.() || cuenta;
+    if (!datos) return datos;
+
+    return {
+        ...datos,
+        monedas: obtenerMonedasCuenta(datos),
+    };
+};
 
 export const obtenerCuentasService = async (usuarioId) => {
     const cuentas = await Cuenta.find({ usuarioId }).sort({ orden: 1, _id: 1 });
-    return cuentas;
+    return cuentas.map(presentarCuenta);
 }
 
 export const actualizarCuentaService = async (usuarioId, id, data) => {
-    const cuentaActualizada = await Cuenta.findOneAndUpdate({ _id: id, usuarioId }, data, { returnDocument: "after" });
-    return cuentaActualizada;
+    const cuentaActual = await Cuenta.findOne({ _id: id, usuarioId });
+    if (!cuentaActual) return null;
+
+    const datosNormalizados = prepararDatosCuenta(data, cuentaActual);
+    const cuentaActualizada = await Cuenta.findOneAndUpdate(
+        { _id: id, usuarioId },
+        datosNormalizados,
+        { returnDocument: "after", runValidators: true },
+    );
+    return presentarCuenta(cuentaActualizada);
 }
 
 export const actualizarOrdenCuentasService = async (usuarioId, cuentas) => {
@@ -28,9 +81,14 @@ export const actualizarOrdenCuentasService = async (usuarioId, cuentas) => {
 export const crearCuentaService = async (usuarioId, data) => {
     const ultimaCuenta = await Cuenta.findOne({ usuarioId }).sort({ orden: -1 });
     const orden = ultimaCuenta ? (ultimaCuenta.orden || 0) + 1 : 0;
-    const nuevaCuenta = new Cuenta({ usuarioId: usuarioId, orden, ...data });
+    const datosNormalizados = prepararDatosCuenta(data);
+    const nuevaCuenta = new Cuenta({
+        usuarioId,
+        orden,
+        ...datosNormalizados,
+    });
     await nuevaCuenta.save();
-    return nuevaCuenta;
+    return presentarCuenta(nuevaCuenta);
 }
 
 export const eliminarCuentaService = async (usuarioId, id) => {

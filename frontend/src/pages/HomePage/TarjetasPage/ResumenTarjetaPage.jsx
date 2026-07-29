@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
+import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
+import SortableTableHeader, {
+  useSortableRows,
+} from "../../../components/SortableTableHeader.jsx";
 
 const obtenerId = (valor) => (typeof valor === "object" ? valor?._id || "" : valor || "");
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
@@ -8,6 +13,12 @@ const formatearMonto = (monto, moneda) =>
   new Intl.NumberFormat("es-UY", { style: "currency", currency: moneda }).format(Number(monto || 0));
 const mensajeError = (error) =>
   error.response?.data?.message || error.response?.data?.mensaje || "No se pudo completar la acción.";
+
+const columnasOrdenablesResumen = {
+  fecha: { type: "date" },
+  detalle: { type: "text" },
+  montoBancario: { type: "number" },
+};
 
 function ResumenTarjetaPage() {
   const { cuentaId, tarjetaId, resumenId } = useParams();
@@ -77,6 +88,11 @@ function ResumenTarjetaPage() {
       String(gasto.cuentaId?.nombreCuenta || "").toLowerCase().includes(termino),
     );
   }, [candidatos, busqueda]);
+  const ordenMovimientos = useSortableRows(gastos, columnasOrdenablesResumen);
+  const ordenCandidatos = useSortableRows(
+    candidatosFiltrados,
+    columnasOrdenablesResumen,
+  );
 
   const reemplazarGasto = (actualizado) => {
     setGastos((actuales) =>
@@ -171,13 +187,32 @@ function ResumenTarjetaPage() {
           <table>
             <thead>
               <tr>
-                <th><span className="sr-only">Seleccionar</span></th><th>Estado</th><th>Fecha</th>
-                <th>Detalle</th><th>Tipo</th><th>Monto</th><th>% real</th><th>Incluir</th>
-                <th>Categoría</th><th>Subcategoría</th><th>Pago vinculado</th><th>Detalle</th>
+                <th><span className="sr-only">Seleccionar</span></th><th>Estado</th>
+                <SortableTableHeader
+                  label="Fecha"
+                  sortKey="fecha"
+                  sortConfig={ordenMovimientos.sortConfig}
+                  onSort={ordenMovimientos.requestSort}
+                />
+                <SortableTableHeader
+                  label="Detalle"
+                  sortKey="detalle"
+                  sortConfig={ordenMovimientos.sortConfig}
+                  onSort={ordenMovimientos.requestSort}
+                />
+                <th>Tipo</th>
+                <SortableTableHeader
+                  label="Monto"
+                  sortKey="montoBancario"
+                  sortConfig={ordenMovimientos.sortConfig}
+                  onSort={ordenMovimientos.requestSort}
+                />
+                <th>% real</th><th>Incluir</th>
+                <th>Categoría</th><th>Subcategoría</th><th>Pago vinculado</th><th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {gastos.map((gasto) => {
+              {ordenMovimientos.sortedRows.map((gasto) => {
                 const categoriaId = obtenerId(gasto.categoriaId);
                 const subcategoriasDisponibles = subcategorias.filter(
                   (subcategoria) => !categoriaId || obtenerId(subcategoria.categoria) === categoriaId,
@@ -199,16 +234,30 @@ function ResumenTarjetaPage() {
                     <td><input className="table-input table-input-small" type="number" min="0" max="100" value={gasto.porcentaje ?? ""} onChange={(e) => guardarCampo(gasto, "porcentaje", Number(e.target.value))} /></td>
                     <td><input type="checkbox" checked={Boolean(gasto.incluirMontoReal)} onChange={(e) => guardarCampo(gasto, "incluirMontoReal", e.target.checked)} /></td>
                     <td>
-                      <select className="table-select" value={categoriaId} onChange={(e) => guardarCampo(gasto, "categoriaId", e.target.value)}>
-                        <option value="">Sin categoría</option>
-                        {categorias.map((categoria) => <option key={categoria._id} value={categoria._id}>{categoria.nombreCategoria}</option>)}
-                      </select>
+                      <SearchableCategorySelect
+                        categorias={categorias}
+                        value={categoriaId}
+                        placeholder="Sin categoría"
+                        ariaLabel={`Buscar categoría para ${gasto.detalle}`}
+                        onChange={(categoriaIdSeleccionada) =>
+                          guardarCampo(
+                            gasto,
+                            "categoriaId",
+                            categoriaIdSeleccionada,
+                          )
+                        }
+                      />
                     </td>
                     <td>
-                      <select className="table-select" value={obtenerId(gasto.subcategoriaId)} onChange={(e) => guardarCampo(gasto, "subcategoriaId", e.target.value)}>
-                        <option value="">Sin subcategoría</option>
-                        {subcategoriasDisponibles.map((subcategoria) => <option key={subcategoria._id} value={subcategoria._id}>{subcategoria.nombreSubcategoria}</option>)}
-                      </select>
+                      <SearchableSubcategorySelect
+                        subcategorias={subcategoriasDisponibles}
+                        value={obtenerId(gasto.subcategoriaId)}
+                        placeholder="Sin subcategoría"
+                        ariaLabel={`Buscar subcategoría para ${gasto.detalle}`}
+                        onChange={(subcategoriaId) =>
+                          guardarCampo(gasto, "subcategoriaId", subcategoriaId)
+                        }
+                      />
                     </td>
                     <td>
                       {gasto.tipoMovimiento === "pago" && (
@@ -240,9 +289,32 @@ function ResumenTarjetaPage() {
             </label>
             <div className="table-shell link-payment-table">
               <table>
-                <thead><tr><th></th><th>Cuenta</th><th>Fecha</th><th>Detalle</th><th>Monto</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Cuenta</th>
+                    <SortableTableHeader
+                      label="Fecha"
+                      sortKey="fecha"
+                      sortConfig={ordenCandidatos.sortConfig}
+                      onSort={ordenCandidatos.requestSort}
+                    />
+                    <SortableTableHeader
+                      label="Detalle"
+                      sortKey="detalle"
+                      sortConfig={ordenCandidatos.sortConfig}
+                      onSort={ordenCandidatos.requestSort}
+                    />
+                    <SortableTableHeader
+                      label="Monto"
+                      sortKey="montoBancario"
+                      sortConfig={ordenCandidatos.sortConfig}
+                      onSort={ordenCandidatos.requestSort}
+                    />
+                  </tr>
+                </thead>
                 <tbody>
-                  {candidatosFiltrados.map((gasto) => (
+                  {ordenCandidatos.sortedRows.map((gasto) => (
                     <tr key={gasto._id} className={referenciaId === gasto._id ? "selected-row" : ""} onClick={() => setReferenciaId(gasto._id)}>
                       <td><input type="radio" checked={referenciaId === gasto._id} onChange={() => setReferenciaId(gasto._id)} /></td>
                       <td>{gasto.cuentaId?.nombreCuenta || "Cuenta"}</td><td>{fechaInput(gasto.fecha)}</td>

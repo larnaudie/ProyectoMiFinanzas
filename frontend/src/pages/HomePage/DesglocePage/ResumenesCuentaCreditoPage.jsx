@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import {
+  formatearMontoMoneda,
+  MONEDAS_SOPORTADAS,
+  obtenerMonedasCuenta,
+} from "../../../utils/monedas.js";
 
 const formatearFecha = (fecha) => (
   fecha
@@ -8,25 +13,29 @@ const formatearFecha = (fecha) => (
     : "Sin fecha"
 );
 
-const formatearMonto = (monto, moneda) => new Intl.NumberFormat("es-UY", {
-  style: "currency",
-  currency: moneda,
-  minimumFractionDigits: 2,
-}).format(Number(monto || 0));
+const formatearMonto = (monto, moneda) =>
+  formatearMontoMoneda(monto, moneda);
 
 const cantidadMovimientos = (totales = {}) => (
-  Number(totales.UYU?.cantidad || 0) + Number(totales.USD?.cantidad || 0)
+  Object.values(totales).reduce(
+    (cantidad, total) => cantidad + Number(total?.cantidad || 0),
+    0,
+  )
 );
 
-const monedasVisibles = (resumen) => ["UYU", "USD"].filter((moneda) => {
-  const total = resumen.totales?.[moneda];
-  return total && (
-    total.cantidad > 0
-    || Number(total.limite || 0) !== 0
-    || Number(total.deuda || 0) !== 0
-    || Number(total.saldoAFavor || 0) !== 0
+const monedasVisibles = (resumen, cuenta) => {
+  const habilitadas = obtenerMonedasCuenta(cuenta);
+  return MONEDAS_SOPORTADAS.filter((moneda) =>
+    habilitadas.includes(moneda) || Boolean(resumen.totales?.[moneda]),
   );
-});
+};
+
+const cantidadPendientes = (totales = {}) => (
+  Object.values(totales).reduce(
+    (cantidad, total) => cantidad + Number(total?.pendientes || 0),
+    0,
+  )
+);
 
 function ResumenesCuentaCreditoPage({ cuenta }) {
   const { cuentaId } = useParams();
@@ -80,7 +89,7 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
 
       <div className="credit-summary-list">
         {resumenes.map((resumen) => {
-          const monedas = monedasVisibles(resumen);
+          const monedas = monedasVisibles(resumen, cuenta);
           return (
             <article className="credit-summary-card" key={resumen._id}>
               <header className="credit-summary-card-header">
@@ -159,7 +168,7 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
 
               <footer className="credit-summary-card-footer">
                 <span>
-                  {resumen.totales?.UYU?.pendientes + resumen.totales?.USD?.pendientes || 0} pendientes
+                  {cantidadPendientes(resumen.totales)} pendientes
                 </span>
                 <Link
                   className="primary-link"

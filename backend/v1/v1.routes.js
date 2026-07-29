@@ -28,6 +28,7 @@ router.use("/categorias", categoriasRouter);
 router.use("/subcategorias", subcategoriasRouter);
 router.use("/importaciones", importacionesRouter);
 router.use("/tarjetas", tarjetasRouter);
+router.use("/usuarios", usuariosRouter);
 //router.use("/prestamos", prestamosRouter);
 
 export default router; 

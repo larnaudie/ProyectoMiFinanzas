@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { MONEDAS_SOPORTADAS } from "../utils/monedas.js";
 
 const gastoSchema = new mongoose.Schema(
   {
@@ -20,7 +21,7 @@ const gastoSchema = new mongoose.Schema(
     montoReal: { type: Number, default: 0 },
     porcentaje: { type: Number },
     incluirMontoReal: { type: Boolean, default: false },
-    moneda: { type: String, enum: ["UYU", "USD"], default: "UYU" },
+    moneda: { type: String, enum: MONEDAS_SOPORTADAS, default: "UYU" },
     estado: {
       type: String,
       enum: ["pendiente", "creado"],

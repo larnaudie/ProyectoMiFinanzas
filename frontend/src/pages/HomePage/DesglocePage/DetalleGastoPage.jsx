@@ -9,6 +9,8 @@ import {
 import { guardarCuentas } from "../../../features/slices/cuentasSlice";
 import { guardarCategorias } from "../../../features/slices/categoriasSlice";
 import { guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
+import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
+import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
 
 const obtenerId = (valor) => valor?._id || valor || "";
 
@@ -26,6 +28,10 @@ const esMontoBancarioValido = (valor) => {
   return esNumeroValido(valor) && Number(valor) !== 0;
 };
 
+const esMontoRealValido = (valor) => {
+  return esNumeroValido(valor) && Number(valor) !== 0;
+};
+
 const esPorcentajeValido = (valor) => {
   if (!esNumeroValido(valor)) return false;
   const numero = Number(valor);
@@ -39,11 +45,12 @@ const obtenerCamposFaltantes = (gasto) => {
   if (!obtenerId(gasto?.cuentaId)) campos.push("cuenta");
   if (!gasto?.fecha) campos.push("fecha");
 
-  if (!esMontoBancarioValido(gasto?.montoBancario)) {
-    campos.push("monto bancario distinto de 0");
+  const tieneMontoBancario = esMontoBancarioValido(gasto?.montoBancario);
+  if (!tieneMontoBancario && !esMontoRealValido(gasto?.montoReal)) {
+    campos.push("monto bancario o monto real distinto de 0");
   }
 
-  if (!esPorcentajeValido(gasto?.porcentaje)) {
+  if (tieneMontoBancario && !esPorcentajeValido(gasto?.porcentaje)) {
     campos.push("porcentaje entre 0 y 100");
   }
 
@@ -53,7 +60,7 @@ const obtenerCamposFaltantes = (gasto) => {
 };
 
 const valorParaBackend = (campo, valor) => {
-  if (["montoBancario", "porcentaje"].includes(campo)) {
+  if (["montoBancario", "montoReal", "porcentaje"].includes(campo)) {
     return valor === "" ? "" : Number(valor);
   }
 
@@ -139,9 +146,16 @@ const DetalleGastoPage = () => {
     timerRef.current = setTimeout(async () => {
       try {
         const valorNormalizado = valorParaBackend(campo, valor);
-        const response = await api.patch(`/gastos/${gastoId}`, {
-          [campo]: valorNormalizado,
-        });
+        const payload = { [campo]: valorNormalizado };
+        if (
+          campo === "montoBancario"
+          && !esMontoBancarioValido(valor)
+          && esMontoRealValido(form?.montoReal)
+        ) {
+          payload.montoReal = Number(form.montoReal);
+        }
+
+        const response = await api.patch(`/gastos/${gastoId}`, payload);
 
         dispatch(actualizarGasto(response.data.gasto));
         setForm(response.data.gasto);
@@ -292,6 +306,7 @@ const DetalleGastoPage = () => {
   const subcategoriaSeleccionada = obtenerId(form.subcategoriaId);
   const facturaUrl = form.factura?.url;
   const estaCreado = form.estado === "creado";
+  const tieneMontoBancario = esMontoBancarioValido(form.montoBancario);
 
   return (
     <section className="page-section detail-page">
@@ -363,44 +378,55 @@ const DetalleGastoPage = () => {
             <input
               type="number"
               value={form.porcentaje ?? ""}
+              disabled={!tieneMontoBancario}
               onChange={(event) => handleChange("porcentaje", event.target.value)}
             />
           </label>
 
           <label>
+            Monto real directo
+            <input
+              type="number"
+              value={form.montoReal ?? ""}
+              disabled={tieneMontoBancario}
+              onChange={(event) => handleChange("montoReal", event.target.value)}
+            />
+            <small>
+              Editable cuando no existe monto bancario.
+            </small>
+          </label>
+
+          <label>
             Categoria
-            <select
+            <SearchableCategorySelect
+              categorias={categorias}
               value={categoriaSeleccionada}
-              onChange={(event) => handleChange("categoriaId", event.target.value)}
-            >
-              <option value="">Seleccione categoria</option>
-              {categorias.map((categoria) => (
-                <option key={categoria._id} value={categoria._id}>
-                  {categoria.nombreCategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Seleccione categoría"
+              ariaLabel="Buscar categoría para el gasto"
+              onChange={(categoriaId) =>
+                handleChange("categoriaId", categoriaId)
+              }
+            />
           </label>
 
           <label>
             Subcategoria
-            <select
+            <SearchableSubcategorySelect
+              subcategorias={subcategorias}
               value={subcategoriaSeleccionada}
-              onChange={(event) => handleChange("subcategoriaId", event.target.value)}
-            >
-              <option value="">Seleccione subcategoria</option>
-              {subcategorias.map((subcategoria) => (
-                <option key={subcategoria._id} value={subcategoria._id}>
-                  {subcategoria.nombreSubcategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Seleccione subcategoría"
+              ariaLabel="Buscar subcategoría para el gasto"
+              onChange={(subcategoriaId) =>
+                handleChange("subcategoriaId", subcategoriaId)
+              }
+            />
           </label>
 
           <label className="checkbox-row detail-checkbox">
             <input
               type="checkbox"
-              checked={Boolean(form.incluirMontoReal)}
+              checked={!tieneMontoBancario || Boolean(form.incluirMontoReal)}
+              disabled={!tieneMontoBancario}
               onChange={(event) =>
                 handleChange("incluirMontoReal", event.target.checked)
               }

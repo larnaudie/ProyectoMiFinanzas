@@ -4,6 +4,28 @@ import Cuenta from "../0.1-models/cuenta.model.js";
 import cloudinary from "../config/cloudinary.config.js";
 import { normalizarMontoBancarioTarjeta } from "../utils/resumenTarjetaTotales.js";
 import { normalizarMontoContraparte } from "../utils/vinculosGasto.js";
+import {
+  calcularMontoRealGasto,
+  gastoTieneMontosCompletos,
+} from "../utils/montosGasto.js";
+import {
+  normalizarMoneda,
+  obtenerMonedaMovimiento,
+} from "../utils/monedas.js";
+
+const presentarGasto = (gasto) => {
+  if (!gasto) return gasto;
+
+  const datos = gasto.toObject ? gasto.toObject() : { ...gasto };
+  const cuenta = datos.cuentaId && typeof datos.cuentaId === "object"
+    ? datos.cuentaId
+    : null;
+
+  return {
+    ...datos,
+    moneda: obtenerMonedaMovimiento(cuenta, datos.moneda),
+  };
+};
 
 export const obtenerGastosService = async (usuarioId, filtros = {}) => {
   const consulta = { usuarioId };
@@ -15,20 +37,20 @@ export const obtenerGastosService = async (usuarioId, filtros = {}) => {
   const gastos = await Gasto.find(consulta)
     .populate("subcategoriaId", "nombreSubcategoria")
     .populate("categoriaId", "nombreCategoria")
-    .populate("cuentaId", "nombreCuenta")
+    .populate("cuentaId", "nombreCuenta moneda tipoCuenta monedas")
     .populate({
       path: "origen.referenciaId",
       select: "detalle cuentaId fecha montoBancario moneda",
       populate: { path: "cuentaId", select: "nombreCuenta" },
     });
-  return gastos;
+  return gastos.map(presentarGasto);
 };
 
 export const obtenerGastoPorIdService = async (id, usuarioId) => {
   const gasto = await Gasto.findOne({ _id: id, usuarioId })
     .populate("subcategoriaId", "nombreSubcategoria")
     .populate("categoriaId", "nombreCategoria")
-    .populate("cuentaId", "nombreCuenta moneda")
+    .populate("cuentaId", "nombreCuenta moneda tipoCuenta monedas")
     .populate("tarjetaId", "nombreTarjeta ultimosDigitos")
     .populate("resumenTarjetaId")
     .populate({
@@ -42,7 +64,7 @@ export const obtenerGastoPorIdService = async (id, usuarioId) => {
     error.status = 404;
     throw error;
   }
-  return gasto;
+  return presentarGasto(gasto);
 };
 
 export const actualizarGastoService = async (id, usuarioId, data) => {
@@ -58,7 +80,6 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
 
   delete gastoData.cambiarEstado;
   delete gastoData.estado;
-  delete gastoData.montoReal;
   delete gastoData.usuarioId;
 
   const datosCombinados = {
@@ -71,8 +92,12 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   };
 
   normalizarSignoGastoTarjeta(datosCombinados);
+  normalizarMontoRealDirecto(datosCombinados);
   if (datosCombinados.origen?.tipo === "tarjeta") {
     gastoData.montoBancario = datosCombinados.montoBancario;
+  }
+  if (!esMontoBancarioValido(datosCombinados.montoBancario)) {
+    gastoData.incluirMontoReal = datosCombinados.incluirMontoReal;
   }
 
   await validarReferenciaOrigen(
@@ -93,6 +118,14 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   if (gastoActual.estado === "creado") {
     nuevoEstado = "creado";
   } else if (debeCrear) {
+    if (!datosCombinados.subcategoriaId) {
+      const error = new Error(
+        "Selecciona una subcategoría antes de pasar el gasto a creado",
+      );
+      error.status = 400;
+      throw error;
+    }
+
     if (!estaCompleto) {
       throw new Error("No se puede crear un gasto incompleto");
     }
@@ -107,26 +140,38 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
     {
       ...gastoData,
       estado: nuevoEstado,
-      montoReal: calcularMontoReal(datosCombinados),
+      montoReal: calcularMontoRealGasto(datosCombinados),
     },
     { new: true }
   )
     .populate("subcategoriaId", "nombreSubcategoria")
     .populate("categoriaId", "nombreCategoria")
-    .populate("cuentaId", "nombreCuenta moneda")
+    .populate("cuentaId", "nombreCuenta moneda tipoCuenta monedas")
     .populate({
       path: "origen.referenciaId",
       select: "detalle cuentaId fecha montoBancario moneda",
       populate: { path: "cuentaId", select: "nombreCuenta" },
     });
 
-  return gastoActualizado;
+  return presentarGasto(gastoActualizado);
 };
 
 export const crearGastoService = async (data, usuarioId) => {
   const gastoData = limpiarCamposVacios(data);
 
+  if (gastoData.cuentaId) {
+    const cuenta = await Cuenta.findOne({
+      _id: gastoData.cuentaId,
+      usuarioId,
+    }).select("moneda tipoCuenta monedas");
+
+    if (cuenta) {
+      gastoData.moneda = obtenerMonedaMovimiento(cuenta, gastoData.moneda);
+    }
+  }
+
   normalizarSignoGastoTarjeta(gastoData);
+  normalizarMontoRealDirecto(gastoData);
 
   await validarReferenciaOrigen(gastoData, usuarioId);
   await validarDuplicadoTarjeta(gastoData, usuarioId);
@@ -135,9 +180,16 @@ export const crearGastoService = async (data, usuarioId) => {
 
   delete gastoData.cambiarEstado;
   delete gastoData.estado;
-  delete gastoData.montoReal;
 
   const estaCompleto = gastoEstaCompleto(gastoData);
+
+  if (debeCrear && !gastoData.subcategoriaId) {
+    const error = new Error(
+      "Selecciona una subcategoría antes de pasar el gasto a creado",
+    );
+    error.status = 400;
+    throw error;
+  }
 
   if (debeCrear && !estaCompleto) {
     throw new Error("No se puede crear un gasto incompleto");
@@ -147,7 +199,7 @@ export const crearGastoService = async (data, usuarioId) => {
     ...gastoData,
     usuarioId,
     estado: debeCrear ? "creado" : "pendiente",
-    montoReal: calcularMontoReal(gastoData),
+    montoReal: calcularMontoRealGasto(gastoData),
   });
 
   return gasto;
@@ -221,7 +273,7 @@ export const crearGastoYVincularService = async ({
         montoBancario,
         porcentaje: 0,
         incluirMontoReal: false,
-        moneda: cuentaDestino.moneda === "USD" ? "USD" : "UYU",
+        moneda: normalizarMoneda(cuentaDestino.moneda),
         categoriaId: data.categoriaId,
         subcategoriaId: data.subcategoriaId,
         cambiarEstado: Boolean(data.subcategoriaId),
@@ -375,24 +427,22 @@ const esMontoBancarioValido = (valor) => {
   return esNumeroValido(valor) && Number(valor) !== 0;
 };
 
-const esPorcentajeValido = (valor) => {
-  if (!esNumeroValido(valor)) {
-    return false;
-  }
-
-  const numero = Number(valor);
-  return numero >= 0 && numero <= 100;
-};
-
 const gastoEstaCompleto = (gasto) => {
   return (
     gasto.detalle &&
     gasto.cuentaId &&
     gasto.fecha &&
-    esMontoBancarioValido(gasto.montoBancario) &&
-    esPorcentajeValido(gasto.porcentaje) &&
+    gastoTieneMontosCompletos(gasto) &&
     gasto.subcategoriaId
   );
+};
+const normalizarMontoRealDirecto = (gastoData) => {
+  if (
+    !esMontoBancarioValido(gastoData.montoBancario)
+    && esMontoBancarioValido(gastoData.montoReal)
+  ) {
+    gastoData.incluirMontoReal = true;
+  }
 };
 
 const normalizarSignoGastoTarjeta = (gastoData) => {
@@ -502,20 +552,5 @@ const validarReferenciaOrigen = async (
       throw error;
     }
   }
-};
-
-const calcularMontoReal = (gasto) => {
-  if (!esMontoBancarioValido(gasto.montoBancario) || !esPorcentajeValido(gasto.porcentaje)) {
-    return 0;
-  }
-
-  if (gasto.incluirMontoReal !== true) {
-    return 0;
-  }
-
-  const montoBancario = Number(gasto.montoBancario);
-  const porcentaje = Number(gasto.porcentaje);
-
-  return montoBancario * (porcentaje / 100);
 };
 

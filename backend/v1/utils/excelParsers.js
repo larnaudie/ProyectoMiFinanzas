@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import XLSX from "xlsx";
 import { normalizarMontoBancarioTarjeta } from "./resumenTarjetaTotales.js";
+import { normalizarMoneda } from "./monedas.js";
 
 export const normalizarTexto = (texto) =>
   String(texto ?? "")
@@ -91,9 +92,21 @@ export const obtenerTipoMovimientoTarjeta = (detalle, montoEstadoCuenta = null) 
   return "compra";
 };
 
-const leerPrimeraHoja = (buffer, raw = false) => {
+export const listarHojasExcel = (buffer) => {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
-  const nombreHoja = workbook.SheetNames[0];
+  return [...workbook.SheetNames];
+};
+
+const leerHoja = (buffer, raw = false, nombreHojaSeleccionada = null) => {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
+  const nombreHoja = nombreHojaSeleccionada || workbook.SheetNames[0];
+  const indiceHoja = workbook.SheetNames.indexOf(nombreHoja);
+  if (indiceHoja < 0) {
+    const error = new Error("La hoja seleccionada no existe en el archivo Excel");
+    error.status = 400;
+    throw error;
+  }
+
   const worksheet = workbook.Sheets[nombreHoja];
   const filas = XLSX.utils.sheet_to_json(worksheet, {
     header: 1,
@@ -101,7 +114,7 @@ const leerPrimeraHoja = (buffer, raw = false) => {
     raw,
   });
 
-  return { filas, nombreHoja };
+  return { filas, nombreHoja, indiceHoja };
 };
 
 const buscarFilaEncabezados = (filas, requeridos) =>
@@ -164,7 +177,7 @@ const crearHashMovimiento = (movimiento) =>
     .digest("hex");
 
 export const parsearExcelTarjeta = (buffer) => {
-  const { filas, nombreHoja } = leerPrimeraHoja(buffer, false);
+  const { filas, nombreHoja } = leerHoja(buffer, false);
   const filaEncabezadosIndex = buscarFilaEncabezados(filas, ["fecha", "tarjeta", "detalle"]);
 
   if (filaEncabezadosIndex < 0) {
@@ -256,7 +269,7 @@ export const parsearExcelTarjeta = (buffer) => {
 };
 
 export const parsearExcelBancario = (buffer) => {
-  const { filas, nombreHoja } = leerPrimeraHoja(buffer, false);
+  const { filas, nombreHoja } = leerHoja(buffer, false);
   const filaEncabezadosIndex = buscarFilaEncabezados(filas, [
     "fecha",
     "referencia",
@@ -288,13 +301,12 @@ export const parsearExcelBancario = (buffer) => {
         referenciaBanco: String(fila[referenciaIndex] || "").trim(),
         detalleOriginal: descripcion || detalleTipo,
         montoBancario: debito !== 0 ? debito : credito,
-        moneda: moneda === "USD" ? "USD" : "UYU",
+        moneda: normalizarMoneda(moneda),
       };
     })
     .filter(
       (movimiento) =>
         movimiento.fechaBanco &&
-        movimiento.referenciaBanco &&
         movimiento.detalleOriginal &&
         movimiento.montoBancario !== 0,
     );
@@ -342,8 +354,12 @@ const encontrarTablaPersonalSinEncabezados = (filas) => {
   return [{ filaIndex: -1, columnaIndex: 0 }];
 };
 
-export const parsearExcelPersonal = (buffer) => {
-  const { filas, nombreHoja } = leerPrimeraHoja(buffer, true);
+export const parsearExcelPersonal = (buffer, nombreHojaSeleccionada = null) => {
+  const { filas, nombreHoja, indiceHoja } = leerHoja(
+    buffer,
+    true,
+    nombreHojaSeleccionada,
+  );
   const bloquesConEncabezados = encontrarBloquesPersonales(filas);
   const bloques = bloquesConEncabezados.length > 0
     ? bloquesConEncabezados
@@ -369,32 +385,37 @@ export const parsearExcelPersonal = (buffer) => {
       const montoReal = parsearMontoFlexible(fila[bloque.columnaIndex + 3]);
       const nombreSubcategoria = String(fila[bloque.columnaIndex + 4] || "").trim();
 
-      if (!fecha || !detalle || montoBancario === null || montoBancario === 0) continue;
-      const porcentaje = montoReal !== null
+      const tieneMontoBancario = montoBancario !== null && montoBancario !== 0;
+      const tieneMontoReal = montoReal !== null && montoReal !== 0;
+      if (!fecha || !detalle || (!tieneMontoBancario && !tieneMontoReal)) continue;
+      const porcentaje = tieneMontoBancario && montoReal !== null
         ? Number(Math.min(100, Math.abs((montoReal / montoBancario) * 100)).toFixed(2))
         : 0;
 
+      const datosHash = [
+        bloque.filaIndex,
+        bloque.columnaIndex,
+        indice,
+        fecha.toISOString().slice(0, 10),
+        normalizarTexto(detalle),
+        montoBancario,
+        montoReal,
+        normalizarTexto(nombreSubcategoria),
+      ];
+      if (indiceHoja > 0) datosHash.unshift(nombreHoja);
+
       const sourceHash = crypto
         .createHash("sha256")
-        .update(
-          [
-            bloque.filaIndex,
-            bloque.columnaIndex,
-            indice,
-            fecha.toISOString().slice(0, 10),
-            normalizarTexto(detalle),
-            montoBancario,
-            montoReal,
-            normalizarTexto(nombreSubcategoria),
-          ].join("|"),
-        )
+        .update(datosHash.join("|"))
         .digest("hex");
 
       movimientos.push({
         fecha,
         detalle,
-        montoBancario,
+        montoBancario: tieneMontoBancario ? montoBancario : 0,
+        montoReal: tieneMontoReal ? montoReal : 0,
         porcentaje,
+        incluirMontoReal: tieneMontoReal,
         nombreSubcategoria,
         sourceHash,
       });

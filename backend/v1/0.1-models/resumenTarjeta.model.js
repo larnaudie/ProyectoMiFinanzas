@@ -4,6 +4,7 @@ const montosPorMonedaSchema = new mongoose.Schema(
   {
     UYU: { type: Number, default: null },
     USD: { type: Number, default: null },
+    UI: { type: Number, default: null },
   },
   { _id: false },
 );

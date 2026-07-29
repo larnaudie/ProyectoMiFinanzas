@@ -1,6 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
+import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
+import SortableTableHeader, {
+  useSortableRows,
+} from "../../../components/SortableTableHeader.jsx";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -31,9 +36,23 @@ const normalizarTexto = (texto) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const calcularMontoReal = ({ montoBancario, porcentaje, incluirMontoReal }) => {
+const montoDistintoDeCero = (valor) => {
+  if (valor === "" || valor === null || valor === undefined) return false;
+  return Number.isFinite(Number(valor)) && Number(valor) !== 0;
+};
+
+const calcularMontoReal = ({
+  montoBancario,
+  montoReal,
+  porcentaje,
+  incluirMontoReal,
+}) => {
   const monto = Number(montoBancario);
   const porcentajeNumero = Number(porcentaje);
+
+  if (!montoDistintoDeCero(montoBancario)) {
+    return montoDistintoDeCero(montoReal) ? Number(montoReal) : 0;
+  }
 
   if (!incluirMontoReal) return 0;
   if (!Number.isFinite(monto) || !Number.isFinite(porcentajeNumero)) return 0;
@@ -73,48 +92,66 @@ const gastoDesdeMovimiento = (movimiento) => {
 };
 
 const gastoDesdeImportacionPersonal = (item) => {
-  const gasto = item.gasto || item;
+  const gasto = item.movimiento || item.gasto || item;
+  const gastoId = obtenerId(item.gastoId || gasto.gastoId);
 
-  return {
-    _id: gasto._id,
+  const fila = {
+    _id: item._id || gasto.sourceHash || gasto._id,
+    sourceHash: item.sourceHash || gasto.sourceHash || item._id,
     fecha: fechaParaInput(gasto.fecha),
     detalle: gasto.detalle || "",
     montoBancario: gasto.montoBancario ?? "",
+    montoReal: gasto.montoReal ?? "",
     porcentaje: gasto.porcentaje ?? "",
-    montoReal: gasto.montoReal ?? 0,
     categoriaId: obtenerId(gasto.categoriaId),
     subcategoriaId: obtenerId(gasto.subcategoriaId),
     nombreSubcategoria: item.nombreSubcategoria || gasto.subcategoriaId?.nombreSubcategoria || "",
     incluirMontoReal: Boolean(gasto.incluirMontoReal),
-    estado: gasto.estado || "pendiente",
+    estado: gastoId ? "creado" : gasto.estado || "previsualizado",
+    gastoId,
+    duplicado: Boolean(item.duplicado || gasto.duplicado),
+  };
+
+  return {
+    ...fila,
+    montoReal: calcularMontoReal(fila),
   };
 };
 
 const gastoCompletoParaCrear = (gasto) => {
+  const tieneMontoBancario = montoDistintoDeCero(gasto.montoBancario);
+  const tieneMontoReal = montoDistintoDeCero(gasto.montoReal);
+  const porcentajeValido =
+    Number.isFinite(Number(gasto.porcentaje)) &&
+    Number(gasto.porcentaje) >= 0 &&
+    Number(gasto.porcentaje) <= 100;
+
   return (
     gasto.detalle &&
     gasto.fecha &&
-    Number.isFinite(Number(gasto.montoBancario)) &&
-    Number(gasto.montoBancario) !== 0 &&
-    Number.isFinite(Number(gasto.porcentaje)) &&
-    Number(gasto.porcentaje) >= 0 &&
-    Number(gasto.porcentaje) <= 100 &&
+    (tieneMontoBancario || tieneMontoReal) &&
+    (!tieneMontoBancario || porcentajeValido) &&
     gasto.subcategoriaId
   );
 };
 
 const gastoValidoParaPendienteImportado = (gasto) => {
-  const montoBancario = Number(gasto.montoBancario);
+  const tieneMontoBancario = montoDistintoDeCero(gasto.montoBancario);
+  const tieneMontoReal = montoDistintoDeCero(gasto.montoReal);
   const porcentaje = Number(gasto.porcentaje);
 
   return (
     gasto.detalle &&
     gasto.fecha &&
-    Number.isFinite(montoBancario) &&
-    montoBancario !== 0 &&
-    Number.isFinite(porcentaje) &&
-    porcentaje >= 0 &&
-    porcentaje <= 100
+    (tieneMontoBancario || tieneMontoReal) &&
+    (
+      !tieneMontoBancario
+      || (
+        Number.isFinite(porcentaje)
+        && porcentaje >= 0
+        && porcentaje <= 100
+      )
+    )
   );
 };
 const obtenerNombresSubcategoriasNuevas = (gastos, subcategorias) => {
@@ -141,6 +178,13 @@ const combinarSubcategoriasUnicas = (...listas) => {
   return [...mapa.values()];
 };
 
+const columnasOrdenablesImportacion = {
+  fecha: { type: "date" },
+  detalle: { type: "text" },
+  montoBancario: { type: "number" },
+  montoReal: { type: "number" },
+};
+
 const buscarSubcategoriaPorNombre = (subcategorias, nombreSubcategoria) => {
   const nombreNormalizado = normalizarTexto(nombreSubcategoria);
   if (!nombreNormalizado) return null;
@@ -159,11 +203,16 @@ const obtenerSubcategoriaSeleccionada = (gasto, subcategorias) => {
   );
 };
 function ImportExcelPage() {
+  const contextoLayout = useOutletContext();
+  const menuAbierto = contextoLayout?.menuAbierto || false;
+  const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
+  const permitirCerrarMenu = contextoLayout?.alSalirMenu;
   const { cuentaId } = useParams();
-  const timersRef = useRef({});
 
   const [file, setFile] = useState(null);
   const [archivoPersonal, setArchivoPersonal] = useState(null);
+  const [hojasPersonal, setHojasPersonal] = useState([]);
+  const [hojaPersonal, setHojaPersonal] = useState("");
   const [resultado, setResultado] = useState(null);
   const [resultadoPersonal, setResultadoPersonal] = useState(null);
   const [gastosPersonales, setGastosPersonales] = useState([]);
@@ -184,6 +233,7 @@ function ImportExcelPage() {
   const [subcategoriasDetectadas, setSubcategoriasDetectadas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingPersonal, setLoadingPersonal] = useState(false);
+  const [leyendoHojasPersonal, setLeyendoHojasPersonal] = useState(false);
   const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
   const [creandoSubcategorias, setCreandoSubcategorias] = useState(false);
   const [error, setError] = useState("");
@@ -196,8 +246,32 @@ function ImportExcelPage() {
     incluirMontoReal: "",
   });
   const [aplicandoBulkPersonal, setAplicandoBulkPersonal] = useState(false);
+  const [creandoSeleccionadosPersonal, setCreandoSeleccionadosPersonal] = useState(false);
   const [mensajeBancario, setMensajeBancario] = useState("");
   const [mensajeSubcategorias, setMensajeSubcategorias] = useState("");
+  const [modalCatalogo, setModalCatalogo] = useState("");
+  const [nombreCategoria, setNombreCategoria] = useState("");
+  const [formSubcategoria, setFormSubcategoria] = useState({
+    nombreSubcategoria: "",
+    categoria: "",
+  });
+  const [errorCatalogo, setErrorCatalogo] = useState("");
+  const [mensajeCatalogo, setMensajeCatalogo] = useState("");
+  const [guardandoCatalogo, setGuardandoCatalogo] = useState(false);
+
+  const cargarCategorias = () => {
+    return api
+      .get("/categorias")
+      .then((response) => {
+        const categoriasActualizadas = response.data.categorias || [];
+        setCategorias(categoriasActualizadas);
+        return categoriasActualizadas;
+      })
+      .catch((apiError) => {
+        console.error("Error al obtener categorias:", apiError);
+        return [];
+      });
+  };
 
   const cargarSubcategorias = () => {
     return api
@@ -237,14 +311,7 @@ function ImportExcelPage() {
 
   useEffect(() => {
     cargarMovimientosPendientes();
-
-    api
-      .get("/categorias")
-      .then((response) => setCategorias(response.data.categorias || []))
-      .catch((apiError) => {
-        console.error("Error al obtener categorias:", apiError);
-      });
-
+    cargarCategorias();
     cargarSubcategorias();
   // Estas funciones sólo dependen del cuentaId que dispara la recarga.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,9 +377,14 @@ function ImportExcelPage() {
       setError("Selecciona un archivo Excel personal antes de importar.");
       return;
     }
+    if (!hojaPersonal) {
+      setError("Selecciona la hoja del Excel personal que queres importar.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("excel", archivoPersonal);
+    formData.append("nombreHoja", hojaPersonal);
 
     setLoadingPersonal(true);
     setError("");
@@ -322,6 +394,13 @@ function ImportExcelPage() {
     setGastosPersonales([]);
     setGastosPersonalesSeleccionados([]);
     setSubcategoriasDetectadas([]);
+    setBulkPersonal({
+      fecha: "",
+      categoriaId: "",
+      subcategoriaId: "",
+      porcentaje: "",
+      incluirMontoReal: "",
+    });
 
     try {
       const { data } = await api.post(
@@ -329,7 +408,7 @@ function ImportExcelPage() {
         formData,
       );
 
-      const gastosImportados = (data.gastos || []).map(gastoDesdeImportacionPersonal);
+      const gastosImportados = (data.movimientos || []).map(gastoDesdeImportacionPersonal);
       const nuevasSubcategorias = obtenerNombresSubcategoriasNuevas(
         gastosImportados,
         subcategorias,
@@ -343,7 +422,6 @@ function ImportExcelPage() {
           categoria: "",
         })),
       );
-      setArchivoPersonal(null);
     } catch (apiError) {
       setError(
         obtenerMensajeError(apiError, "No se pudo importar el Excel personal."),
@@ -353,14 +431,41 @@ function ImportExcelPage() {
     }
   };
 
-  const actualizarGastoLocal = (gastoActualizado) => {
-    setGastosPersonales((actuales) =>
-      actuales.map((gasto) =>
-        gasto._id === gastoActualizado._id
-          ? gastoDesdeImportacionPersonal(gastoActualizado)
-          : gasto,
-      ),
-    );
+  const seleccionarArchivoPersonal = async (event) => {
+    const archivo = event.target.files[0] || null;
+    setArchivoPersonal(archivo);
+    setHojasPersonal([]);
+    setHojaPersonal("");
+    setError("");
+
+    if (!archivo) return;
+
+    const formData = new FormData();
+    formData.append("excel", archivo);
+    setLeyendoHojasPersonal(true);
+
+    try {
+      const { data } = await api.post(
+        `/importaciones/cuentas/${cuentaId}/excel-personal/hojas`,
+        formData,
+      );
+      const hojas = data.hojas || [];
+      setHojasPersonal(hojas);
+      setHojaPersonal(hojas[0] || "");
+
+      if (hojas.length === 0) {
+        setError("El archivo Excel personal no contiene hojas para importar.");
+      }
+    } catch (apiError) {
+      setError(
+        obtenerMensajeError(
+          apiError,
+          "No se pudieron leer las hojas del Excel personal.",
+        ),
+      );
+    } finally {
+      setLeyendoHojasPersonal(false);
+    }
   };
 
   const cambiarGastoPersonal = (gastoId, campo, valor) => {
@@ -377,45 +482,51 @@ function ImportExcelPage() {
         };
       }),
     );
-
-    clearTimeout(timersRef.current[`${gastoId}-${campo}`]);
-
-    timersRef.current[`${gastoId}-${campo}`] = setTimeout(() => {
-      const valorParaBackend =
-        ["montoBancario", "porcentaje"].includes(campo) && valor !== ""
-          ? Number(valor)
-          : valor;
-
-      api
-        .patch(`/gastos/${gastoId}`, { [campo]: valorParaBackend })
-        .then((response) => actualizarGastoLocal(response.data.gasto))
-        .catch((apiError) => {
-          setMensajePersonal(
-            obtenerMensajeError(apiError, "No se pudo guardar el cambio del gasto."),
-          );
-        });
-    }, 1000);
   };
 
-  const crearGastoPersonal = (gasto) => {
+  const armarPayloadGastoPersonal = (gasto) => ({
+    sourceHash: gasto.sourceHash,
+    detalle: gasto.detalle,
+    fecha: gasto.fecha,
+    montoBancario: Number(gasto.montoBancario),
+    montoReal: Number(gasto.montoReal),
+    porcentaje: Number(gasto.porcentaje),
+    incluirMontoReal: Boolean(gasto.incluirMontoReal),
+    categoriaId: gasto.categoriaId || "",
+    subcategoriaId: gasto.subcategoriaId,
+  });
+
+  const crearGastoPersonal = async (gasto) => {
     if (!gastoCompletoParaCrear(gasto)) {
       setMensajePersonal(
-        "Para pasar a creado faltan datos: detalle, fecha, monto bancario distinto de 0, porcentaje valido y subcategoria.",
+        "Para crear el gasto faltan datos: detalle, fecha, monto bancario o real distinto de 0 y subcategoria. Si hay monto bancario, revisa también el porcentaje.",
       );
       return;
     }
 
-    api
-      .patch(`/gastos/${gasto._id}`, { cambiarEstado: true })
-      .then((response) => {
-        actualizarGastoLocal(response.data.gasto);
-        setMensajePersonal("Gasto actualizado a creado.");
-      })
-      .catch((apiError) => {
-        setMensajePersonal(
-          obtenerMensajeError(apiError, "No se pudo pasar el gasto a creado."),
-        );
-      });
+    setMensajePersonal("");
+
+    try {
+      const { data } = await api.post(
+        `/importaciones/cuentas/${cuentaId}/excel-personal/gastos`,
+        armarPayloadGastoPersonal(gasto),
+      );
+      setGastosPersonales((actuales) =>
+        actuales.map((item) =>
+          item._id === gasto._id
+            ? { ...item, estado: "creado", gastoId: data.gasto._id }
+            : item,
+        ),
+      );
+      setGastosPersonalesSeleccionados((actuales) =>
+        actuales.filter((id) => id !== gasto._id),
+      );
+      setMensajePersonal("Gasto creado correctamente.");
+    } catch (apiError) {
+      setMensajePersonal(
+        obtenerMensajeError(apiError, "No se pudo crear el gasto."),
+      );
+    }
   };
 
   const cambiarGastoBancario = (movimientoId, campo, valor) => {
@@ -547,6 +658,7 @@ function ImportExcelPage() {
     const payload = {
       detalle: gasto.detalle,
       fecha: gasto.fecha,
+      montoReal: Number(gasto.montoReal),
       porcentaje: Number(gasto.porcentaje),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
       cambiarEstado: false,
@@ -561,7 +673,7 @@ function ImportExcelPage() {
   const crearGastoBancario = (gasto) => {
     if (!gastoValidoParaPendienteImportado(gasto)) {
       setMensajeBancario(
-        "Para crear el gasto pendiente completa detalle, fecha, monto bancario distinto de 0 y porcentaje entre 0 y 100.",
+        "Para crear el gasto pendiente completa detalle, fecha y monto bancario o real distinto de 0. Si hay monto bancario, el porcentaje debe estar entre 0 y 100.",
       );
       return;
     }
@@ -603,7 +715,7 @@ function ImportExcelPage() {
 
     if (movimientosInvalidos.length > 0) {
       setMensajeBancario(
-        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario distinto de 0 y porcentaje entre 0 y 100.`,
+        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario o real y porcentaje.`,
       );
       return;
     }
@@ -772,26 +884,12 @@ function ImportExcelPage() {
           : gasto;
       });
 
-      await Promise.all(
-        gastosActualizados
-          .filter((gasto) => gasto.subcategoriaId)
-          .map((gasto) => {
-            const payload = { subcategoriaId: gasto.subcategoriaId };
-
-            if (gasto.categoriaId) {
-              payload.categoriaId = gasto.categoriaId;
-            }
-
-            return api.patch(`/gastos/${gasto._id}`, payload);
-          }),
-      );
-
       setGastosPersonales(gastosActualizados);
       setSubcategoriasDetectadas([]);
       setMensajePersonal(
         subcategoriasNuevas.length > 0
-          ? "Subcategorias nuevas creadas y vinculadas a los gastos importados."
-          : "Las subcategorias detectadas ya existian y fueron vinculadas a los gastos importados.",
+          ? "Subcategorias nuevas creadas y aplicadas a la previsualizacion."
+          : "Las subcategorias detectadas ya existian y fueron aplicadas a la previsualizacion.",
       );
     } catch (apiError) {
       setMensajeSubcategorias(
@@ -811,44 +909,39 @@ function ImportExcelPage() {
   };
 
   const cambiarSeleccionTodosGastosPersonales = (checked) => {
-    setGastosPersonalesSeleccionados(checked ? gastosPersonales.map((gasto) => gasto._id) : []);
+    const movimientosSinCrear = gastosPersonales
+      .filter((gasto) => !gasto.gastoId)
+      .map((gasto) => gasto._id);
+    setGastosPersonalesSeleccionados(checked ? movimientosSinCrear : []);
   };
 
-  const eliminarGastosPersonalesSeleccionados = async () => {
+  const eliminarGastosPersonalesSeleccionados = () => {
     const cantidad = gastosPersonalesSeleccionados.length;
 
     if (cantidad === 0) return;
 
     const confirmaEliminar = window.confirm(
-      `Vas a eliminar ${cantidad} gasto${cantidad === 1 ? "" : "s"}. Esta accion no se puede deshacer.`,
+      `Vas a quitar ${cantidad} movimiento${cantidad === 1 ? "" : "s"} de esta previsualizacion.`,
     );
 
     if (!confirmaEliminar) return;
 
-    setMensajePersonal("");
-
-    try {
-      await Promise.all(
-        gastosPersonalesSeleccionados.map((gastoId) => api.delete(`/gastos/${gastoId}`)),
-      );
-
-      setGastosPersonales((actuales) =>
-        actuales.filter((gasto) => !gastosPersonalesSeleccionados.includes(gasto._id)),
-      );
-      setGastosPersonalesSeleccionados([]);
-      setMensajePersonal(`${cantidad} gasto${cantidad === 1 ? "" : "s"} eliminado${cantidad === 1 ? "" : "s"}.`);
-    } catch (apiError) {
-      setMensajePersonal(obtenerMensajeError(apiError, "No se pudieron eliminar los gastos seleccionados."));
-    }
+    setGastosPersonales((actuales) =>
+      actuales.filter((gasto) => !gastosPersonalesSeleccionados.includes(gasto._id)),
+    );
+    setGastosPersonalesSeleccionados([]);
+    setMensajePersonal(
+      `${cantidad} movimiento${cantidad === 1 ? "" : "s"} quitado${cantidad === 1 ? "" : "s"} de la previsualizacion.`,
+    );
   };
 
   const cambiarBulkPersonal = (campo, valor) => {
     setBulkPersonal((actual) => ({ ...actual, [campo]: valor }));
   };
 
-  const aplicarCambiosBulkPersonal = async () => {
+  const aplicarCambiosBulkPersonal = () => {
     if (gastosPersonalesSeleccionados.length === 0) {
-      setMensajePersonal("Selecciona al menos un gasto para aplicar cambios en masa.");
+      setMensajePersonal("Selecciona al menos un movimiento para aplicar cambios en masa.");
       return;
     }
 
@@ -870,60 +963,267 @@ function ImportExcelPage() {
     setAplicandoBulkPersonal(true);
     setMensajePersonal("");
 
-    try {
-      // Cada gasto mantiene su propio id, por eso aplicamos un PATCH por fila seleccionada.
-      const respuestas = await Promise.all(
-        gastosPersonalesSeleccionados.map((gastoId) => api.patch(`/gastos/${gastoId}`, payload)),
-      );
+    setGastosPersonales((actuales) =>
+      actuales.map((gasto) => {
+        if (
+          gasto.gastoId
+          || !gastosPersonalesSeleccionados.includes(gasto._id)
+        ) {
+          return gasto;
+        }
 
-      const gastosActualizados = respuestas
-        .map((response) => response.data.gasto)
-        .filter(Boolean)
-        .map(gastoDesdeImportacionPersonal);
+        const actualizado = { ...gasto, ...payload };
+        return {
+          ...actualizado,
+          montoReal: calcularMontoReal(actualizado),
+        };
+      }),
+    );
+
+    setBulkPersonal({
+      fecha: "",
+      categoriaId: "",
+      subcategoriaId: "",
+      porcentaje: "",
+      incluirMontoReal: "",
+    });
+    setGastosPersonalesSeleccionados([]);
+    setAplicandoBulkPersonal(false);
+    setMensajePersonal("Cambios aplicados a la previsualizacion.");
+  };
+
+  const crearGastosPersonalesSeleccionados = async () => {
+    const movimientosSeleccionados = gastosPersonales.filter(
+      (gasto) =>
+        gastosPersonalesSeleccionados.includes(gasto._id)
+        && !gasto.gastoId,
+    );
+
+    if (movimientosSeleccionados.length === 0) {
+      setMensajePersonal("Selecciona al menos un movimiento para crear.");
+      return;
+    }
+
+    const movimientosInvalidos = movimientosSeleccionados.filter(
+      (gasto) => !gastoCompletoParaCrear(gasto),
+    );
+    if (movimientosInvalidos.length > 0) {
+      setMensajePersonal(
+        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario o real, porcentaje y subcategoria.`,
+      );
+      return;
+    }
+
+    setCreandoSeleccionadosPersonal(true);
+    setMensajePersonal("");
+
+    try {
+      const resultados = await Promise.allSettled(
+        movimientosSeleccionados.map((gasto) =>
+          api
+            .post(
+              `/importaciones/cuentas/${cuentaId}/excel-personal/gastos`,
+              armarPayloadGastoPersonal(gasto),
+            )
+            .then((response) => ({
+              movimientoId: gasto._id,
+              gastoId: response.data.gasto._id,
+            })),
+        ),
+      );
+      const creados = resultados
+        .filter((resultado) => resultado.status === "fulfilled")
+        .map((resultado) => resultado.value);
+      const fallidos = resultados.filter(
+        (resultado) => resultado.status === "rejected",
+      );
+      const gastoIdPorMovimiento = new Map(
+        creados.map((item) => [item.movimientoId, item.gastoId]),
+      );
 
       setGastosPersonales((actuales) =>
-        actuales.map((gasto) => {
-          const actualizado = gastosActualizados.find((item) => item._id === gasto._id);
-          if (!actualizado) return gasto;
-
-          return {
-            ...gasto,
-            ...actualizado,
-            nombreSubcategoria: actualizado.nombreSubcategoria || gasto.nombreSubcategoria,
-            montoReal: calcularMontoReal(actualizado),
-          };
-        }),
+        actuales.map((gasto) =>
+          gastoIdPorMovimiento.has(gasto._id)
+            ? {
+                ...gasto,
+                estado: "creado",
+                gastoId: gastoIdPorMovimiento.get(gasto._id),
+              }
+            : gasto,
+        ),
+      );
+      setGastosPersonalesSeleccionados((actuales) =>
+        actuales.filter((id) => !gastoIdPorMovimiento.has(id)),
       );
 
-      setBulkPersonal({
-        fecha: "",
-        categoriaId: "",
-        subcategoriaId: "",
-        porcentaje: "",
-        incluirMontoReal: "",
-      });
-      setMensajePersonal(`${gastosActualizados.length} gasto${gastosActualizados.length === 1 ? "" : "s"} actualizado${gastosActualizados.length === 1 ? "" : "s"}.`);
-    } catch (apiError) {
-      setMensajePersonal(obtenerMensajeError(apiError, "No se pudieron aplicar los cambios en masa."));
+      const detalleError = fallidos.length > 0
+        ? obtenerMensajeError(
+            fallidos[0].reason,
+            "Revisa los movimientos que no se pudieron crear.",
+          )
+        : "";
+      setMensajePersonal(
+        fallidos.length === 0
+          ? `${creados.length} gasto${creados.length === 1 ? "" : "s"} creado${creados.length === 1 ? "" : "s"} correctamente.`
+          : `${creados.length} creado${creados.length === 1 ? "" : "s"}; ${fallidos.length} no se pudo${fallidos.length === 1 ? "" : "ieron"} crear. ${detalleError}`,
+      );
     } finally {
-      setAplicandoBulkPersonal(false);
+      setCreandoSeleccionadosPersonal(false);
     }
   };
+
+  const limpiarImportacionPersonal = () => {
+    if (gastosPersonales.length === 0) return;
+
+    const confirmaLimpiar = window.confirm(
+      "Vas a limpiar esta previsualizacion. Los gastos que ya hayas creado no se eliminaran de la cuenta.",
+    );
+    if (!confirmaLimpiar) return;
+
+    setResultadoPersonal(null);
+    setGastosPersonales([]);
+    setGastosPersonalesSeleccionados([]);
+    setSubcategoriasDetectadas([]);
+    setMensajePersonal("");
+    setMensajeSubcategorias("");
+    setBulkPersonal({
+      fecha: "",
+      categoriaId: "",
+      subcategoriaId: "",
+      porcentaje: "",
+      incluirMontoReal: "",
+    });
+  };
+
+  const abrirModalCatalogo = (tipo) => {
+    setModalCatalogo(tipo);
+    setErrorCatalogo("");
+    setMensajeCatalogo("");
+    setNombreCategoria("");
+    setFormSubcategoria({
+      nombreSubcategoria: "",
+      categoria: "",
+    });
+  };
+
+  const cerrarModalCatalogo = () => {
+    if (guardandoCatalogo) return;
+    setModalCatalogo("");
+    setErrorCatalogo("");
+  };
+
+  const guardarCategoria = async () => {
+    const nombre = nombreCategoria.trim();
+    if (!nombre) {
+      setErrorCatalogo("El nombre de la categoría es obligatorio.");
+      return;
+    }
+
+    setGuardandoCatalogo(true);
+    setErrorCatalogo("");
+
+    try {
+      const { data } = await api.post("/categorias", {
+        nombreCategoria: nombre,
+      });
+      const categoriaCreada = data.categoria;
+
+      setCategorias((actuales) => [
+        ...actuales.filter((categoria) => categoria._id !== categoriaCreada._id),
+        categoriaCreada,
+      ]);
+      setModalCatalogo("");
+      setNombreCategoria("");
+      setMensajeCatalogo(`Categoría "${categoriaCreada.nombreCategoria}" creada.`);
+    } catch (apiError) {
+      setErrorCatalogo(
+        obtenerMensajeError(apiError, "No se pudo crear la categoría."),
+      );
+    } finally {
+      setGuardandoCatalogo(false);
+    }
+  };
+
+  const guardarSubcategoria = async () => {
+    const nombre = formSubcategoria.nombreSubcategoria.trim();
+    if (!nombre) {
+      setErrorCatalogo("El nombre de la subcategoría es obligatorio.");
+      return;
+    }
+
+    setGuardandoCatalogo(true);
+    setErrorCatalogo("");
+
+    const payload = { nombreSubcategoria: nombre };
+    if (formSubcategoria.categoria) {
+      payload.categoria = formSubcategoria.categoria;
+    }
+
+    try {
+      const { data } = await api.post("/subcategorias", payload);
+      const subcategoriaCreada = data.subcategoria;
+
+      setSubcategorias((actuales) =>
+        combinarSubcategoriasUnicas(actuales, [subcategoriaCreada]),
+      );
+      setModalCatalogo("");
+      setFormSubcategoria({
+        nombreSubcategoria: "",
+        categoria: "",
+      });
+      setMensajeCatalogo(
+        `Subcategoría "${subcategoriaCreada.nombreSubcategoria}" creada.`,
+      );
+    } catch (apiError) {
+      setErrorCatalogo(
+        obtenerMensajeError(apiError, "No se pudo crear la subcategoría."),
+      );
+    } finally {
+      setGuardandoCatalogo(false);
+    }
+  };
+
   return (
     <section className="page-section import-page">
+      <nav
+        className="import-floating-actions secondary-sidebar-actions"
+        aria-label="Acciones rápidas de importación"
+        onMouseEnter={
+          menuAbierto && mantenerMenuAbierto
+            ? mantenerMenuAbierto
+            : undefined
+        }
+        onMouseLeave={
+          menuAbierto && permitirCerrarMenu
+            ? permitirCerrarMenu
+            : undefined
+        }
+      >
+        <span>Acciones rápidas</span>
+        <Link className="secondary-link" to={`/cuentas/${cuentaId}/gastos`}>
+          Volver a gastos
+        </Link>
+        <button type="button" onClick={() => abrirModalCatalogo("categoria")}>
+          Crear categoría
+        </button>
+        <button type="button" onClick={() => abrirModalCatalogo("subcategoria")}>
+          Crear subcategoría
+        </button>
+      </nav>
+
       <header className="page-header">
         <div>
-          <Link className="secondary-link compact-link" to={`/cuentas/${cuentaId}/gastos`}>
-            Volver a gastos
-          </Link>
           <h1>Importar Excel</h1>
           <p>
             El Excel bancario queda como movimientos pendientes para revisar. El Excel
-            personal es temporal y crea gastos pendientes directamente.
+            personal se previsualiza y no crea gastos hasta que lo confirmes.
           </p>
         </div>
       </header>
 
+      {mensajeCatalogo && (
+        <p className="detail-feedback import-message">{mensajeCatalogo}</p>
+      )}
       {error && <p className="error-text import-message">{error}</p>}
 
       <section className="import-actions-grid">
@@ -949,8 +1249,7 @@ function ImportExcelPage() {
           <div>
             <h2>Importar Excel personal</h2>
             <p>
-              Herramienta temporal. Lee la primera hoja y detecta bloques con fecha, detalle,
-              flujo bancario, economia real y categoria como subcategoria.
+              Elegí una hoja, revisá sus movimientos y creá solamente los que quieras conservar.
             </p>
           </div>
           <label>
@@ -958,11 +1257,36 @@ function ImportExcelPage() {
             <input
               type="file"
               accept=".xls,.xlsx"
-              onChange={(event) => setArchivoPersonal(event.target.files[0] || null)}
+              onChange={seleccionarArchivoPersonal}
             />
           </label>
-          <button type="submit" disabled={loadingPersonal}>
-            {loadingPersonal ? "Importando..." : "Importar Excel personal"}
+          <label>
+            Hoja a importar
+            <select
+              value={hojaPersonal}
+              disabled={!archivoPersonal || leyendoHojasPersonal}
+              onChange={(event) => setHojaPersonal(event.target.value)}
+            >
+              <option value="">
+                {leyendoHojasPersonal
+                  ? "Leyendo hojas..."
+                  : "Seleccionar hoja"}
+              </option>
+              {hojasPersonal.map((hoja) => (
+                <option key={hoja} value={hoja}>{hoja}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            disabled={
+              loadingPersonal
+              || leyendoHojasPersonal
+              || !archivoPersonal
+              || !hojaPersonal
+            }
+          >
+            {loadingPersonal ? "Leyendo..." : "Previsualizar Excel personal"}
           </button>
         </form>
       </section>
@@ -988,20 +1312,29 @@ function ImportExcelPage() {
           <h2>Resultado de la importacion personal</h2>
           <div className="import-result-grid">
             <article>
+              <span>Hoja previsualizada</span>
+              <strong>{resultadoPersonal.nombreHoja}</strong>
+            </article>
+            <article>
               <span>Leidos</span>
               <strong>{resultadoPersonal.totalLeidos}</strong>
             </article>
             <article>
-              <span>Gastos creados</span>
-              <strong>{resultadoPersonal.totalProcesados}</strong>
+              <span>Sin crear</span>
+              <strong>{gastosPersonales.filter((gasto) => !gasto.gastoId).length}</strong>
             </article>
+            {resultadoPersonal.totalDuplicados > 0 && (
+              <article>
+                <span>Ya existentes</span>
+                <strong>{resultadoPersonal.totalDuplicados}</strong>
+              </article>
+            )}
           </div>
         </section>
       )}
 
       {gastosPersonales.length > 0 && (
         <TablaGastosPersonales
-          cuentaId={cuentaId}
           gastos={gastosPersonales}
           categorias={categorias}
           subcategorias={subcategorias}
@@ -1013,9 +1346,12 @@ function ImportExcelPage() {
           onToggleTodos={cambiarSeleccionTodosGastosPersonales}
           bulk={bulkPersonal}
           aplicandoBulk={aplicandoBulkPersonal}
+          creandoSeleccionados={creandoSeleccionadosPersonal}
           onBulkChange={cambiarBulkPersonal}
           onAplicarBulk={aplicarCambiosBulkPersonal}
+          onCrearSeleccionados={crearGastosPersonalesSeleccionados}
           onEliminarSeleccionados={eliminarGastosPersonalesSeleccionados}
+          onLimpiar={limpiarImportacionPersonal}
         />
       )}
 
@@ -1072,12 +1408,137 @@ function ImportExcelPage() {
           onCerrar={() => setSubcategoriasDetectadas([])}
         />
       )}
+
+      {modalCatalogo === "categoria" && (
+        <div className="modal-backdrop">
+          <section className="edit-modal import-catalog-modal">
+            <div className="edit-modal-header">
+              <div>
+                <h2>Crear categoría</h2>
+                <p>Al crearla aparecerá inmediatamente en todos los desplegables.</p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <label>
+              Nombre
+              <input
+                autoFocus
+                type="text"
+                value={nombreCategoria}
+                onChange={(event) => setNombreCategoria(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") guardarCategoria();
+                }}
+              />
+            </label>
+
+            {errorCatalogo && <p className="error-text">{errorCatalogo}</p>}
+
+            <div className="edit-modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={guardarCategoria}
+              >
+                {guardandoCatalogo ? "Creando..." : "Crear categoría"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {modalCatalogo === "subcategoria" && (
+        <div className="modal-backdrop">
+          <section className="edit-modal import-catalog-modal">
+            <div className="edit-modal-header">
+              <div>
+                <h2>Crear subcategoría</h2>
+                <p>Podés asociarla a una categoría ahora o dejarla sin categoría.</p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <label>
+              Nombre
+              <input
+                autoFocus
+                type="text"
+                value={formSubcategoria.nombreSubcategoria}
+                onChange={(event) =>
+                  setFormSubcategoria((actual) => ({
+                    ...actual,
+                    nombreSubcategoria: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              Categoría (opcional)
+              <SearchableCategorySelect
+                categorias={categorias}
+                value={formSubcategoria.categoria}
+                placeholder="Sin categoría"
+                ariaLabel="Buscar categoría para la subcategoría"
+                onChange={(categoriaId) =>
+                  setFormSubcategoria((actual) => ({
+                    ...actual,
+                    categoria: categoriaId,
+                  }))
+                }
+              />
+            </label>
+
+            {errorCatalogo && <p className="error-text">{errorCatalogo}</p>}
+
+            <div className="edit-modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={guardarSubcategoria}
+              >
+                {guardandoCatalogo ? "Creando..." : "Crear subcategoría"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
 
 function TablaGastosPersonales({
-  cuentaId,
   gastos,
   categorias,
   subcategorias,
@@ -1089,19 +1550,29 @@ function TablaGastosPersonales({
   onToggleTodos,
   bulk,
   aplicandoBulk,
+  creandoSeleccionados,
   onBulkChange,
   onAplicarBulk,
+  onCrearSeleccionados,
   onEliminarSeleccionados,
+  onLimpiar,
 }) {
+  const movimientosEditables = gastos.filter((gasto) => !gasto.gastoId);
+  const ordenTabla = useSortableRows(gastos, columnasOrdenablesImportacion);
+
   return (
     <section className="page-section">
       <header className="page-header">
         <div>
-          <h2>Gastos creados desde Excel personal</h2>
+          <h2>Previsualización del Excel personal</h2>
           <p>
-            Quedaron pendientes. Podes corregirlos aca o abrir el detalle de cada gasto.
+            Revisá y corregí los movimientos antes de crearlos. También podés quitar
+            filas o limpiar toda la previsualización.
           </p>
         </div>
+        <button type="button" className="secondary-button" onClick={onLimpiar}>
+          Limpiar importación
+        </button>
       </header>
 
       {mensaje && <p className="detail-feedback">{mensaje}</p>}
@@ -1122,34 +1593,28 @@ function TablaGastosPersonales({
 
           <label>
             Categoria
-            <select
-              className="table-select"
+            <SearchableCategorySelect
+              categorias={categorias}
               value={bulk.categoriaId}
-              onChange={(event) => onBulkChange("categoriaId", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              {categorias.map((categoria) => (
-                <option key={categoria._id} value={categoria._id}>
-                  {categoria.nombreCategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Sin cambios"
+              ariaLabel="Buscar categoría para aplicar a seleccionados"
+              onChange={(categoriaId) =>
+                onBulkChange("categoriaId", categoriaId)
+              }
+            />
           </label>
 
           <label>
             Subcategoria
-            <select
-              className="table-select"
+            <SearchableSubcategorySelect
+              subcategorias={subcategorias}
               value={bulk.subcategoriaId}
-              onChange={(event) => onBulkChange("subcategoriaId", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              {subcategorias.map((subcategoria) => (
-                <option key={subcategoria._id} value={subcategoria._id}>
-                  {subcategoria.nombreSubcategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Sin cambios"
+              ariaLabel="Buscar subcategoría para aplicar a seleccionados"
+              onChange={(subcategoriaId) =>
+                onBulkChange("subcategoriaId", subcategoriaId)
+              }
+            />
           </label>
 
           <label>
@@ -1189,10 +1654,20 @@ function TablaGastosPersonales({
 
           <button
             type="button"
+            className="selection-action"
+            onClick={onCrearSeleccionados}
+            disabled={creandoSeleccionados}
+          >
+            {creandoSeleccionados ? "Creando..." : "Crear seleccionados"}
+          </button>
+
+          <button
+            type="button"
             className="selection-action delete-action"
             onClick={onEliminarSeleccionados}
+            disabled={creandoSeleccionados}
           >
-            Eliminar seleccionados
+            Quitar seleccionados
           </button>
         </div>
       )}
@@ -1204,15 +1679,38 @@ function TablaGastosPersonales({
               <th>
                 <input
                   type="checkbox"
-                  checked={gastos.length > 0 && seleccionados.length === gastos.length}
+                  checked={
+                    movimientosEditables.length > 0
+                    && seleccionados.length === movimientosEditables.length
+                  }
                   onChange={(event) => onToggleTodos(event.target.checked)}
                 />
               </th>
-              <th>Fecha</th>
-              <th>Detalle</th>
-              <th>Bancario</th>
+              <SortableTableHeader
+                label="Fecha"
+                sortKey="fecha"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
+              <SortableTableHeader
+                label="Detalle"
+                sortKey="detalle"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
+              <SortableTableHeader
+                label="Bancario"
+                sortKey="montoBancario"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>%</th>
-              <th>Real</th>
+              <SortableTableHeader
+                label="Real"
+                sortKey="montoReal"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
@@ -1220,12 +1718,13 @@ function TablaGastosPersonales({
             </tr>
           </thead>
           <tbody>
-            {gastos.map((gasto) => (
+            {ordenTabla.sortedRows.map((gasto) => (
               <tr key={gasto._id}>
                 <td>
                   <input
                     type="checkbox"
                     checked={seleccionados.includes(gasto._id)}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={() => onToggleSeleccion(gasto._id)}
                   />
                 </td>
@@ -1234,6 +1733,7 @@ function TablaGastosPersonales({
                     className="table-input"
                     type="date"
                     value={gasto.fecha}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "fecha", event.target.value)}
                   />
                 </td>
@@ -1242,6 +1742,7 @@ function TablaGastosPersonales({
                     className="table-input table-input-wide table-detail-textarea"
                     rows={Math.max(2, Math.ceil(String(gasto.detalle || "").length / 34))}
                     value={gasto.detalle}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}
                   />
                 </td>
@@ -1250,6 +1751,7 @@ function TablaGastosPersonales({
                     className="table-input table-input-number"
                     type="number"
                     value={gasto.montoBancario}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "montoBancario", event.target.value)}
                   />
                 </td>
@@ -1260,42 +1762,67 @@ function TablaGastosPersonales({
                     min="0"
                     max="100"
                     value={gasto.porcentaje}
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || !montoDistintoDeCero(gasto.montoBancario)
+                    }
                     onChange={(event) => onChange(gasto._id, "porcentaje", event.target.value)}
                   />
                 </td>
-                <td>{formatearMonto(gasto.montoReal)}</td>
                 <td>
-                  <select
-                    className="table-select"
-                    value={gasto.categoriaId}
-                    onChange={(event) => onChange(gasto._id, "categoriaId", event.target.value)}
-                  >
-                    <option value="">Sin categoria</option>
-                    {categorias.map((categoria) => (
-                      <option key={categoria._id} value={categoria._id}>
-                        {categoria.nombreCategoria}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    className="table-input table-input-number"
+                    type="number"
+                    value={gasto.montoReal}
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || montoDistintoDeCero(gasto.montoBancario)
+                    }
+                    title={
+                      montoDistintoDeCero(gasto.montoBancario)
+                        ? "Se calcula con el monto bancario y el porcentaje"
+                        : "Monto real directo"
+                    }
+                    onChange={(event) =>
+                      onChange(gasto._id, "montoReal", event.target.value)
+                    }
+                  />
                 </td>
                 <td>
-                  <select
-                    className="table-select"
+                  <SearchableCategorySelect
+                    categorias={categorias}
+                    value={gasto.categoriaId}
+                    disabled={Boolean(gasto.gastoId)}
+                    placeholder="Sin categoría"
+                    ariaLabel={`Buscar categoría para ${gasto.detalle}`}
+                    onChange={(categoriaId) =>
+                      onChange(gasto._id, "categoriaId", categoriaId)
+                    }
+                  />
+                </td>
+                <td>
+                  <SearchableSubcategorySelect
+                    subcategorias={subcategorias}
                     value={obtenerSubcategoriaSeleccionada(gasto, subcategorias)}
-                    onChange={(event) => onChange(gasto._id, "subcategoriaId", event.target.value)}
-                  >
-                    <option value="">{gasto.nombreSubcategoria || "Sin subcategoria"}</option>
-                    {subcategorias.map((subcategoria) => (
-                      <option key={subcategoria._id} value={subcategoria._id}>
-                        {subcategoria.nombreSubcategoria}
-                      </option>
-                    ))}
-                  </select>
+                    disabled={Boolean(gasto.gastoId)}
+                    placeholder={gasto.nombreSubcategoria || "Sin subcategoría"}
+                    ariaLabel={`Buscar subcategoría para ${gasto.detalle}`}
+                    onChange={(subcategoriaId) =>
+                      onChange(gasto._id, "subcategoriaId", subcategoriaId)
+                    }
+                  />
                 </td>
                 <td>
                   <input
                     type="checkbox"
-                    checked={Boolean(gasto.incluirMontoReal)}
+                    checked={
+                      !montoDistintoDeCero(gasto.montoBancario)
+                      || Boolean(gasto.incluirMontoReal)
+                    }
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || !montoDistintoDeCero(gasto.montoBancario)
+                    }
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
                   />
                 </td>
@@ -1303,10 +1830,12 @@ function TablaGastosPersonales({
                   <button
                     type="button"
                     className="secondary-button"
-                    disabled={gasto.estado === "creado"}
+                    disabled={Boolean(gasto.gastoId)}
                     onClick={() => onCrear(gasto)}
                   >
-                    {gasto.estado === "creado" ? "Creado" : "Actualizar"}
+                    {gasto.gastoId
+                      ? gasto.duplicado ? "Ya existe" : "Creado"
+                      : "Crear gasto"}
                   </button>
                 </td>
               </tr>
@@ -1336,6 +1865,7 @@ function TablaGastosBancarios({
   onEliminarSeleccionados,
 }) {
   const movimientosEditables = gastos.filter((gasto) => !gasto.gastoId);
+  const ordenTabla = useSortableRows(gastos, columnasOrdenablesImportacion);
 
   return (
     <>
@@ -1355,34 +1885,28 @@ function TablaGastosBancarios({
 
           <label>
             Categoria
-            <select
-              className="table-select"
+            <SearchableCategorySelect
+              categorias={categorias}
               value={bulk.categoriaId}
-              onChange={(event) => onBulkChange("categoriaId", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              {categorias.map((categoria) => (
-                <option key={categoria._id} value={categoria._id}>
-                  {categoria.nombreCategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Sin cambios"
+              ariaLabel="Buscar categoría para aplicar a seleccionados"
+              onChange={(categoriaId) =>
+                onBulkChange("categoriaId", categoriaId)
+              }
+            />
           </label>
 
           <label>
             Subcategoria
-            <select
-              className="table-select"
+            <SearchableSubcategorySelect
+              subcategorias={subcategorias}
               value={bulk.subcategoriaId}
-              onChange={(event) => onBulkChange("subcategoriaId", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              {subcategorias.map((subcategoria) => (
-                <option key={subcategoria._id} value={subcategoria._id}>
-                  {subcategoria.nombreSubcategoria}
-                </option>
-              ))}
-            </select>
+              placeholder="Sin cambios"
+              ariaLabel="Buscar subcategoría para aplicar a seleccionados"
+              onChange={(subcategoriaId) =>
+                onBulkChange("subcategoriaId", subcategoriaId)
+              }
+            />
           </label>
 
           <label>
@@ -1452,11 +1976,31 @@ function TablaGastosBancarios({
                   onChange={(event) => onToggleTodos(event.target.checked)}
                 />
               </th>
-              <th>Fecha</th>
-              <th>Detalle</th>
-              <th>Bancario</th>
+              <SortableTableHeader
+                label="Fecha"
+                sortKey="fecha"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
+              <SortableTableHeader
+                label="Detalle"
+                sortKey="detalle"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
+              <SortableTableHeader
+                label="Bancario"
+                sortKey="montoBancario"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>%</th>
-              <th>Real</th>
+              <SortableTableHeader
+                label="Real"
+                sortKey="montoReal"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
@@ -1464,7 +2008,7 @@ function TablaGastosBancarios({
             </tr>
           </thead>
           <tbody>
-            {gastos.map((gasto) => (
+            {ordenTabla.sortedRows.map((gasto) => (
               <tr key={gasto._id}>
                 <td>
                   <input
@@ -1500,46 +2044,67 @@ function TablaGastosBancarios({
                     min="0"
                     max="100"
                     value={gasto.porcentaje}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || !montoDistintoDeCero(gasto.montoBancario)
+                    }
                     onChange={(event) => onChange(gasto._id, "porcentaje", event.target.value)}
                   />
                 </td>
-                <td>{formatearMonto(gasto.montoReal)}</td>
                 <td>
-                  <select
-                    className="table-select"
-                    value={gasto.categoriaId}
-                    disabled={Boolean(gasto.gastoId)}
-                    onChange={(event) => onChange(gasto._id, "categoriaId", event.target.value)}
-                  >
-                    <option value="">Sin categoria</option>
-                    {categorias.map((categoria) => (
-                      <option key={categoria._id} value={categoria._id}>
-                        {categoria.nombreCategoria}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    className="table-input table-input-number"
+                    type="number"
+                    value={gasto.montoReal}
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || montoDistintoDeCero(gasto.montoBancario)
+                    }
+                    title={
+                      montoDistintoDeCero(gasto.montoBancario)
+                        ? "Se calcula con el monto bancario y el porcentaje"
+                        : "Monto real directo"
+                    }
+                    onChange={(event) =>
+                      onChange(gasto._id, "montoReal", event.target.value)
+                    }
+                  />
                 </td>
                 <td>
-                  <select
-                    className="table-select"
+                  <SearchableCategorySelect
+                    categorias={categorias}
+                    value={gasto.categoriaId}
+                    disabled={Boolean(gasto.gastoId)}
+                    placeholder="Sin categoría"
+                    ariaLabel={`Buscar categoría para ${gasto.detalle}`}
+                    onChange={(categoriaId) =>
+                      onChange(gasto._id, "categoriaId", categoriaId)
+                    }
+                  />
+                </td>
+                <td>
+                  <SearchableSubcategorySelect
+                    subcategorias={subcategorias}
                     value={obtenerSubcategoriaSeleccionada(gasto, subcategorias)}
                     disabled={Boolean(gasto.gastoId)}
-                    onChange={(event) => onChange(gasto._id, "subcategoriaId", event.target.value)}
-                  >
-                    <option value="">Sin subcategoria</option>
-                    {subcategorias.map((subcategoria) => (
-                      <option key={subcategoria._id} value={subcategoria._id}>
-                        {subcategoria.nombreSubcategoria}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Sin subcategoría"
+                    ariaLabel={`Buscar subcategoría para ${gasto.detalle}`}
+                    onChange={(subcategoriaId) =>
+                      onChange(gasto._id, "subcategoriaId", subcategoriaId)
+                    }
+                  />
                 </td>
                 <td>
                   <input
                     type="checkbox"
-                    checked={Boolean(gasto.incluirMontoReal)}
-                    disabled={Boolean(gasto.gastoId)}
+                    checked={
+                      !montoDistintoDeCero(gasto.montoBancario)
+                      || Boolean(gasto.incluirMontoReal)
+                    }
+                    disabled={
+                      Boolean(gasto.gastoId)
+                      || !montoDistintoDeCero(gasto.montoBancario)
+                    }
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
                   />
                 </td>
@@ -1592,17 +2157,15 @@ function ModalSubcategoriasDetectadas({
           {subcategoriasDetectadas.map((item) => (
             <label key={item.nombreSubcategoria}>
               <span>{item.nombreSubcategoria}</span>
-              <select
+              <SearchableCategorySelect
+                categorias={categorias}
                 value={item.categoria}
-                onChange={(event) => onChange(item.nombreSubcategoria, event.target.value)}
-              >
-                <option value="">Seleccionar categoria</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria._id} value={categoria._id}>
-                    {categoria.nombreCategoria}
-                  </option>
-                ))}
-              </select>
+                placeholder="Seleccionar categoría"
+                ariaLabel={`Buscar categoría para ${item.nombreSubcategoria}`}
+                onChange={(categoriaId) =>
+                  onChange(item.nombreSubcategoria, categoriaId)
+                }
+              />
             </label>
           ))}
         </div>

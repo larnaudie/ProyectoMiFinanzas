@@ -1,6 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import {
+  formatearMontoMoneda,
+  MONEDAS_SOPORTADAS,
+  obtenerMonedaMovimiento,
+  obtenerMonedasCuenta,
+} from "../../../utils/monedas.js";
+
+const MESES_DEL_ANIO = [
+  { valor: "01", nombre: "Enero" },
+  { valor: "02", nombre: "Febrero" },
+  { valor: "03", nombre: "Marzo" },
+  { valor: "04", nombre: "Abril" },
+  { valor: "05", nombre: "Mayo" },
+  { valor: "06", nombre: "Junio" },
+  { valor: "07", nombre: "Julio" },
+  { valor: "08", nombre: "Agosto" },
+  { valor: "09", nombre: "Setiembre" },
+  { valor: "10", nombre: "Octubre" },
+  { valor: "11", nombre: "Noviembre" },
+  { valor: "12", nombre: "Diciembre" },
+];
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -12,17 +33,8 @@ const numeroFinito = (valor) => {
   return Number.isFinite(numero) ? numero : 0;
 };
 
-const crearMeses = (cantidad) => {
-  const actual = new Date();
-  const meses = [];
-
-  for (let indice = cantidad - 1; indice >= 0; indice -= 1) {
-    const fecha = new Date(Date.UTC(actual.getUTCFullYear(), actual.getUTCMonth() - indice, 1));
-    meses.push(fecha.toISOString().slice(0, 7));
-  }
-
-  return meses;
-};
+const crearMesesDelAnio = (anio) =>
+  MESES_DEL_ANIO.map((mes) => `${anio}-${mes.valor}`);
 
 const formatearMes = (clave) => {
   const fecha = new Date(`${clave}-01T00:00:00.000Z`);
@@ -34,11 +46,8 @@ const formatearMes = (clave) => {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
-const formatearMonto = (monto, moneda) => new Intl.NumberFormat("es-UY", {
-  style: "currency",
-  currency: moneda,
-  minimumFractionDigits: 2,
-}).format(numeroFinito(monto));
+const formatearMonto = (monto, moneda) =>
+  formatearMontoMoneda(numeroFinito(monto), moneda);
 
 const impactoConsumo = (gasto, campo) => {
   const monto = numeroFinito(gasto[campo]);
@@ -46,19 +55,32 @@ const impactoConsumo = (gasto, campo) => {
   return monto < 0 ? Math.abs(monto) : 0;
 };
 
-function DashboardPage() {
+const crearAcumuladoMensual = (clave) => ({
+  clave,
+  montoBancario: 0,
+  montoReal: 0,
+  variacion: 0,
+  cantidad: 0,
+  pendientes: 0,
+});
+
+function DashboardPage({ embedded = false }) {
   const { cuentaId } = useParams();
-  const navigate = useNavigate();
+  const cuentaSeleccionada = cuentaId || "todas";
+  const anioActual = String(new Date().getFullYear());
   const [cuentas, setCuentas] = useState([]);
   const [gastos, setGastos] = useState([]);
-  const [cuentaSeleccionada, setCuentaSeleccionada] = useState(cuentaId || "todas");
-  const [moneda, setMoneda] = useState("UYU");
-  const [cantidadMeses, setCantidadMeses] = useState(12);
+  const [fechaModo, setFechaModo] = useState("mes");
+  const [fechaMes, setFechaMes] = useState("");
+  const [fechaAnio, setFechaAnio] = useState(anioActual);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const gastosUrl = cuentaId ? `/gastos?cuentaId=${cuentaId}` : "/gastos";
+    setLoading(true);
+    setError("");
+
     Promise.all([api.get("/cuentas"), api.get(gastosUrl)])
       .then(([cuentasResponse, gastosResponse]) => {
         setCuentas(cuentasResponse.data.cuentas || []);
@@ -66,125 +88,302 @@ function DashboardPage() {
       })
       .catch((apiError) => {
         console.error("Error al cargar el dashboard:", apiError);
-        setError(apiError.response?.data?.message || "No se pudieron cargar los datos del dashboard.");
+        setError(
+          apiError.response?.data?.message ||
+            "No se pudieron cargar los datos del dashboard.",
+        );
       })
       .finally(() => setLoading(false));
   }, [cuentaId]);
 
-  useEffect(() => {
-    setCuentaSeleccionada(cuentaId || "todas");
-  }, [cuentaId]);
+  const cuentaActual = cuentas.find(
+    (cuenta) => cuenta._id === cuentaSeleccionada,
+  );
 
-  const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaSeleccionada);
-  const meses = useMemo(() => crearMeses(cantidadMeses), [cantidadMeses]);
+  const gastosDelDashboard = useMemo(
+    () =>
+      gastos.filter(
+        (gasto) =>
+          cuentaSeleccionada === "todas" ||
+          obtenerId(gasto.cuentaId) === cuentaSeleccionada,
+      ),
+    [cuentaSeleccionada, gastos],
+  );
 
-  useEffect(() => {
-    if (cuentaActual?.moneda) {
-      setMoneda(cuentaActual.moneda === "USD" ? "USD" : "UYU");
+  const aniosDisponibles = useMemo(
+    () =>
+      [
+        ...new Set([
+          anioActual,
+          ...gastosDelDashboard
+            .map((gasto) =>
+              gasto.fecha ? String(gasto.fecha).slice(0, 4) : "",
+            )
+            .filter(Boolean),
+        ]),
+      ].sort((a, b) => b.localeCompare(a)),
+    [anioActual, gastosDelDashboard],
+  );
+
+  const clavesMensualesDisponibles = useMemo(
+    () =>
+      [
+        ...new Set(
+          gastosDelDashboard
+            .map((gasto) =>
+              gasto.fecha ? String(gasto.fecha).slice(0, 7) : "",
+            )
+            .filter((clave) => /^\d{4}-\d{2}$/.test(clave)),
+        ),
+      ].sort(),
+    [gastosDelDashboard],
+  );
+
+  const meses = useMemo(() => {
+    if (fechaModo !== "mes") {
+      return clavesMensualesDisponibles.length > 0
+        ? clavesMensualesDisponibles
+        : crearMesesDelAnio(anioActual);
     }
-  }, [cuentaActual?._id, cuentaActual?.moneda]);
 
-  const cambiarVista = (event) => {
-    const nuevaCuentaId = event.target.value;
-    setCuentaSeleccionada(nuevaCuentaId);
-    navigate(
-      nuevaCuentaId === "todas"
-        ? "/dashboard"
-        : `/cuentas/${nuevaCuentaId}/dashboard`,
+    if (fechaAnio) {
+      return fechaMes
+        ? [`${fechaAnio}-${fechaMes}`]
+        : crearMesesDelAnio(fechaAnio);
+    }
+
+    const mesesFiltrados = fechaMes
+      ? clavesMensualesDisponibles.filter(
+          (clave) => clave.slice(5, 7) === fechaMes,
+        )
+      : clavesMensualesDisponibles;
+
+    return mesesFiltrados.length > 0
+      ? mesesFiltrados
+      : crearMesesDelAnio(anioActual);
+  }, [
+    anioActual,
+    clavesMensualesDisponibles,
+    fechaAnio,
+    fechaMes,
+    fechaModo,
+  ]);
+
+  const monedasDashboard = useMemo(() => {
+    if (cuentaActual) {
+      return obtenerMonedasCuenta(cuentaActual);
+    }
+
+    const monedasEncontradas = new Set([
+      ...cuentas.flatMap((cuenta) => obtenerMonedasCuenta(cuenta)),
+      ...gastosDelDashboard.map((gasto) => {
+        const cuentaGasto = cuentas.find(
+          (cuenta) => cuenta._id === obtenerId(gasto.cuentaId),
+        );
+        return obtenerMonedaMovimiento(cuentaGasto, gasto.moneda);
+      }),
+    ]);
+    const monedas = MONEDAS_SOPORTADAS.filter((moneda) =>
+      monedasEncontradas.has(moneda),
     );
-  };
 
-  const datosMensuales = useMemo(() => {
-    const cuentasPorId = new Map(cuentas.map((cuenta) => [cuenta._id, cuenta]));
+    return monedas.length > 0 ? monedas : ["UYU"];
+  }, [cuentaActual, cuentas, gastosDelDashboard]);
+
+  const datosMensualesPorMoneda = useMemo(() => {
+    const cuentasPorId = new Map(
+      cuentas.map((cuenta) => [cuenta._id, cuenta]),
+    );
     const clavesPermitidas = new Set(meses);
     const movimientosInternosVinculados = new Set();
-    gastos.forEach((gasto) => {
+
+    gastosDelDashboard.forEach((gasto) => {
       const referenciaId = obtenerId(gasto.origen?.referenciaId);
       if (!referenciaId) return;
       movimientosInternosVinculados.add(gasto._id);
       movimientosInternosVinculados.add(referenciaId);
     });
-    const acumulados = new Map(
-      meses.map((clave) => [clave, {
-        clave,
-        montoBancario: 0,
-        montoReal: 0,
-        variacion: 0,
-        cantidad: 0,
-        pendientes: 0,
-      }]),
+
+    const acumuladosPorMoneda = Object.fromEntries(
+      monedasDashboard.map((moneda) => [
+        moneda,
+        new Map(
+          meses.map((clave) => [clave, crearAcumuladoMensual(clave)]),
+        ),
+      ]),
     );
 
-    gastos.forEach((gasto) => {
+    gastosDelDashboard.forEach((gasto) => {
       const clave = gasto.fecha ? String(gasto.fecha).slice(0, 7) : "";
       const gastoCuentaId = obtenerId(gasto.cuentaId);
-      const coincideCuenta = cuentaSeleccionada === "todas" || gastoCuentaId === cuentaSeleccionada;
-      const gastoMoneda = gasto.moneda === "USD" ? "USD" : "UYU";
+      const cuentaGasto = cuentasPorId.get(gastoCuentaId);
+      const monedaGasto = obtenerMonedaMovimiento(
+        cuentaGasto,
+        gasto.moneda,
+      );
+      const acumulado =
+        acumuladosPorMoneda[monedaGasto]?.get(clave);
 
-      if (!clavesPermitidas.has(clave) || !coincideCuenta || gastoMoneda !== moneda) return;
+      if (!clavesPermitidas.has(clave) || !acumulado) return;
 
-      const acumulado = acumulados.get(clave);
       if (gasto.estado === "pendiente") {
         acumulado.pendientes += 1;
         return;
       }
       if (gasto.estado !== "creado") return;
 
-      const esMovimientoInterno = cuentaSeleccionada === "todas"
-        && movimientosInternosVinculados.has(gasto._id);
+      const esMovimientoInterno =
+        cuentaSeleccionada === "todas" &&
+        movimientosInternosVinculados.has(gasto._id);
 
       if (!esMovimientoInterno) {
-        acumulado.montoBancario += impactoConsumo(gasto, "montoBancario");
+        acumulado.montoBancario += impactoConsumo(
+          gasto,
+          "montoBancario",
+        );
         acumulado.montoReal += impactoConsumo(gasto, "montoReal");
       }
 
-      const cuentaGasto = cuentasPorId.get(gastoCuentaId);
       if (cuentaGasto?.tipoCuenta !== "credito") {
         acumulado.variacion += numeroFinito(gasto.montoBancario);
       }
       acumulado.cantidad += 1;
     });
 
-    return meses.map((clave) => acumulados.get(clave));
-  }, [cuentaSeleccionada, cuentas, gastos, meses, moneda]);
+    return Object.fromEntries(
+      monedasDashboard.map((moneda) => [
+        moneda,
+        meses.map((clave) =>
+          acumuladosPorMoneda[moneda].get(clave),
+        ),
+      ]),
+    );
+  }, [
+    cuentaSeleccionada,
+    cuentas,
+    gastosDelDashboard,
+    meses,
+    monedasDashboard,
+  ]);
 
-  const totales = useMemo(() => datosMensuales.reduce(
-    (resultado, mes) => ({
-      montoBancario: resultado.montoBancario + mes.montoBancario,
-      montoReal: resultado.montoReal + mes.montoReal,
-      pendientes: resultado.pendientes + mes.pendientes,
-    }),
-    { montoBancario: 0, montoReal: 0, pendientes: 0 },
-  ), [datosMensuales]);
-
-  const maximoBarras = Math.max(
-    1,
-    ...datosMensuales.flatMap((mes) => [mes.montoBancario, mes.montoReal]),
+  const totalesPorMoneda = useMemo(
+    () =>
+      Object.fromEntries(
+        monedasDashboard.map((moneda) => [
+          moneda,
+          datosMensualesPorMoneda[moneda].reduce(
+            (resultado, mes) => ({
+              montoBancario:
+                resultado.montoBancario + mes.montoBancario,
+              montoReal: resultado.montoReal + mes.montoReal,
+              variacion: resultado.variacion + mes.variacion,
+              pendientes: resultado.pendientes + mes.pendientes,
+            }),
+            {
+              montoBancario: 0,
+              montoReal: 0,
+              variacion: 0,
+              pendientes: 0,
+            },
+          ),
+        ]),
+      ),
+    [datosMensualesPorMoneda, monedasDashboard],
   );
-  const ultimoMes = datosMensuales[datosMensuales.length - 1];
-  const muestraAhorro = !cuentaActual || cuentaActual.tipoCuenta !== "credito";
-  const tituloCuenta = cuentaActual?.nombreCuenta || "Todas las cuentas";
 
-  if (loading) return <section className="page-section"><p>Cargando dashboard...</p></section>;
+  const pendientesTotales = monedasDashboard.reduce(
+    (total, moneda) => total + totalesPorMoneda[moneda].pendientes,
+    0,
+  );
+  const muestraAhorro =
+    !cuentaActual || cuentaActual.tipoCuenta !== "credito";
+  const tituloCuenta = cuentaActual?.nombreCuenta || "Todas las cuentas";
+  const nombreMesSeleccionado =
+    MESES_DEL_ANIO.find((mes) => mes.valor === fechaMes)?.nombre || "";
+  const periodoSeleccionado =
+    fechaModo !== "mes"
+      ? "Todos los períodos"
+      : [
+          nombreMesSeleccionado || "Todos los meses",
+          fechaAnio ? `de ${fechaAnio}` : "de todos los años",
+        ].join(" ");
+
+  const cambiarModoFecha = (valor) => {
+    setFechaModo(valor);
+    if (valor === "mes" && !fechaAnio) setFechaAnio(anioActual);
+  };
+
+  if (loading) {
+    return (
+      <section
+        className={embedded ? "dashboard-page dashboard-page-embedded" : "page-section"}
+      >
+        <p>Cargando dashboard...</p>
+      </section>
+    );
+  }
 
   return (
-    <section className="page-section dashboard-page">
+    <section
+      className={`${embedded ? "" : "page-section "}dashboard-page${embedded ? " dashboard-page-embedded" : ""}`}
+    >
+      {!embedded && cuentas.length > 0 && (
+        <nav
+          className="dashboard-account-shortcuts dashboard-account-shortcuts-top"
+          aria-label="Cambiar dashboard de cuenta"
+        >
+          <span>Tus cuentas</span>
+          <div>
+            <Link
+              className={cuentaSeleccionada === "todas" ? "is-active" : ""}
+              aria-current={
+                cuentaSeleccionada === "todas" ? "page" : undefined
+              }
+              to="/home#dashboard-general"
+            >
+              Todas las cuentas
+            </Link>
+            {cuentas.map((cuenta) => {
+              const activa = cuentaSeleccionada === cuenta._id;
+
+              return (
+                <Link
+                  key={cuenta._id}
+                  className={activa ? "is-active" : ""}
+                  aria-current={activa ? "page" : undefined}
+                  to={`/cuentas/${cuenta._id}/dashboard`}
+                >
+                  {cuenta.nombreCuenta}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
       <header className="page-header dashboard-header">
         <div>
           <p className="eyebrow">Visión mensual</p>
-          <h1>{cuentaActual ? `Dashboard · ${cuentaActual.nombreCuenta}` : "Dashboard general"}</h1>
+          <h1>
+            {cuentaActual
+              ? `Dashboard · ${cuentaActual.nombreCuenta}`
+              : "Dashboard general"}
+          </h1>
           <p>
             {cuentaActual
-              ? "Analizá el monto bancario y el monto real de esta cuenta, mes a mes."
-              : "Compará el monto bancario y el monto real de todas tus cuentas, mes a mes."}
+              ? "Analizá el monto bancario, el monto real y el ahorro de esta cuenta mes a mes."
+              : "Compará todas tus cuentas por mes, con los importes separados por moneda."}
           </p>
         </div>
         {cuentaActual && (
           <div className="action-row">
-            <Link className="secondary-link" to="/dashboard">
+            <Link className="secondary-link" to="/home#dashboard-general">
               Dashboard general
             </Link>
-            <Link className="primary-link" to={`/cuentas/${cuentaActual._id}/gastos`}>
+            <Link
+              className="primary-link"
+              to={`/cuentas/${cuentaActual._id}/gastos`}
+            >
               Ver movimientos
             </Link>
           </div>
@@ -193,139 +392,246 @@ function DashboardPage() {
 
       {error && <p className="inline-error">{error}</p>}
 
-      <section className="dashboard-filters" aria-label="Filtros del dashboard">
+      <section
+        className="dashboard-filters"
+        aria-label="Filtros del dashboard"
+      >
         <label>
-          Vista
-          <select value={cuentaSeleccionada} onChange={cambiarVista}>
-            <option value="todas">Todas las cuentas</option>
-            {cuentas.map((cuenta) => (
-              <option key={cuenta._id} value={cuenta._id}>{cuenta.nombreCuenta}</option>
-            ))}
+          Fecha
+          <select
+            value={fechaModo}
+            onChange={(event) => cambiarModoFecha(event.target.value)}
+          >
+            <option value="">Sin filtro</option>
+            <option value="mes">Por mes</option>
           </select>
         </label>
-        <label>
-          Moneda
-          <select value={moneda} onChange={(event) => setMoneda(event.target.value)}>
-            <option value="UYU">UYU</option>
-            <option value="USD">USD</option>
-          </select>
-        </label>
-        <label>
-          Período
-          <select value={cantidadMeses} onChange={(event) => setCantidadMeses(Number(event.target.value))}>
-            <option value={6}>Últimos 6 meses</option>
-            <option value={12}>Últimos 12 meses</option>
-            <option value={24}>Últimos 24 meses</option>
-          </select>
-        </label>
+
+        {fechaModo === "mes" && (
+          <>
+            <label>
+              Mes
+              <select
+                value={fechaMes}
+                onChange={(event) => setFechaMes(event.target.value)}
+              >
+                <option value="">Todos los meses</option>
+                {MESES_DEL_ANIO.map((mes) => (
+                  <option key={mes.valor} value={mes.valor}>
+                    {mes.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Año
+              <select
+                value={fechaAnio}
+                onChange={(event) => setFechaAnio(event.target.value)}
+              >
+                <option value="">Todos los años</option>
+                {aniosDisponibles.map((anio) => (
+                  <option key={anio} value={anio}>
+                    {anio}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+
         <div className="dashboard-filter-context">
           <span>Analizando</span>
-          <strong>{tituloCuenta}</strong>
+          <strong>
+            {tituloCuenta} · {periodoSeleccionado}
+          </strong>
         </div>
       </section>
-
-      {!cuentaActual && cuentas.length > 0 && (
-        <nav className="dashboard-account-shortcuts" aria-label="Dashboards por cuenta">
-          <span>Dashboards por cuenta</span>
-          <div>
-            {cuentas.map((cuenta) => (
-              <Link key={cuenta._id} to={`/cuentas/${cuenta._id}/dashboard`}>
-                {cuenta.nombreCuenta}
-              </Link>
-            ))}
-          </div>
-        </nav>
-      )}
 
       <section className="dashboard-kpis">
         <article>
           <span>Monto bancario</span>
-          <strong>{formatearMonto(totales.montoBancario, moneda)}</strong>
-          <small>Consumo acumulado del período</small>
+          {monedasDashboard.map((moneda) => (
+            <strong key={moneda}>
+              {formatearMonto(
+                totalesPorMoneda[moneda].montoBancario,
+                moneda,
+              )}
+            </strong>
+          ))}
+          <small>Consumo acumulado de los meses filtrados</small>
         </article>
         <article>
           <span>Monto real</span>
-          <strong>{formatearMonto(totales.montoReal, moneda)}</strong>
-          <small>Impacto personal acumulado</small>
+          {monedasDashboard.map((moneda) => (
+            <strong key={moneda}>
+              {formatearMonto(
+                totalesPorMoneda[moneda].montoReal,
+                moneda,
+              )}
+            </strong>
+          ))}
+          <small>Impacto personal acumulado de los meses filtrados</small>
         </article>
-        <article className={muestraAhorro && ultimoMes?.variacion < 0 ? "dashboard-kpi-negative" : "dashboard-kpi-positive"}>
-          <span>{muestraAhorro ? "Ahorro estimado del mes" : "Ahorro estimado"}</span>
-          <strong>{muestraAhorro ? formatearMonto(ultimoMes?.variacion, moneda) : "No aplica"}</strong>
-          <small>{muestraAhorro ? "Variación neta de cuentas de débito" : "Las tarjetas no representan ahorro"}</small>
+        <article>
+          <span>
+            {muestraAhorro
+              ? "Ahorro total de los meses"
+              : "Ahorro total"}
+          </span>
+          {muestraAhorro ? (
+            monedasDashboard.map((moneda) => {
+              const ahorro = totalesPorMoneda[moneda].variacion;
+              return (
+                <strong
+                  className={
+                    ahorro < 0
+                      ? "dashboard-value-negative"
+                      : "dashboard-value-positive"
+                  }
+                  key={moneda}
+                >
+                  {formatearMonto(ahorro, moneda)}
+                </strong>
+              );
+            })
+          ) : (
+            <strong>No aplica</strong>
+          )}
+          <small>
+            {muestraAhorro
+              ? "Suma neta del resultado final de cada mes filtrado"
+              : "Las tarjetas no representan ahorro"}
+          </small>
         </article>
         <article>
           <span>Movimientos pendientes</span>
-          <strong>{totales.pendientes}</strong>
-          <small>Dentro del período seleccionado</small>
+          <strong>{pendientesTotales}</strong>
+          <small>Dentro de los meses filtrados</small>
         </article>
       </section>
 
-      <section className="monthly-comparison-card">
-        <header className="monthly-comparison-header">
-          <div>
-            <h2>Comparación mensual</h2>
-            <p>Cada mes conserva exactamente dos barras para facilitar la comparación.</p>
-          </div>
-        </header>
+      {monedasDashboard.map((moneda) => {
+        const datosMensuales = datosMensualesPorMoneda[moneda];
+        const maximoBarras = Math.max(
+          1,
+          ...datosMensuales.flatMap((mes) => [
+            mes.montoBancario,
+            mes.montoReal,
+          ]),
+        );
 
-        <div className="monthly-legend-row">
-          <span className="monthly-legend-spacer" aria-hidden="true" />
-          <div className="dashboard-legend" aria-label="Leyenda">
-            <span><i className="banking-dot" />Monto bancario</span>
-            <span><i className="real-dot" />Monto real</span>
-          </div>
-        </div>
+        return (
+          <section className="monthly-comparison-card" key={moneda}>
+            <header className="monthly-comparison-header">
+              <div>
+                <h2>
+                  Comparación mensual
+                  {monedasDashboard.length > 1 ? ` · ${moneda}` : ""}
+                </h2>
+                <p>
+                  Cada mes conserva exactamente dos barras para facilitar
+                  la comparación.
+                </p>
+              </div>
+            </header>
 
-        <div className="monthly-bars-list">
-          {datosMensuales.map((mes) => {
-            const ahorroPositivo = mes.variacion >= 0;
-            return (
-              <article className="monthly-bar-row" key={mes.clave}>
-                <div className="monthly-bar-label">
-                  <strong>{formatearMes(mes.clave)}</strong>
-                  <span>{mes.cantidad} movimientos</span>
-                  {muestraAhorro && (
-                    <small className={ahorroPositivo ? "monthly-saving-positive" : "monthly-saving-negative"}>
-                      {ahorroPositivo ? "Ahorro est." : "Déficit"}: {formatearMonto(Math.abs(mes.variacion), moneda)}
-                    </small>
-                  )}
-                </div>
-                <div className="monthly-bars">
-                  <div className="monthly-bar-line">
-                    <span className="monthly-bar-name">Bancario</span>
-                    <strong>{formatearMonto(mes.montoBancario, moneda)}</strong>
-                    <div className="monthly-bar-track">
-                      <span
-                        className="monthly-bar-fill monthly-bar-banking"
-                        style={{ width: `${Math.max(0, (mes.montoBancario / maximoBarras) * 100)}%` }}
-                      />
+            <div className="monthly-legend-row">
+              <span
+                className="monthly-legend-spacer"
+                aria-hidden="true"
+              />
+              <div className="dashboard-legend" aria-label="Leyenda">
+                <span>
+                  <i className="banking-dot" />
+                  Monto bancario
+                </span>
+                <span>
+                  <i className="real-dot" />
+                  Monto real
+                </span>
+              </div>
+            </div>
+
+            <div className="monthly-bars-list">
+              {datosMensuales.map((mes) => {
+                const ahorroPositivo = mes.variacion >= 0;
+
+                return (
+                  <article className="monthly-bar-row" key={mes.clave}>
+                    <div className="monthly-bar-label">
+                      <strong>{formatearMes(mes.clave)}</strong>
+                      <span>{mes.cantidad} movimientos</span>
+                      {muestraAhorro && (
+                        <small
+                          className={
+                            ahorroPositivo
+                              ? "monthly-saving-positive"
+                              : "monthly-saving-negative"
+                          }
+                        >
+                          {ahorroPositivo ? "Ahorro" : "Déficit"}:{" "}
+                          {formatearMonto(
+                            Math.abs(mes.variacion),
+                            moneda,
+                          )}
+                        </small>
+                      )}
                     </div>
-                  </div>
-                  <div className="monthly-bar-line">
-                    <span className="monthly-bar-name">Real</span>
-                    <strong>{formatearMonto(mes.montoReal, moneda)}</strong>
-                    <div className="monthly-bar-track">
-                      <span
-                        className="monthly-bar-fill monthly-bar-real"
-                        style={{ width: `${Math.max(0, (mes.montoReal / maximoBarras) * 100)}%` }}
-                      />
+                    <div className="monthly-bars">
+                      <div className="monthly-bar-line">
+                        <span className="monthly-bar-name">Bancario</span>
+                        <strong>
+                          {formatearMonto(mes.montoBancario, moneda)}
+                        </strong>
+                        <div className="monthly-bar-track">
+                          <span
+                            className="monthly-bar-fill monthly-bar-banking"
+                            style={{
+                              width: `${Math.max(
+                                0,
+                                (mes.montoBancario / maximoBarras) * 100,
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="monthly-bar-line">
+                        <span className="monthly-bar-name">Real</span>
+                        <strong>
+                          {formatearMonto(mes.montoReal, moneda)}
+                        </strong>
+                        <div className="monthly-bar-track">
+                          <span
+                            className="monthly-bar-fill monthly-bar-real"
+                            style={{
+                              width: `${Math.max(
+                                0,
+                                (mes.montoReal / maximoBarras) * 100,
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
 
       <aside className="dashboard-savings-note">
         <span className="dashboard-savings-icon">$</span>
         <div>
-          <h3>¿Cómo se estima el ahorro?</h3>
+          <h3>¿Cómo se calcula el ahorro total?</h3>
           <p>
-            Se toma la variación neta mensual de las cuentas de débito en la moneda elegida.
-            Las transferencias internas de la misma moneda se compensan si están importadas en ambas cuentas.
-            USD y UYU se muestran por separado para no inventar un tipo de cambio.
+            Se calcula el resultado neto de cada mes y luego se suman los
+            meses positivos y se restan los meses con déficit. En el
+            dashboard general, UYU, USD y UI permanecen separados para no
+            inventar un tipo de cambio. Las transferencias internas de la
+            misma moneda se compensan cuando están vinculadas.
           </p>
         </div>
       </aside>

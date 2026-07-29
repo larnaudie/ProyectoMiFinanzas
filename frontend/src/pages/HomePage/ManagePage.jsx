@@ -25,6 +25,11 @@ import {
   eliminarSubcategoria,
   guardarSubcategorias,
 } from "../../features/slices/subcategoriasSlice";
+import SearchableCategorySelect from "../../components/SearchableCategorySelect.jsx";
+import {
+  obtenerMonedasCuenta,
+  OPCIONES_MONEDA,
+} from "../../utils/monedas.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -115,10 +120,7 @@ function ManagePage() {
           label: "Moneda",
           type: "select",
           defaultValue: "UYU",
-          options: [
-            { _id: "UYU", nombreCategoria: "UYU" },
-            { _id: "USD", nombreCategoria: "USD" },
-          ],
+          options: OPCIONES_MONEDA,
         },
       ],
       agregar: agregarCuenta,
@@ -169,19 +171,17 @@ function ManagePage() {
           required: false,
         },
         {
-          name: "moneda",
-          label: "Moneda",
-          type: "select",
-          defaultValue: "UYU",
-          options: [
-            { _id: "UYU", nombreCategoria: "UYU" },
-            { _id: "USD", nombreCategoria: "USD" },
-          ],
+          name: "monedas",
+          label: "Monedas habilitadas",
+          type: "multiselect",
+          defaultValue: ["UYU", "USD"],
+          options: OPCIONES_MONEDA,
         },
       ],
       agregar: agregarCuenta,
       actualizar: actualizarCuenta,
       eliminar: eliminarCuenta,
+      extra: (item) => obtenerMonedasCuenta(item).join(" + "),
     },
     prestamos: {
       titulo: "Prestamos",
@@ -198,6 +198,13 @@ function ManagePage() {
 
     entidad.campos?.forEach((campo) => {
       const valorActual = item?.[campo.name];
+      if (campo.type === "multiselect") {
+        valoresIniciales[campo.name] = item
+          ? obtenerMonedasCuenta(item)
+          : [...(campo.defaultValue || [])];
+        return;
+      }
+
       valoresIniciales[campo.name] = item
         ? (typeof valorActual === "object" ? obtenerId(valorActual) : valorActual ?? "")
         : campo.defaultValue ?? "";
@@ -218,10 +225,25 @@ function ManagePage() {
     setForm({ ...form, [campo]: valor });
   };
 
+  const cambiarOpcionMultiple = (campo, opcion, seleccionada) => {
+    const actuales = Array.isArray(form[campo]) ? form[campo] : [];
+    const siguientes = seleccionada
+      ? [...new Set([...actuales, opcion])]
+      : actuales.filter((valor) => valor !== opcion);
+
+    cambiarCampo(campo, siguientes);
+  };
+
   const guardarEntidad = () => {
     const entidad = entidades[modal.entidadKey];
     const camposVacios = entidad.campos.filter(
-      (campo) => campo.required !== false && !String(form[campo.name] ?? "").trim(),
+      (campo) => {
+        if (campo.required === false) return false;
+        const valor = form[campo.name];
+        return Array.isArray(valor)
+          ? valor.length === 0
+          : !String(valor ?? "").trim();
+      },
     );
 
     if (camposVacios.length > 0) {
@@ -359,30 +381,92 @@ function ManagePage() {
             </header>
 
             <div className="modal-form">
-              {entidadModal.campos.map((campo) => (
-                <label key={campo.name}>
-                  {campo.label}
-                  {campo.type === "select" ? (
-                    <select
-                      value={form[campo.name] || ""}
-                      onChange={(event) => cambiarCampo(campo.name, event.target.value)}
+              {entidadModal.campos.map((campo) => {
+                if (campo.type === "multiselect") {
+                  const seleccionadas = Array.isArray(form[campo.name])
+                    ? form[campo.name]
+                    : [];
+
+                  return (
+                    <fieldset
+                      className="manage-multiselect"
+                      key={campo.name}
                     >
-                      <option value="">Seleccionar</option>
-                      {campo.options.map((option) => (
-                        <option key={option._id} value={option._id}>
-                          {option[campo.optionLabel || "nombreCategoria"]}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form[campo.name] || ""}
-                      onChange={(event) => cambiarCampo(campo.name, event.target.value)}
-                    />
-                  )}
-                </label>
-              ))}
+                      <legend>{campo.label}</legend>
+                      <div className="manage-multiselect-options">
+                        {campo.options.map((option) => (
+                          <label key={option._id}>
+                            <input
+                              type="checkbox"
+                              checked={seleccionadas.includes(option._id)}
+                              onChange={(event) =>
+                                cambiarOpcionMultiple(
+                                  campo.name,
+                                  option._id,
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                            <span>
+                              {option[
+                                campo.optionLabel || "nombreCategoria"
+                              ]}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <small>
+                        Cada movimiento conservará la moneda informada en el
+                        resumen.
+                      </small>
+                    </fieldset>
+                  );
+                }
+
+                return (
+                  <label key={campo.name}>
+                    {campo.label}
+                    {campo.type === "select" ? (
+                      modal.entidadKey === "subcategorias" &&
+                      campo.name === "categoria" ? (
+                        <SearchableCategorySelect
+                          categorias={campo.options}
+                          value={form[campo.name] || ""}
+                          placeholder="Seleccionar categoría"
+                          ariaLabel="Buscar categoría para la subcategoría"
+                          onChange={(categoriaId) =>
+                            cambiarCampo(campo.name, categoriaId)
+                          }
+                        />
+                      ) : (
+                        <select
+                          value={form[campo.name] || ""}
+                          onChange={(event) =>
+                            cambiarCampo(campo.name, event.target.value)
+                          }
+                        >
+                          <option value="">Seleccionar</option>
+                          {campo.options.map((option) => (
+                            <option key={option._id} value={option._id}>
+                              {option[
+                                campo.optionLabel || "nombreCategoria"
+                              ]}
+                            </option>
+                          ))}
+                        </select>
+                      )
+                    ) : (
+                      <input
+                        type="text"
+                        value={form[campo.name] || ""}
+                        onChange={(event) =>
+                          cambiarCampo(campo.name, event.target.value)
+                        }
+                      />
+                    )}
+                  </label>
+                );
+              })}
             </div>
 
             {error && <p className="inline-error modal-error">{error}</p>}

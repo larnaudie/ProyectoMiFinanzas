@@ -1,4 +1,9 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useRef, useState } from "react";
@@ -11,6 +16,16 @@ import {
 import { guardarCuentas } from "../../../features/slices/cuentasSlice";
 import { agregarCategoria, guardarCategorias } from "../../../features/slices/categoriasSlice";
 import { agregarSubcategoria, guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
+import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
+import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
+import SortableTableHeader, {
+  useSortableRows,
+} from "../../../components/SortableTableHeader.jsx";
+import {
+  MONEDAS_SOPORTADAS,
+  obtenerMonedaMovimiento,
+  simboloMoneda,
+} from "../../../utils/monedas.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -50,18 +65,24 @@ const obtenerFechaActualParaFiltro = () => {
   };
 };
 
-const obtenerNombreCategoria = (categoriaId, categorias) => {
-  const id = obtenerId(categoriaId);
-  return categorias.find((categoria) => categoria._id === id)?.nombreCategoria || "";
-};
-
-const obtenerNombreSubcategoria = (subcategoriaId, subcategorias) => {
-  const id = obtenerId(subcategoriaId);
-  return (
-    subcategorias.find((subcategoria) => subcategoria._id === id)
-      ?.nombreSubcategoria || ""
-  );
-};
+const crearFiltrosIniciales = (esResumenTarjeta = false) => ({
+  detalle: "",
+  categoriaId: "",
+  subcategoriaId: "",
+  fechaModo: esResumenTarjeta ? "" : "mes",
+  fechaMes: "",
+  fechaAnio: esResumenTarjeta ? "" : obtenerFechaActualParaFiltro().anio,
+  fechaDesde: "",
+  fechaHasta: "",
+  montoBancarioModo: "",
+  montoBancario: "",
+  montoBancarioDesde: "",
+  montoBancarioHasta: "",
+  montoRealModo: "",
+  montoReal: "",
+  montoRealDesde: "",
+  montoRealHasta: "",
+});
 
 const cumpleFiltroMonto = (valor, modo, monto, desde, hasta) => {
   // Si el usuario no eligio un modo, este filtro no limita la lista.
@@ -95,6 +116,7 @@ const crearGastoInicial = () => ({
   detalle: "",
   fecha: obtenerFechaActualParaInput(),
   montoBancario: "",
+  montoReal: "",
   porcentaje: 100,
   incluirMontoReal: true,
   categoriaId: "",
@@ -110,6 +132,10 @@ const esMontoBancarioValido = (valor) => {
   return esNumeroValido(valor) && Number(valor) !== 0;
 };
 
+const esMontoRealValido = (valor) => {
+  return esNumeroValido(valor) && Number(valor) !== 0;
+};
+
 const esPorcentajeValido = (valor) => {
   if (!esNumeroValido(valor)) return false;
   const numero = Number(valor);
@@ -121,8 +147,13 @@ const obtenerCamposFaltantesNuevoGasto = (gasto) => {
 
   if (!gasto.detalle.trim()) campos.push("detalle");
   if (!gasto.fecha) campos.push("fecha");
-  if (!esMontoBancarioValido(gasto.montoBancario)) campos.push("monto bancario distinto de 0");
-  if (!esPorcentajeValido(gasto.porcentaje)) campos.push("porcentaje entre 0 y 100");
+  const tieneMontoBancario = esMontoBancarioValido(gasto.montoBancario);
+  if (!tieneMontoBancario && !esMontoRealValido(gasto.montoReal)) {
+    campos.push("monto bancario o monto real distinto de 0");
+  }
+  if (tieneMontoBancario && !esPorcentajeValido(gasto.porcentaje)) {
+    campos.push("porcentaje entre 0 y 100");
+  }
   if (!gasto.subcategoriaId) campos.push("subcategoria");
 
   return campos;
@@ -131,6 +162,7 @@ const nombresCamposGasto = {
   detalle: "detalle",
   fecha: "fecha",
   montoBancario: "monto bancario distinto de 0",
+  montoReal: "monto real distinto de 0",
   porcentaje: "porcentaje entre 0 y 100",
   cuentaId: "cuenta",
   categoriaId: "categoria",
@@ -163,7 +195,18 @@ const subcategoriaInicial = {
   categoria: "",
 };
 
+const columnasOrdenablesGastos = {
+  fecha: { type: "date" },
+  detalle: { type: "text" },
+  montoBancario: { type: "number" },
+  montoReal: { type: "number" },
+};
+
 function DesglocePage() {
+  const contextoLayout = useOutletContext();
+  const menuAbierto = contextoLayout?.menuAbierto || false;
+  const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
+  const permitirCerrarMenu = contextoLayout?.alSalirMenu;
   const { cuentaId, resumenId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -176,24 +219,17 @@ function DesglocePage() {
   );
 
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
+  const obtenerMonedaVisible = (gasto) => {
+    const cuentaGasto = cuentas.find(
+      (cuenta) => cuenta._id === obtenerId(gasto?.cuentaId),
+    ) || cuentaActual;
 
-  const [filtros, setFiltros] = useState({
-    detalle: "",
-    categoriaId: "",
-    subcategoriaId: "",
-    fechaModo: "",
-    fechaMes: "",
-    fechaDesde: "",
-    fechaHasta: "",
-    montoBancarioModo: "",
-    montoBancario: "",
-    montoBancarioDesde: "",
-    montoBancarioHasta: "",
-    montoRealModo: "",
-    montoReal: "",
-    montoRealDesde: "",
-    montoRealHasta: "",
-  });
+    return obtenerMonedaMovimiento(cuentaGasto, gasto?.moneda);
+  };
+
+  const [filtros, setFiltros] = useState(() =>
+    crearFiltrosIniciales(Boolean(resumenId)),
+  );
 
   const [seleccionados, setSeleccionados] = useState([]);
   const [bulk, setBulk] = useState({
@@ -238,6 +274,11 @@ function DesglocePage() {
 
   // timersRef guarda un timer por gasto/campo para poder hacer debounce.
   const timersRef = useRef({});
+
+  useEffect(() => {
+    setFiltros(crearFiltrosIniciales(Boolean(resumenId)));
+    setSeleccionados([]);
+  }, [cuentaId, resumenId]);
 
   useEffect(() => {
     // Cargamos todo lo que la tabla editable necesita para funcionar.
@@ -375,6 +416,15 @@ function DesglocePage() {
     (gasto) => gasto.estado === "creado",
   );
 
+  const ordenPendientes = useSortableRows(
+    gastosPendientes,
+    columnasOrdenablesGastos,
+  );
+  const ordenCreados = useSortableRows(
+    gastosCreados,
+    columnasOrdenablesGastos,
+  );
+
   const cambiarFiltro = (campo, valor) => {
     if (campo === "fechaModo" && valor === "mes") {
       const fechaActual = obtenerFechaActualParaFiltro();
@@ -441,6 +491,8 @@ function DesglocePage() {
       cambiarEstado: crearCompleto,
       montoBancario:
         formGasto.montoBancario === "" ? "" : Number(formGasto.montoBancario),
+      montoReal:
+        formGasto.montoReal === "" ? "" : Number(formGasto.montoReal),
       porcentaje: formGasto.porcentaje === "" ? "" : Number(formGasto.porcentaje),
     };
 
@@ -584,7 +636,9 @@ function DesglocePage() {
 
     timersRef.current[timerId] = setTimeout(() => {
       const valorParaBackend =
-        (campo === "montoBancario" || campo === "porcentaje") && valor !== ""
+        (campo === "montoBancario"
+          || campo === "montoReal"
+          || campo === "porcentaje") && valor !== ""
           ? Number(valor)
           : valor;
 
@@ -635,6 +689,7 @@ function DesglocePage() {
       cuentaId,
       fecha: fechaParaInput(gasto.fecha),
       montoBancario: Number(gasto.montoBancario || 0),
+      montoReal: Number(gasto.montoReal || 0),
       porcentaje: Number(gasto.porcentaje || 100),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
       categoriaId: obtenerId(gasto.categoriaId),
@@ -682,7 +737,7 @@ function DesglocePage() {
 
   const calcularTotal = (gastosVisibles, campo, moneda = null) => {
     return gastosVisibles.reduce((total, gasto) => {
-      const monedaGasto = gasto.moneda === "USD" ? "USD" : "UYU";
+      const monedaGasto = obtenerMonedaVisible(gasto);
       if (moneda && monedaGasto !== moneda) return total;
       return total + Number(gasto[campo] || 0);
     }, 0);
@@ -699,17 +754,30 @@ function DesglocePage() {
     });
   };
 
-  const crearGastoIndividual = async (gasto) => {
+  const crearGastoIndividual = async (gasto, subcategoriaIdVisible = "") => {
     if (gasto.estado === "creado") return;
 
+    const subcategoriaId =
+      subcategoriaIdVisible || obtenerValorVisible(gasto, "subcategoriaId");
+    if (!subcategoriaId) {
+      setMensajeAccion("");
+      setErrorAccion(
+        `El gasto "${gasto.detalle}" necesita una subcategoría antes de pasar a creado.`,
+      );
+      return;
+    }
+
+    clearTimeout(timersRef.current[`${gasto._id}-subcategoriaId`]);
     setGastoProcesandoId(gasto._id);
     setMensajeAccion("");
     setErrorAccion("");
     try {
       const response = await api.patch(`/gastos/${gasto._id}`, {
         cambiarEstado: true,
+        subcategoriaId,
       });
       dispatch(actualizarGasto(response.data.gasto));
+      limpiarEdicionLocal(gasto._id, "subcategoriaId");
       setSeleccionados((actuales) => actuales.filter((id) => id !== gasto._id));
       setMensajeAccion(`Gasto "${gasto.detalle}" creado correctamente.`);
     } catch (error) {
@@ -725,15 +793,31 @@ function DesglocePage() {
     );
     if (pendientes.length === 0 || creandoSeleccionados) return;
 
+    const pendientesSinSubcategoria = pendientes.filter(
+      (gasto) => !obtenerValorVisible(gasto, "subcategoriaId"),
+    );
+    if (pendientesSinSubcategoria.length > 0) {
+      setMensajeAccion("");
+      setErrorAccion(
+        `${pendientesSinSubcategoria.length} gasto${pendientesSinSubcategoria.length === 1 ? "" : "s"} necesita${pendientesSinSubcategoria.length === 1 ? "" : "n"} una subcategoría antes de pasar a creado.`,
+      );
+      return;
+    }
+
     setCreandoSeleccionados(true);
     setMensajeAccion("");
     setErrorAccion("");
 
     try {
       const resultados = await Promise.allSettled(
-        pendientes.map((gasto) =>
-          api.patch(`/gastos/${gasto._id}`, { cambiarEstado: true }),
-        ),
+        pendientes.map((gasto) => {
+          const subcategoriaId = obtenerValorVisible(gasto, "subcategoriaId");
+          clearTimeout(timersRef.current[`${gasto._id}-subcategoriaId`]);
+          return api.patch(`/gastos/${gasto._id}`, {
+            cambiarEstado: true,
+            subcategoriaId,
+          });
+        }),
       );
       const exitosos = resultados.filter(
         (resultado) => resultado.status === "fulfilled",
@@ -743,7 +827,9 @@ function DesglocePage() {
       );
 
       exitosos.forEach((resultado) => {
-        dispatch(actualizarGasto(resultado.value.data.gasto));
+        const gastoCreado = resultado.value.data.gasto;
+        dispatch(actualizarGasto(gastoCreado));
+        limpiarEdicionLocal(gastoCreado._id, "subcategoriaId");
       });
 
       const idsCreados = exitosos.map(
@@ -982,10 +1068,15 @@ function DesglocePage() {
     }
   });
 
-  const renderTablaGastos = (titulo, gastosVisibles, mostrarTotales = false) => {
-    const monedasTotales = ["UYU", "USD"].filter((moneda) =>
+  const renderTablaGastos = (
+    titulo,
+    gastosVisibles,
+    mostrarTotales = false,
+    ordenTabla,
+  ) => {
+    const monedasTotales = MONEDAS_SOPORTADAS.filter((moneda) =>
       gastosVisibles.some(
-        (gasto) => (gasto.moneda === "USD" ? "USD" : "UYU") === moneda,
+        (gasto) => obtenerMonedaVisible(gasto) === moneda,
       ),
     );
     const gastosSeleccionadosVisibles = gastosVisibles.filter((gasto) =>
@@ -994,6 +1085,9 @@ function DesglocePage() {
     const pendientesSeleccionadosVisibles = gastosSeleccionadosVisibles.filter(
       (gasto) => gasto.estado !== "creado",
     );
+    const mostrarColumnaCrear =
+      Boolean(resumenId)
+      || gastosVisibles.some((gasto) => gasto.estado !== "creado");
 
     return (
     <section className="page-section">
@@ -1014,7 +1108,7 @@ function DesglocePage() {
             <article key={`bancario-${moneda}`}>
               <span>Total monto bancario {moneda}</span>
               <strong>
-                {moneda === "USD" ? "US$" : "$"}{" "}
+                {simboloMoneda(moneda)}{" "}
                 {formatearMonto(
                   calcularTotal(gastosVisibles, "montoBancario", moneda),
                 )}
@@ -1025,7 +1119,7 @@ function DesglocePage() {
             <article key={`real-${moneda}`}>
               <span>Total monto real {moneda}</span>
               <strong>
-                {moneda === "USD" ? "US$" : "$"}{" "}
+                {simboloMoneda(moneda)}{" "}
                 {formatearMonto(
                   calcularTotal(gastosVisibles, "montoReal", moneda),
                 )}
@@ -1092,17 +1186,37 @@ function DesglocePage() {
                   onChange={() => cambiarSeleccionTodos(gastosVisibles)}
                 />
               </th>
-              <th>Fecha</th>
-              <th>Detalle</th>
+              <SortableTableHeader
+                label="Fecha"
+                sortKey="fecha"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
+              <SortableTableHeader
+                label="Detalle"
+                sortKey="detalle"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               {resumenId && <th>Tipo</th>}
-              <th>Bancario</th>
+              <SortableTableHeader
+                label="Bancario"
+                sortKey="montoBancario"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>%</th>
-              <th>Real</th>
+              <SortableTableHeader
+                label="Real"
+                sortKey="montoReal"
+                sortConfig={ordenTabla.sortConfig}
+                onSort={ordenTabla.requestSort}
+              />
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>Incluye</th>
               <th>{resumenId ? "Vincular gasto" : "Transferencia interna"}</th>
-              {resumenId && <th>Acciones</th>}
+              {mostrarColumnaCrear && <th>Crear</th>}
             </tr>
           </thead>
           <tbody>
@@ -1116,6 +1230,12 @@ function DesglocePage() {
                 gasto,
                 "tipoMovimiento",
               );
+              const montoBancarioActual = obtenerValorVisible(
+                gasto,
+                "montoBancario",
+              );
+              const tieneMontoBancario =
+                esMontoBancarioValido(montoBancarioActual);
               const referenciaDirectaId = obtenerId(gasto.origen?.referenciaId);
               const referenciaDirecta = referenciaDirectaId
                 ? gastos.find((item) => item._id === referenciaDirectaId)
@@ -1149,12 +1269,18 @@ function DesglocePage() {
                   </td>
                   <td className="detail-name-cell">
                     <div className="detail-name-wrap">
-                      <Link
-                        className="detail-name-text detail-name-link"
-                        to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}
+                      <span
+                        className="detail-name-tooltip"
+                        data-full-detail={gasto.detalle}
                       >
-                        {gasto.detalle}
-                      </Link>
+                        <Link
+                          className="detail-name-text detail-name-link"
+                          to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}
+                          title={gasto.detalle}
+                        >
+                          {gasto.detalle}
+                        </Link>
+                      </span>
                       <button
                         className="edit-detail-button"
                         type="button"
@@ -1247,6 +1373,7 @@ function DesglocePage() {
                       min="0"
                       max="100"
                       value={obtenerValorVisible(gasto, "porcentaje")}
+                      disabled={!tieneMontoBancario}
                       onChange={(event) =>
                         guardarCambioRapido(
                           gasto,
@@ -1256,58 +1383,64 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>{formatearMonto(gasto.montoReal)}</td>
                   <td>
-                    <select
-                      className="table-select"
-                      value={categoriaActual}
-                      title={obtenerNombreCategoria(categoriaActual, categorias)}
+                    <input
+                      className="table-input table-input-number"
+                      type="number"
+                      value={obtenerValorVisible(gasto, "montoReal")}
+                      disabled={tieneMontoBancario}
+                      title={
+                        tieneMontoBancario
+                          ? "Se calcula con el monto bancario y el porcentaje"
+                          : "Monto real directo"
+                      }
                       onChange={(event) =>
+                        guardarCambioRapido(
+                          gasto,
+                          "montoReal",
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <SearchableCategorySelect
+                      categorias={categorias}
+                      value={categoriaActual}
+                      placeholder="Sin categoría"
+                      ariaLabel={`Buscar categoría para ${gasto.detalle}`}
+                      onChange={(categoriaId) =>
                         guardarCambioRapido(
                           gasto,
                           "categoriaId",
-                          event.target.value,
+                          categoriaId,
                         )
                       }
-                    >
-                      <option value="">Sin categoria</option>
-                      {categorias.map((categoria) => (
-                        <option key={categoria._id} value={categoria._id}>
-                          {categoria.nombreCategoria}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </td>
                   <td>
-                    <select
-                      className="table-select"
+                    <SearchableSubcategorySelect
+                      subcategorias={subcategorias}
                       value={subcategoriaActual}
-                      title={obtenerNombreSubcategoria(
-                        subcategoriaActual,
-                        subcategorias,
-                      )}
-                      onChange={(event) =>
+                      placeholder="Sin subcategoría"
+                      ariaLabel={`Buscar subcategoría para ${gasto.detalle}`}
+                      onChange={(subcategoriaId) =>
                         guardarCambioRapido(
                           gasto,
                           "subcategoriaId",
-                          event.target.value,
+                          subcategoriaId,
                         )
                       }
-                    >
-                      <option value="">Sin subcategoria</option>
-                      {subcategorias.map((subcategoria) => (
-                        <option key={subcategoria._id} value={subcategoria._id}>
-                          {subcategoria.nombreSubcategoria}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </td>
                   <td>
                     <input
                       type="checkbox"
-                      checked={Boolean(
-                        obtenerValorVisible(gasto, "incluirMontoReal"),
-                      )}
+                      checked={
+                        !tieneMontoBancario
+                        || Boolean(obtenerValorVisible(gasto, "incluirMontoReal"))
+                      }
+                      disabled={!tieneMontoBancario}
                       onChange={(event) =>
                         guardarCambioRapido(
                           gasto,
@@ -1380,17 +1513,25 @@ function DesglocePage() {
                       )}
                     </td>
 
-                  {resumenId && (
+                  {mostrarColumnaCrear && (
                     <td>
                       <button
                         type="button"
                         className="row-create-expense-button"
                         disabled={
                           gasto.estado === "creado"
+                          || !subcategoriaActual
                           || gastoProcesandoId === gasto._id
                           || creandoSeleccionados
                         }
-                        onClick={() => crearGastoIndividual(gasto)}
+                        title={
+                          !subcategoriaActual && gasto.estado !== "creado"
+                            ? "Seleccioná una subcategoría para poder crear el gasto"
+                            : ""
+                        }
+                        onClick={() =>
+                          crearGastoIndividual(gasto, subcategoriaActual)
+                        }
                       >
                         {gasto.estado === "creado"
                           ? "Creado"
@@ -1475,7 +1616,7 @@ function DesglocePage() {
   };
 
   return (
-    <section className="page-section">
+    <section className="page-section expense-breakdown-page">
       <div>
         <h1>
           {resumenId
@@ -1492,6 +1633,44 @@ function DesglocePage() {
         )}
       </div>
 
+      <div className="expense-floating-actions-slot">
+        <nav
+          className="expense-floating-actions secondary-sidebar-actions"
+          aria-label="Acciones rápidas del desglose"
+          onMouseEnter={
+            menuAbierto && mantenerMenuAbierto
+              ? mantenerMenuAbierto
+              : undefined
+          }
+          onMouseLeave={
+            menuAbierto && permitirCerrarMenu
+              ? permitirCerrarMenu
+              : undefined
+          }
+        >
+          <span>Acciones rápidas</span>
+          {!resumenId && (
+            <button type="button" onClick={() => abrirModal("gasto")}>
+              Crear gasto
+            </button>
+          )}
+          <button type="button" onClick={() => abrirModal("subcategoria")}>
+            Crear subcategoría
+          </button>
+          <button type="button" onClick={() => abrirModal("categoria")}>
+            Crear categoría
+          </button>
+          {!resumenId && (
+            <Link
+              className="primary-link"
+              to={`/cuentas/${cuentaId}/importar-excel`}
+            >
+              Importar Excel
+            </Link>
+          )}
+        </nav>
+      </div>
+
       <div className="action-row">
         <Link className="secondary-link" to={`/cuentas/${cuentaId}/dashboard`}>
           Ver dashboard
@@ -1500,22 +1679,7 @@ function DesglocePage() {
           <Link className="secondary-link" to={`/cuentas/${cuentaId}/gastos`}>
             Volver a resúmenes
           </Link>
-        ) : (
-          <button type="button" onClick={() => abrirModal("gasto")}>
-            Crear gasto
-          </button>
-        )}
-        <button type="button" onClick={() => abrirModal("subcategoria")}>
-          Crear subcategoria
-        </button>
-        <button type="button" onClick={() => abrirModal("categoria")}>
-          Crear categoria
-        </button>
-        {!resumenId && (
-          <Link className="primary-link" to={`/cuentas/${cuentaId}/importar-excel`}>
-            Importar Excel
-          </Link>
-        )}
+        ) : null}
       </div>
 
       {mensajeAccion && <p className="detail-feedback">{mensajeAccion}</p>}
@@ -1567,46 +1731,60 @@ function DesglocePage() {
                 min="0"
                 max="100"
                 value={formGasto.porcentaje}
+                disabled={!esMontoBancarioValido(formGasto.montoBancario)}
                 onChange={(event) => cambiarFormGasto("porcentaje", event.target.value)}
               />
             </label>
 
             <label>
+              Monto real directo
+              <input
+                type="number"
+                value={formGasto.montoReal}
+                disabled={esMontoBancarioValido(formGasto.montoBancario)}
+                onChange={(event) =>
+                  cambiarFormGasto("montoReal", event.target.value)
+                }
+              />
+              <small>
+                Usalo cuando el gasto no tenga un movimiento bancario asociado.
+              </small>
+            </label>
+
+            <label>
               Categoria
-              <select
+              <SearchableCategorySelect
+                categorias={categorias}
                 value={formGasto.categoriaId}
-                onChange={(event) => cambiarFormGasto("categoriaId", event.target.value)}
-              >
-                <option value="">Sin categoria</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria._id} value={categoria._id}>
-                    {categoria.nombreCategoria}
-                  </option>
-                ))}
-              </select>
+                placeholder="Sin categoría"
+                ariaLabel="Buscar categoría para el gasto"
+                onChange={(categoriaId) =>
+                  cambiarFormGasto("categoriaId", categoriaId)
+                }
+              />
             </label>
 
             <label>
               Subcategoria
-              <select
+              <SearchableSubcategorySelect
+                subcategorias={subcategorias}
                 value={formGasto.subcategoriaId}
-                onChange={(event) =>
-                  cambiarFormGasto("subcategoriaId", event.target.value)
+                placeholder="Seleccionar subcategoría"
+                ariaLabel="Buscar subcategoría para el gasto"
+                onChange={(subcategoriaId) =>
+                  cambiarFormGasto("subcategoriaId", subcategoriaId)
                 }
-              >
-                <option value="">Seleccionar subcategoria</option>
-                {subcategorias.map((subcategoria) => (
-                  <option key={subcategoria._id} value={subcategoria._id}>
-                    {subcategoria.nombreSubcategoria}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
 
             <label className="checkbox-row">
               <input
                 type="checkbox"
-                checked={formGasto.incluirMontoReal}
+                checked={
+                  !esMontoBancarioValido(formGasto.montoBancario)
+                  || formGasto.incluirMontoReal
+                }
+                disabled={!esMontoBancarioValido(formGasto.montoBancario)}
                 onChange={(event) =>
                   cambiarFormGasto("incluirMontoReal", event.target.checked)
                 }
@@ -1697,22 +1875,18 @@ function DesglocePage() {
 
             <label>
               Categoria (opcional)
-              <select
+              <SearchableCategorySelect
+                categorias={categorias}
                 value={formSubcategoria.categoria}
-                onChange={(event) =>
+                placeholder="Sin categoría"
+                ariaLabel="Buscar categoría para la subcategoría"
+                onChange={(categoriaId) =>
                   setFormSubcategoria({
                     ...formSubcategoria,
-                    categoria: event.target.value,
+                    categoria: categoriaId,
                   })
                 }
-              >
-                <option value="">Sin categoria</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria._id} value={categoria._id}>
-                    {categoria.nombreCategoria}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
 
             {errorModal && <p className="error-text">{errorModal}</p>}
@@ -1809,7 +1983,7 @@ function DesglocePage() {
                   </option>
                   {candidatosVinculoFiltrados.map((candidato) => (
                     <option key={candidato._id} value={candidato._id}>
-                      {`${fechaParaInput(candidato.fecha)} · ${candidato.detalle} · $ ${formatearMonto(Number(candidato.montoBancario || 0))} ${candidato.moneda || "UYU"}`}
+                      {`${fechaParaInput(candidato.fecha)} · ${candidato.detalle} · ${simboloMoneda(candidato.moneda)} ${formatearMonto(Number(candidato.montoBancario || 0))}`}
                     </option>
                   ))}
                 </select>
@@ -1888,43 +2062,35 @@ function DesglocePage() {
 
                   <label>
                     Categoría (opcional)
-                    <select
+                    <SearchableCategorySelect
+                      categorias={categorias}
                       value={formGastoVinculo.categoriaId}
-                      onChange={(event) =>
+                      placeholder="Sin categoría"
+                      ariaLabel="Buscar categoría para el gasto vinculado"
+                      onChange={(categoriaId) =>
                         setFormGastoVinculo((actual) => ({
                           ...actual,
-                          categoriaId: event.target.value,
+                          categoriaId,
                           subcategoriaId: "",
                         }))
                       }
-                    >
-                      <option value="">Sin categoría</option>
-                      {categorias.map((categoria) => (
-                        <option key={categoria._id} value={categoria._id}>
-                          {categoria.nombreCategoria}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
 
                   <label>
                     Subcategoría (opcional)
-                    <select
+                    <SearchableSubcategorySelect
+                      subcategorias={subcategoriasGastoVinculo}
                       value={formGastoVinculo.subcategoriaId}
-                      onChange={(event) =>
+                      placeholder="Guardar como pendiente"
+                      ariaLabel="Buscar subcategoría para el gasto vinculado"
+                      onChange={(subcategoriaId) =>
                         setFormGastoVinculo((actual) => ({
                           ...actual,
-                          subcategoriaId: event.target.value,
+                          subcategoriaId,
                         }))
                       }
-                    >
-                      <option value="">Guardar como pendiente</option>
-                      {subcategoriasGastoVinculo.map((subcategoria) => (
-                        <option key={subcategoria._id} value={subcategoria._id}>
-                          {subcategoria.nombreSubcategoria}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
 
                   <p className="credit-link-create-help">
@@ -1991,34 +2157,28 @@ function DesglocePage() {
 
         <label>
           Categoria
-          <select
+          <SearchableCategorySelect
+            categorias={categorias}
             value={filtros.categoriaId}
-            onChange={(event) => cambiarFiltro("categoriaId", event.target.value)}
-          >
-            <option value="">Todas</option>
-            {categorias.map((categoria) => (
-              <option key={categoria._id} value={categoria._id}>
-                {categoria.nombreCategoria}
-              </option>
-            ))}
-          </select>
+            placeholder="Todas"
+            ariaLabel="Buscar categoría para filtrar"
+            onChange={(categoriaId) =>
+              cambiarFiltro("categoriaId", categoriaId)
+            }
+          />
         </label>
 
         <label>
           Subcategoria
-          <select
+          <SearchableSubcategorySelect
+            subcategorias={subcategorias}
             value={filtros.subcategoriaId}
-            onChange={(event) =>
-              cambiarFiltro("subcategoriaId", event.target.value)
+            placeholder="Todas"
+            ariaLabel="Buscar subcategoría para filtrar"
+            onChange={(subcategoriaId) =>
+              cambiarFiltro("subcategoriaId", subcategoriaId)
             }
-          >
-            <option value="">Todas</option>
-            {subcategorias.map((subcategoria) => (
-              <option key={subcategoria._id} value={subcategoria._id}>
-                {subcategoria.nombreSubcategoria}
-              </option>
-            ))}
-          </select>
+          />
         </label>
 <label>
           Fecha
@@ -2194,29 +2354,23 @@ function DesglocePage() {
       <section className="bulk-panel">
         <strong>{seleccionados.length} seleccionados</strong>
 
-        <select
+        <SearchableCategorySelect
+          categorias={categorias}
           value={bulk.categoriaId}
-          onChange={(event) => cambiarBulk("categoriaId", event.target.value)}
-        >
-          <option value="">Categoria sin cambios</option>
-          {categorias.map((categoria) => (
-            <option key={categoria._id} value={categoria._id}>
-              {categoria.nombreCategoria}
-            </option>
-          ))}
-        </select>
+          placeholder="Categoría sin cambios"
+          ariaLabel="Buscar categoría para aplicar a seleccionados"
+          onChange={(categoriaId) => cambiarBulk("categoriaId", categoriaId)}
+        />
 
-        <select
+        <SearchableSubcategorySelect
+          subcategorias={subcategorias}
           value={bulk.subcategoriaId}
-          onChange={(event) => cambiarBulk("subcategoriaId", event.target.value)}
-        >
-          <option value="">Subcategoria sin cambios</option>
-          {subcategorias.map((subcategoria) => (
-            <option key={subcategoria._id} value={subcategoria._id}>
-              {subcategoria.nombreSubcategoria}
-            </option>
-          ))}
-        </select>
+          placeholder="Subcategoría sin cambios"
+          ariaLabel="Buscar subcategoría para aplicar a seleccionados"
+          onChange={(subcategoriaId) =>
+            cambiarBulk("subcategoriaId", subcategoriaId)
+          }
+        />
 
         <select
           value={bulk.incluirMontoReal}
@@ -2251,8 +2405,18 @@ function DesglocePage() {
         </div>
       </header>
 
-      {gastosPendientes.length > 0 && renderTablaGastos("Gastos pendientes", gastosPendientes)}
-      {renderTablaGastos("Gastos creados", gastosCreados, true)}
+      {gastosPendientes.length > 0 && renderTablaGastos(
+        "Gastos pendientes",
+        ordenPendientes.sortedRows,
+        false,
+        ordenPendientes,
+      )}
+      {renderTablaGastos(
+        "Gastos creados",
+        ordenCreados.sortedRows,
+        true,
+        ordenCreados,
+      )}
     </section>
   );
 }

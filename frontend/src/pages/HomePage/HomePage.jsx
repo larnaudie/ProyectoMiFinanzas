@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { agregarGasto, actualizarGasto } from "../../features/slices/gastosSlice.js";
 import { guardarCuentas, obtenerCuentas, seleccionarCuenta } from "../../features/slices/cuentasSlice.js";
 import { api } from "../../services/api.js";
+import DashboardPage from "./DashboardPage/DashboardPage.jsx";
 
 const fechaDeHoy = () => new Date().toISOString().slice(0, 10);
 
@@ -273,7 +274,13 @@ function HomePage() {
                 </span>
                 <strong>{cuenta.nombreCuenta}</strong>
                 <span className="account-card-meta">Moneda</span>
-                <span className="account-card-currency">{cuenta.moneda || "UYU"}</span>
+                <span className="account-card-currency">
+                  {cuenta.tipoCuenta === "credito"
+                    ? (cuenta.monedas?.length
+                      ? cuenta.monedas.join(" + ")
+                      : "UYU + USD")
+                    : cuenta.moneda || "UYU"}
+                </span>
               </Link>
               <div className="account-card-actions">
                 <Link
@@ -302,6 +309,10 @@ function HomePage() {
         >
           &gt;
         </button>
+      </div>
+
+      <div id="dashboard-general" className="home-dashboard-section">
+        <DashboardPage embedded />
       </div>
 
       <section className="quick-expense-panel">
