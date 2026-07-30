@@ -1,6 +1,7 @@
 ﻿import Gasto from "../0.1-models/gasto.model.js";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import Cuenta from "../0.1-models/cuenta.model.js";
+import Subcategoria from "../0.1-models/subcategoria.model.js";
 import cloudinary from "../config/cloudinary.config.js";
 import { normalizarMontoBancarioTarjeta } from "../utils/resumenTarjetaTotales.js";
 import { normalizarMontoContraparte } from "../utils/vinculosGasto.js";
@@ -13,6 +14,7 @@ import {
   normalizarMoneda,
   obtenerMonedaMovimiento,
 } from "../utils/monedas.js";
+import { aplicarPoliticaImpactoEconomico } from "../utils/politicaImpactoEconomico.js";
 
 const presentarGasto = (gasto) => {
   if (!gasto) return gasto;
@@ -94,12 +96,12 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
 
   normalizarSignoGastoTarjeta(datosCombinados);
   normalizarMontosGasto(datosCombinados);
+  await aplicarPoliticaSubcategoria(datosCombinados, usuarioId);
   if (datosCombinados.origen?.tipo === "tarjeta") {
     gastoData.montoBancario = datosCombinados.montoBancario;
   }
-  if (!esMontoBancarioValido(datosCombinados.montoBancario)) {
-    gastoData.incluirMontoReal = datosCombinados.incluirMontoReal;
-  }
+  gastoData.incluirMontoReal = datosCombinados.incluirMontoReal;
+  gastoData.porcentaje = datosCombinados.porcentaje;
 
   await validarReferenciaOrigen(
     datosCombinados,
@@ -174,6 +176,7 @@ export const crearGastoService = async (data, usuarioId) => {
 
   normalizarSignoGastoTarjeta(gastoData);
   normalizarMontosGasto(gastoData);
+  await aplicarPoliticaSubcategoria(gastoData, usuarioId);
 
   await validarReferenciaOrigen(gastoData, usuarioId);
   await validarDuplicadoTarjeta(gastoData, usuarioId);
@@ -417,18 +420,6 @@ const limpiarCamposVacios = (data) => {
   return limpio;
 };
 
-const esNumeroValido = (valor) => {
-  if (valor === "" || valor === null || valor === undefined) {
-    return false;
-  }
-
-  return Number.isFinite(Number(valor));
-};
-
-const esMontoBancarioValido = (valor) => {
-  return esNumeroValido(valor) && Number(valor) !== 0;
-};
-
 const gastoEstaCompleto = (gasto) => {
   return (
     gasto.detalle &&
@@ -441,6 +432,35 @@ const gastoEstaCompleto = (gasto) => {
 const normalizarMontosGasto = (gastoData) => {
   gastoData.montoBancario = redondearMonto(gastoData.montoBancario);
   gastoData.montoReal = redondearMonto(gastoData.montoReal);
+};
+
+const aplicarPoliticaSubcategoria = async (gastoData, usuarioId) => {
+  if (
+    !gastoData.subcategoriaId
+    || gastoData?.origen?.tipo === "tarjeta"
+  ) {
+    return;
+  }
+
+  const subcategoriaId = typeof gastoData.subcategoriaId === "object"
+    ? gastoData.subcategoriaId._id
+    : gastoData.subcategoriaId;
+  const subcategoria = await Subcategoria.findOne({
+    _id: subcategoriaId,
+    usuarioId,
+  }).select("nombreSubcategoria");
+
+  if (!subcategoria) {
+    return;
+  }
+
+  Object.assign(
+    gastoData,
+    aplicarPoliticaImpactoEconomico(
+      gastoData,
+      subcategoria.nombreSubcategoria,
+    ),
+  );
 };
 
 const normalizarSignoGastoTarjeta = (gastoData) => {

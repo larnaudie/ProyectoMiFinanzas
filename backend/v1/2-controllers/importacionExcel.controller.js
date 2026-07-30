@@ -7,6 +7,7 @@
   confirmarImportacionTarjetaCuentaService,
   obtenerResumenesCuentaCreditoService,
   obtenerResumenCuentaCreditoService,
+  eliminarResumenCuentaCreditoService,
   obtenerMovimientosImportadosService,
   ignorarMovimientoImportadoService,
   vincularMovimientoAGastoService,
@@ -147,6 +148,24 @@ export const obtenerResumenCuentaCredito = async (req, res, next) => {
     next(error);
   }
 };
+
+export const eliminarResumenCuentaCredito = async (req, res, next) => {
+  try {
+    const resultado = await eliminarResumenCuentaCreditoService({
+      usuarioId: req.user.id,
+      cuentaId: req.params.cuentaId,
+      resumenId: req.params.resumenId,
+    });
+
+    res.status(200).json({
+      message: "Resumen de tarjeta eliminado correctamente",
+      ...resultado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const obtenerMovimientosImportados = async (req, res, next) => {
   try {
     const usuarioId = req.user.id;

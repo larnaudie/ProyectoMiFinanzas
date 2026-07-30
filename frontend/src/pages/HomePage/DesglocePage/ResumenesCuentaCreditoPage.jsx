@@ -42,6 +42,8 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
   const [resumenes, setResumenes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [eliminandoResumenId, setEliminandoResumenId] = useState("");
 
   useEffect(() => {
     api.get(`/importaciones/cuentas/${cuentaId}/resumenes-tarjeta`)
@@ -55,6 +57,44 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
       })
       .finally(() => setLoading(false));
   }, [cuentaId]);
+
+  const eliminarResumen = async (resumen) => {
+    const cantidad = cantidadMovimientos(resumen.totales);
+    const nombre = resumen.periodo || `Cierre ${formatearFecha(resumen.cierre)}`;
+    const confirmado = window.confirm(
+      `¿Eliminar el resumen "${nombre}"?\n\n`
+      + `También se eliminarán ${cantidad} movimiento${cantidad === 1 ? "" : "s"} `
+      + "asociados al resumen. Esta acción no se puede deshacer.",
+    );
+    if (!confirmado) return;
+
+    setEliminandoResumenId(resumen._id);
+    setError("");
+    setMensaje("");
+
+    try {
+      const response = await api.delete(
+        `/importaciones/cuentas/${cuentaId}/resumenes-tarjeta/${resumen._id}`,
+      );
+      setResumenes((actuales) => (
+        actuales.filter((item) => item._id !== resumen._id)
+      ));
+
+      const eliminados = Number(response.data.gastosEliminados || 0);
+      setMensaje(
+        `Resumen eliminado correctamente junto con ${eliminados} `
+        + `movimiento${eliminados === 1 ? "" : "s"}.`,
+      );
+    } catch (apiError) {
+      console.error("Error al eliminar el resumen:", apiError);
+      setError(
+        apiError.response?.data?.message
+        || "No se pudo eliminar el resumen de la tarjeta.",
+      );
+    } finally {
+      setEliminandoResumenId("");
+    }
+  };
 
   return (
     <section className="page-section credit-summaries-page">
@@ -76,6 +116,7 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
 
       {loading && <p>Cargando resúmenes...</p>}
       {error && <p className="inline-error">{error}</p>}
+      {mensaje && <p className="success-text" role="status">{mensaje}</p>}
 
       {!loading && !error && resumenes.length === 0 && (
         <section className="credit-summary-empty">
@@ -170,12 +211,24 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
                 <span>
                   {cantidadPendientes(resumen.totales)} pendientes
                 </span>
-                <Link
-                  className="primary-link"
-                  to={`/cuentas/${cuentaId}/resumenes/${resumen._id}/gastos`}
-                >
-                  Ver gastos del resumen
-                </Link>
+                <div className="credit-summary-footer-actions">
+                  <button
+                    type="button"
+                    className="selection-action delete-action"
+                    disabled={Boolean(eliminandoResumenId)}
+                    onClick={() => eliminarResumen(resumen)}
+                  >
+                    {eliminandoResumenId === resumen._id
+                      ? "Eliminando..."
+                      : "Eliminar resumen"}
+                  </button>
+                  <Link
+                    className="primary-link"
+                    to={`/cuentas/${cuentaId}/resumenes/${resumen._id}/gastos`}
+                  >
+                    Ver gastos del resumen
+                  </Link>
+                </div>
               </footer>
             </article>
           );

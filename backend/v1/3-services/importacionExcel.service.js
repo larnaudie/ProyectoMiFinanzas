@@ -370,6 +370,64 @@ export const obtenerResumenCuentaCreditoService = async ({
   return presentarResumenCuentaCredito(resumen, gastos, cuenta);
 };
 
+export const eliminarResumenCuentaCreditoService = async ({
+  usuarioId,
+  cuentaId,
+  resumenId,
+}) => {
+  await obtenerCuentaCredito(usuarioId, cuentaId);
+
+  const resumen = await ResumenTarjeta.findOne({
+    _id: resumenId,
+    usuarioId,
+    cuentaId,
+    tarjetaId: null,
+  });
+  if (!resumen) {
+    const error = new Error("Resumen de tarjeta no encontrado");
+    error.status = 404;
+    throw error;
+  }
+
+  const gastos = await Gasto.find({
+    usuarioId,
+    cuentaId,
+    resumenTarjetaId: resumen._id,
+  }).select("_id");
+  const gastoIds = gastos.map((gasto) => gasto._id);
+
+  if (gastoIds.length > 0) {
+    await Promise.all([
+      Gasto.updateMany(
+        { usuarioId, "origen.referenciaId": { $in: gastoIds } },
+        { $set: { "origen.referenciaId": null } },
+      ),
+      MovimientoImportado.updateMany(
+        { usuarioId, gastoId: { $in: gastoIds } },
+        { $set: { estadoImportacion: "pendiente", gastoId: null } },
+      ),
+    ]);
+  }
+
+  const gastosEliminados = await Gasto.deleteMany({
+    usuarioId,
+    cuentaId,
+    resumenTarjetaId: resumen._id,
+  });
+
+  await ResumenTarjeta.deleteOne({
+    _id: resumen._id,
+    usuarioId,
+    cuentaId,
+    tarjetaId: null,
+  });
+
+  return {
+    resumen,
+    gastosEliminados: gastosEliminados.deletedCount || 0,
+  };
+};
+
 export const obtenerHojasExcelPersonalService = ({ file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");

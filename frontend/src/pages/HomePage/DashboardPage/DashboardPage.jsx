@@ -12,6 +12,7 @@ import {
   UiExchangeReference,
 } from "../../../components/UiExchangeReference.jsx";
 import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
+import { calcularResultadoCuentaGasto } from "../../../utils/resultadoEconomico.js";
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -256,7 +257,7 @@ function DashboardPage({ embedded = false }) {
       }
 
       if (cuentaGasto?.tipoCuenta !== "credito") {
-        acumulado.variacion += numeroFinito(gasto.montoBancario);
+        acumulado.variacion += calcularResultadoCuentaGasto(gasto);
       }
       acumulado.cantidad += 1;
     });
@@ -543,7 +544,9 @@ function DashboardPage({ embedded = false }) {
           )}
           <small>
             {muestraAhorro
-              ? "Suma neta del resultado final de cada mes filtrado"
+              ? cuentaSeleccionada === "todas"
+                ? "Sumatoria de los resultados de todas las cuentas"
+                : "Monto real incluido más transferencias netas"
               : "Las tarjetas no representan ahorro"}
           </small>
         </article>
@@ -685,13 +688,23 @@ function DashboardPage({ embedded = false }) {
         <span className="dashboard-savings-icon">$</span>
         <div>
           <h3>¿Cómo se calcula el ahorro total?</h3>
-          <p>
-            Se calcula el resultado neto de cada mes y luego se suman los
-            meses positivos y se restan los meses con déficit. En el
-            dashboard general, UYU, USD y UI permanecen separados para no
-            inventar un tipo de cambio. Las transferencias internas de la
-            misma moneda se compensan cuando están vinculadas.
-          </p>
+          {cuentaSeleccionada === "todas" ? (
+            <p>
+              El dashboard general suma el resultado de cada cuenta usando la
+              misma regla individual: monto real cuando Incluye está activado
+              y monto bancario para las transferencias. Las transferencias
+              entre cuentas de la misma moneda se compensan entre origen y
+              destino. UYU, USD y UI permanecen separados.
+            </p>
+          ) : (
+            <p>
+              En una cuenta individual, los movimientos con Incluye activado
+              aportan su monto real y las transferencias aportan su monto
+              bancario firmado. Una transferencia recibida suma y una enviada
+              resta. Así se conserva el flujo de la cuenta y también se
+              contemplan los gastos reales sin movimiento bancario.
+            </p>
+          )}
         </div>
       </aside>
     </section>

@@ -2483,6 +2483,14 @@ td {
   padding-top: 2px;
 }
 
+.credit-summary-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .credit-import-filters {
   display: grid;
   gap: 12px;

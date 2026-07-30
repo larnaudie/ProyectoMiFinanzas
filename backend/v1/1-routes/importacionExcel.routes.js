@@ -9,6 +9,7 @@ import {
   confirmarImportacionTarjetaCuenta,
   obtenerResumenesCuentaCredito,
   obtenerResumenCuentaCredito,
+  eliminarResumenCuentaCredito,
   obtenerMovimientosImportados,
   ignorarMovimientoImportado,
   vincularMovimientoAGasto,
@@ -39,6 +40,10 @@ router.get(
 router.get(
   "/cuentas/:cuentaId/resumenes-tarjeta/:resumenId",
   obtenerResumenCuentaCredito,
+);
+router.delete(
+  "/cuentas/:cuentaId/resumenes-tarjeta/:resumenId",
+  eliminarResumenCuentaCredito,
 );
 router.post(
   "/cuentas/:cuentaId/tarjeta-resumen",
