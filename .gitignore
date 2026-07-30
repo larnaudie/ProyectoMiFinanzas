@@ -1,0 +1,12 @@
+# Respaldos locales con informacion privada
+backups/*.archive.gz
+backups/*.sha256.txt
+
+# Archivos de entorno
+backend/.env
+frontend/.env
+
+# Dependencias y compilaciones
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
