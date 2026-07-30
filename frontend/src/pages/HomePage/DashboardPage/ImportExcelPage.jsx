@@ -6,6 +6,10 @@ import SearchableSubcategorySelect from "../../../components/SearchableSubcatego
 import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
+import {
+  calcularMontoRealGasto as calcularMontoReal,
+  esMontoDistintoDeCero as montoDistintoDeCero,
+} from "../../../utils/montosGasto.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -18,15 +22,6 @@ const fechaParaInput = (fecha) => {
   return String(fecha).slice(0, 10);
 };
 
-const formatearMonto = (monto) => {
-  if (monto === "" || monto === null || monto === undefined) return "";
-  const numero = Number(monto || 0);
-  return numero.toLocaleString("es-UY", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-};
-
 const normalizarTexto = (texto) =>
   String(texto || "")
     .toLowerCase()
@@ -35,30 +30,6 @@ const normalizarTexto = (texto) =>
     .replace(/[^a-z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-
-const montoDistintoDeCero = (valor) => {
-  if (valor === "" || valor === null || valor === undefined) return false;
-  return Number.isFinite(Number(valor)) && Number(valor) !== 0;
-};
-
-const calcularMontoReal = ({
-  montoBancario,
-  montoReal,
-  porcentaje,
-  incluirMontoReal,
-}) => {
-  const monto = Number(montoBancario);
-  const porcentajeNumero = Number(porcentaje);
-
-  if (!montoDistintoDeCero(montoBancario)) {
-    return montoDistintoDeCero(montoReal) ? Number(montoReal) : 0;
-  }
-
-  if (!incluirMontoReal) return 0;
-  if (!Number.isFinite(monto) || !Number.isFinite(porcentajeNumero)) return 0;
-
-  return Number(((monto * porcentajeNumero) / 100).toFixed(2));
-};
 
 const obtenerMensajeError = (error, mensajeDefault) => {
   const data = error.response?.data;
@@ -76,8 +47,8 @@ const gastoDesdeMovimiento = (movimiento) => {
     fecha: fechaParaInput(movimiento.fechaBanco),
     detalle: movimiento.detalleOriginal || "",
     montoBancario: movimiento.montoBancario ?? "",
-    porcentaje: "",
-    montoReal: "",
+    porcentaje: montoDistintoDeCero(movimiento.montoBancario) ? "" : 0,
+    montoReal: movimiento.montoReal ?? "",
     categoriaId: "",
     subcategoriaId: "",
     incluirMontoReal: true,
@@ -223,6 +194,8 @@ function ImportExcelPage() {
     fecha: "",
     categoriaId: "",
     subcategoriaId: "",
+    montoBancario: "",
+    montoReal: "",
     porcentaje: "",
     incluirMontoReal: "",
   });
@@ -242,6 +215,8 @@ function ImportExcelPage() {
     fecha: "",
     categoriaId: "",
     subcategoriaId: "",
+    montoBancario: "",
+    montoReal: "",
     porcentaje: "",
     incluirMontoReal: "",
   });
@@ -360,7 +335,11 @@ function ImportExcelPage() {
       setGastosBancarios(
         (data.movimientos || [])
           .map((item) => item.movimiento)
-          .filter(Boolean)
+          .filter(
+            (movimiento) =>
+              movimiento
+              && movimiento.estadoImportacion !== "ignorado",
+          )
           .map(gastoDesdeMovimiento),
       );
     } catch (apiError) {
@@ -398,6 +377,8 @@ function ImportExcelPage() {
       fecha: "",
       categoriaId: "",
       subcategoriaId: "",
+      montoBancario: "",
+      montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
     });
@@ -572,13 +553,37 @@ function ImportExcelPage() {
       return;
     }
 
+    if (
+      bulkBancario.montoBancario !== ""
+      && bulkBancario.montoReal !== ""
+    ) {
+      setMensajeBancario(
+        "Aplica monto bancario o monto real, no ambos al mismo tiempo.",
+      );
+      return;
+    }
+
     const cambios = {};
 
     if (bulkBancario.fecha) cambios.fecha = bulkBancario.fecha;
     if (bulkBancario.categoriaId) cambios.categoriaId = bulkBancario.categoriaId;
     if (bulkBancario.subcategoriaId) cambios.subcategoriaId = bulkBancario.subcategoriaId;
-    if (bulkBancario.porcentaje !== "") cambios.porcentaje = Number(bulkBancario.porcentaje);
-    if (bulkBancario.incluirMontoReal !== "") {
+    if (bulkBancario.montoBancario !== "") {
+      cambios.montoBancario = Number(bulkBancario.montoBancario);
+    }
+    if (bulkBancario.montoReal !== "") {
+      cambios.montoBancario = 0;
+      cambios.montoReal = Number(bulkBancario.montoReal);
+      cambios.porcentaje = 0;
+      cambios.incluirMontoReal = true;
+    }
+    if (bulkBancario.porcentaje !== "" && bulkBancario.montoReal === "") {
+      cambios.porcentaje = Number(bulkBancario.porcentaje);
+    }
+    if (
+      bulkBancario.incluirMontoReal !== ""
+      && bulkBancario.montoReal === ""
+    ) {
       cambios.incluirMontoReal = bulkBancario.incluirMontoReal === "true";
     }
 
@@ -609,6 +614,8 @@ function ImportExcelPage() {
       fecha: "",
       categoriaId: "",
       subcategoriaId: "",
+      montoBancario: "",
+      montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
     });
@@ -658,6 +665,7 @@ function ImportExcelPage() {
     const payload = {
       detalle: gasto.detalle,
       fecha: gasto.fecha,
+      montoBancario: Number(gasto.montoBancario || 0),
       montoReal: Number(gasto.montoReal),
       porcentaje: Number(gasto.porcentaje),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
@@ -945,13 +953,37 @@ function ImportExcelPage() {
       return;
     }
 
+    if (
+      bulkPersonal.montoBancario !== ""
+      && bulkPersonal.montoReal !== ""
+    ) {
+      setMensajePersonal(
+        "Aplica monto bancario o monto real, no ambos al mismo tiempo.",
+      );
+      return;
+    }
+
     const payload = {};
 
     if (bulkPersonal.fecha) payload.fecha = bulkPersonal.fecha;
     if (bulkPersonal.categoriaId) payload.categoriaId = bulkPersonal.categoriaId;
     if (bulkPersonal.subcategoriaId) payload.subcategoriaId = bulkPersonal.subcategoriaId;
-    if (bulkPersonal.porcentaje !== "") payload.porcentaje = Number(bulkPersonal.porcentaje);
-    if (bulkPersonal.incluirMontoReal !== "") {
+    if (bulkPersonal.montoBancario !== "") {
+      payload.montoBancario = Number(bulkPersonal.montoBancario);
+    }
+    if (bulkPersonal.montoReal !== "") {
+      payload.montoBancario = 0;
+      payload.montoReal = Number(bulkPersonal.montoReal);
+      payload.porcentaje = 0;
+      payload.incluirMontoReal = true;
+    }
+    if (bulkPersonal.porcentaje !== "" && bulkPersonal.montoReal === "") {
+      payload.porcentaje = Number(bulkPersonal.porcentaje);
+    }
+    if (
+      bulkPersonal.incluirMontoReal !== ""
+      && bulkPersonal.montoReal === ""
+    ) {
       payload.incluirMontoReal = bulkPersonal.incluirMontoReal === "true";
     }
 
@@ -984,6 +1016,8 @@ function ImportExcelPage() {
       fecha: "",
       categoriaId: "",
       subcategoriaId: "",
+      montoBancario: "",
+      montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
     });
@@ -1090,6 +1124,8 @@ function ImportExcelPage() {
       fecha: "",
       categoriaId: "",
       subcategoriaId: "",
+      montoBancario: "",
+      montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
     });
@@ -1230,7 +1266,11 @@ function ImportExcelPage() {
         <form className="upload-panel import-upload-panel" onSubmit={importar}>
           <div>
             <h2>Importar Excel bancario</h2>
-            <p>Formato oficial de banco. Detecta duplicados y deja movimientos para revisar.</p>
+            <p>
+              Formato oficial del banco o tabla con Fecha, Detalle y Monto. En
+              la tabla simple, Monto se importa como monto real directo.
+              Detecta duplicados y deja movimientos para revisar.
+            </p>
           </div>
           <label>
             Archivo Excel bancario
@@ -1618,6 +1658,34 @@ function TablaGastosPersonales({
           </label>
 
           <label>
+            Monto bancario
+            <input
+              className="table-input table-input-number"
+              type="number"
+              step="0.01"
+              value={bulk.montoBancario}
+              placeholder="Sin cambios"
+              onChange={(event) =>
+                onBulkChange("montoBancario", event.target.value)
+              }
+            />
+          </label>
+
+          <label>
+            Monto real
+            <input
+              className="table-input table-input-number"
+              type="number"
+              step="0.01"
+              value={bulk.montoReal}
+              placeholder="Sin cambios"
+              onChange={(event) =>
+                onBulkChange("montoReal", event.target.value)
+              }
+            />
+          </label>
+
+          <label>
             Porcentaje
             <input
               className="table-input table-input-small"
@@ -1773,6 +1841,7 @@ function TablaGastosPersonales({
                   <input
                     className="table-input table-input-number"
                     type="number"
+                    step="0.01"
                     value={gasto.montoReal}
                     disabled={
                       Boolean(gasto.gastoId)
@@ -1815,14 +1884,8 @@ function TablaGastosPersonales({
                 <td>
                   <input
                     type="checkbox"
-                    checked={
-                      !montoDistintoDeCero(gasto.montoBancario)
-                      || Boolean(gasto.incluirMontoReal)
-                    }
-                    disabled={
-                      Boolean(gasto.gastoId)
-                      || !montoDistintoDeCero(gasto.montoBancario)
-                    }
+                    checked={Boolean(gasto.incluirMontoReal)}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
                   />
                 </td>
@@ -1905,6 +1968,34 @@ function TablaGastosBancarios({
               ariaLabel="Buscar subcategoría para aplicar a seleccionados"
               onChange={(subcategoriaId) =>
                 onBulkChange("subcategoriaId", subcategoriaId)
+              }
+            />
+          </label>
+
+          <label>
+            Monto bancario
+            <input
+              className="table-input table-input-number"
+              type="number"
+              step="0.01"
+              value={bulk.montoBancario}
+              placeholder="Sin cambios"
+              onChange={(event) =>
+                onBulkChange("montoBancario", event.target.value)
+              }
+            />
+          </label>
+
+          <label>
+            Monto real
+            <input
+              className="table-input table-input-number"
+              type="number"
+              step="0.01"
+              value={bulk.montoReal}
+              placeholder="Sin cambios"
+              onChange={(event) =>
+                onBulkChange("montoReal", event.target.value)
               }
             />
           </label>
@@ -2036,7 +2127,24 @@ function TablaGastosBancarios({
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}
                   />
                 </td>
-                <td>{formatearMonto(gasto.montoBancario)}</td>
+                <td>
+                  <input
+                    className="table-input table-input-number"
+                    type="number"
+                    step="0.01"
+                    value={gasto.montoBancario}
+                    disabled={Boolean(gasto.gastoId)}
+                    title={
+                      montoDistintoDeCero(gasto.montoReal)
+                      && !montoDistintoDeCero(gasto.montoBancario)
+                        ? "Déjalo en 0 para ingresar un monto real directo"
+                        : "Monto bancario"
+                    }
+                    onChange={(event) =>
+                      onChange(gasto._id, "montoBancario", event.target.value)
+                    }
+                  />
+                </td>
                 <td>
                   <input
                     className="table-input table-input-small"
@@ -2055,6 +2163,7 @@ function TablaGastosBancarios({
                   <input
                     className="table-input table-input-number"
                     type="number"
+                    step="0.01"
                     value={gasto.montoReal}
                     disabled={
                       Boolean(gasto.gastoId)
@@ -2097,14 +2206,8 @@ function TablaGastosBancarios({
                 <td>
                   <input
                     type="checkbox"
-                    checked={
-                      !montoDistintoDeCero(gasto.montoBancario)
-                      || Boolean(gasto.incluirMontoReal)
-                    }
-                    disabled={
-                      Boolean(gasto.gastoId)
-                      || !montoDistintoDeCero(gasto.montoBancario)
-                    }
+                    checked={Boolean(gasto.incluirMontoReal)}
+                    disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
                   />
                 </td>

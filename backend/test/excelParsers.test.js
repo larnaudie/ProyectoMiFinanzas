@@ -80,6 +80,40 @@ test("conserva movimientos bancarios válidos aunque no tengan referencia", () =
   assert.equal(movimientos[1].montoBancario, -9830.88);
 });
 
+test("parsea el formato bancario simple con Fecha, Detalle y Monto", () => {
+  const buffer = crearBuffer([
+    ["fecha", "detalle", "monto"],
+    [46208, "El cardinal", 480.032],
+    [46209, "Alma Natural", 1000.51],
+    [46210, "Reintegro", -25.75],
+    ["", "Fila sin fecha", 200],
+  ]);
+
+  const { nombreHoja, movimientos } = parsearExcelBancario(buffer);
+
+  assert.equal(nombreHoja, "Datos");
+  assert.equal(movimientos.length, 3);
+  assert.equal(movimientos[0].fechaBanco.toISOString().slice(0, 10), "2026-07-05");
+  assert.equal(movimientos[0].detalleOriginal, "El cardinal");
+  assert.equal(movimientos[0].montoBancario, 0);
+  assert.equal(movimientos[0].montoReal, 480.03);
+  assert.equal(movimientos[0].referenciaBanco, "");
+  assert.equal(movimientos[1].montoReal, 1000.51);
+  assert.equal(movimientos[2].montoReal, -25.75);
+});
+
+test("rechaza un Excel bancario sin formato oficial ni columnas simples", () => {
+  const buffer = crearBuffer([
+    ["Día", "Concepto", "Importe"],
+    ["05/07/2026", "Compra", 100],
+  ]);
+
+  assert.throws(
+    () => parsearExcelBancario(buffer),
+    /Fecha, Detalle y Monto/,
+  );
+});
+
 test("parsea compras y pagos de tarjeta con signos normalizados", () => {
   const buffer = crearBuffer([
     ["Cuenta", "Fecha de Cierre", "Vencimiento", "Período Consultado"],

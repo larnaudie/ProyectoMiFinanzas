@@ -4,16 +4,28 @@ import { api } from "../../../services/api.js";
 import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
+import {
+  calcularMontoRealGasto,
+  esMontoDistintoDeCero,
+} from "../../../utils/montosGasto.js";
 
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
 const mensajeError = (error) =>
   error.response?.data?.message || error.response?.data?.mensaje || "No se pudo procesar el archivo.";
 
-const prepararMovimiento = (movimiento) => ({
-  ...movimiento,
-  fecha: fechaInput(movimiento.fecha),
-  seleccionado: true,
-});
+const prepararMovimiento = (movimiento) => {
+  const preparado = {
+    ...movimiento,
+    montoReal: movimiento.montoReal ?? 0,
+    fecha: fechaInput(movimiento.fecha),
+    seleccionado: true,
+  };
+
+  return {
+    ...preparado,
+    montoReal: calcularMontoRealGasto(preparado),
+  };
+};
 
 const columnasOrdenablesMovimientos = {
   fecha: { type: "date" },
@@ -27,6 +39,10 @@ function ImportarExcelTarjetaPage() {
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
+  const [bulkMontos, setBulkMontos] = useState({
+    montoBancario: "",
+    montoReal: "",
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -54,6 +70,7 @@ function ImportarExcelTarjetaPage() {
       const response = await api.post(`/tarjetas/${tarjetaId}/importar-preview`, formData);
       setPreview(response.data);
       setMovimientos((response.data.movimientos || []).map(prepararMovimiento));
+      setBulkMontos({ montoBancario: "", montoReal: "" });
     } catch (apiError) {
       console.error("Error al leer el resumen:", apiError);
       setError(mensajeError(apiError));
@@ -64,9 +81,15 @@ function ImportarExcelTarjetaPage() {
 
   const cambiarMovimiento = (sourceHash, campo, valor) => {
     setMovimientos((actuales) =>
-      actuales.map((movimiento) =>
-        movimiento.sourceHash === sourceHash ? { ...movimiento, [campo]: valor } : movimiento,
-      ),
+      actuales.map((movimiento) => {
+        if (movimiento.sourceHash !== sourceHash) return movimiento;
+
+        const actualizado = { ...movimiento, [campo]: valor };
+        return {
+          ...actualizado,
+          montoReal: calcularMontoRealGasto(actualizado),
+        };
+      }),
     );
   };
 
@@ -86,6 +109,7 @@ function ImportarExcelTarjetaPage() {
           ...payload,
           montoEstadoCuenta: Number(payload.montoEstadoCuenta),
           montoBancario: Number(payload.montoBancario),
+          montoReal: Number(payload.montoReal),
           porcentaje: Number(payload.porcentaje),
           incluirMontoReal: Boolean(payload.incluirMontoReal),
         };
@@ -102,6 +126,51 @@ function ImportarExcelTarjetaPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const aplicarMontosSeleccionados = () => {
+    if (seleccionados.length === 0) {
+      setError("Seleccioná al menos un movimiento.");
+      return;
+    }
+    if (
+      bulkMontos.montoBancario !== ""
+      && bulkMontos.montoReal !== ""
+    ) {
+      setError("Aplicá monto bancario o monto real, no ambos al mismo tiempo.");
+      return;
+    }
+    if (
+      bulkMontos.montoBancario === ""
+      && bulkMontos.montoReal === ""
+    ) {
+      setError("Ingresá un monto para aplicar.");
+      return;
+    }
+
+    setMovimientos((actuales) => actuales.map((movimiento) => {
+      if (!movimiento.seleccionado) return movimiento;
+
+      const actualizado = bulkMontos.montoReal !== ""
+        ? {
+            ...movimiento,
+            montoBancario: 0,
+            montoReal: Number(bulkMontos.montoReal),
+            porcentaje: 0,
+            incluirMontoReal: true,
+          }
+        : {
+            ...movimiento,
+            montoBancario: Number(bulkMontos.montoBancario),
+          };
+
+      return {
+        ...actualizado,
+        montoReal: calcularMontoRealGasto(actualizado),
+      };
+    }));
+    setBulkMontos({ montoBancario: "", montoReal: "" });
+    setError("");
   };
 
   return (
@@ -149,6 +218,49 @@ function ImportarExcelTarjetaPage() {
               </button>
             </div>
 
+            <div className="selection-actions import-selection-actions import-bulk-panel">
+              <strong>{seleccionados.length} seleccionados</strong>
+              <label>
+                Monto bancario
+                <input
+                  className="table-input table-input-number"
+                  type="number"
+                  step="0.01"
+                  placeholder="Sin cambios"
+                  value={bulkMontos.montoBancario}
+                  onChange={(event) =>
+                    setBulkMontos((actual) => ({
+                      ...actual,
+                      montoBancario: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Monto real
+                <input
+                  className="table-input table-input-number"
+                  type="number"
+                  step="0.01"
+                  placeholder="Sin cambios"
+                  value={bulkMontos.montoReal}
+                  onChange={(event) =>
+                    setBulkMontos((actual) => ({
+                      ...actual,
+                      montoReal: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="selection-action"
+                onClick={aplicarMontosSeleccionados}
+              >
+                Aplicar a seleccionados
+              </button>
+            </div>
+
             <div className="table-shell import-expenses-table">
               <table>
                 <thead>
@@ -173,7 +285,7 @@ function ImportarExcelTarjetaPage() {
                       sortConfig={ordenTabla.sortConfig}
                       onSort={ordenTabla.requestSort}
                     />
-                    <th>% real</th><th>Incluir real</th>
+                    <th>% real</th><th>Real</th><th>Incluir real</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -190,7 +302,8 @@ function ImportarExcelTarjetaPage() {
                       </td>
                       <td>{movimiento.moneda}</td>
                       <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoBancario} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoBancario", e.target.value)} /></td>
-                      <td><input className="table-input table-input-small" type="number" min="0" max="100" value={movimiento.porcentaje} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "porcentaje", e.target.value)} /></td>
+                      <td><input className="table-input table-input-small" type="number" min="0" max="100" value={movimiento.porcentaje} disabled={!esMontoDistintoDeCero(movimiento.montoBancario)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "porcentaje", e.target.value)} /></td>
+                      <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoReal} disabled={esMontoDistintoDeCero(movimiento.montoBancario)} title={esMontoDistintoDeCero(movimiento.montoBancario) ? "Se calcula con el monto bancario y el porcentaje" : "Monto real directo"} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoReal", e.target.value)} /></td>
                       <td><input type="checkbox" checked={Boolean(movimiento.incluirMontoReal)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "incluirMontoReal", e.target.checked)} /></td>
                     </tr>
                   ))}

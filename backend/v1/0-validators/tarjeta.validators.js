@@ -65,11 +65,33 @@ const movimientoSchema = Joi.object({
   importePesos: Joi.number().default(0),
   importeDolares: Joi.number().default(0),
   montoEstadoCuenta: Joi.number().invalid(0).required(),
-  montoBancario: Joi.number().invalid(0).required(),
+  montoBancario: Joi.number().allow("", null).default(0),
+  montoReal: Joi.number().allow("", null).default(0),
   moneda: Joi.string().valid(...MONEDAS_SOPORTADAS).required(),
   tipo: Joi.string().valid("compra", "pago", "cuota", "reintegro").required(),
   porcentaje: Joi.number().min(0).max(100).default(100),
   incluirMontoReal: Joi.boolean().default(true),
+}).custom((value, helpers) => {
+  const tieneMontoBancario =
+    value.montoBancario !== "" &&
+    value.montoBancario !== null &&
+    value.montoBancario !== undefined &&
+    Number.isFinite(Number(value.montoBancario)) &&
+    Number(value.montoBancario) !== 0;
+  const tieneMontoReal =
+    value.montoReal !== "" &&
+    value.montoReal !== null &&
+    value.montoReal !== undefined &&
+    Number.isFinite(Number(value.montoReal)) &&
+    Number(value.montoReal) !== 0;
+
+  if (!tieneMontoBancario && !tieneMontoReal) {
+    return helpers.message({
+      custom: "El movimiento debe tener monto bancario o monto real distinto de cero",
+    });
+  }
+
+  return value;
 });
 
 export const importarResumenTarjetaSchema = Joi.object({

@@ -7,6 +7,7 @@ import { normalizarMontoContraparte } from "../utils/vinculosGasto.js";
 import {
   calcularMontoRealGasto,
   gastoTieneMontosCompletos,
+  redondearMonto,
 } from "../utils/montosGasto.js";
 import {
   normalizarMoneda,
@@ -92,7 +93,7 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   };
 
   normalizarSignoGastoTarjeta(datosCombinados);
-  normalizarMontoRealDirecto(datosCombinados);
+  normalizarMontosGasto(datosCombinados);
   if (datosCombinados.origen?.tipo === "tarjeta") {
     gastoData.montoBancario = datosCombinados.montoBancario;
   }
@@ -140,6 +141,7 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
     {
       ...gastoData,
       estado: nuevoEstado,
+      montoBancario: datosCombinados.montoBancario,
       montoReal: calcularMontoRealGasto(datosCombinados),
     },
     { new: true }
@@ -171,7 +173,7 @@ export const crearGastoService = async (data, usuarioId) => {
   }
 
   normalizarSignoGastoTarjeta(gastoData);
-  normalizarMontoRealDirecto(gastoData);
+  normalizarMontosGasto(gastoData);
 
   await validarReferenciaOrigen(gastoData, usuarioId);
   await validarDuplicadoTarjeta(gastoData, usuarioId);
@@ -436,13 +438,9 @@ const gastoEstaCompleto = (gasto) => {
     gasto.subcategoriaId
   );
 };
-const normalizarMontoRealDirecto = (gastoData) => {
-  if (
-    !esMontoBancarioValido(gastoData.montoBancario)
-    && esMontoBancarioValido(gastoData.montoReal)
-  ) {
-    gastoData.incluirMontoReal = true;
-  }
+const normalizarMontosGasto = (gastoData) => {
+  gastoData.montoBancario = redondearMonto(gastoData.montoBancario);
+  gastoData.montoReal = redondearMonto(gastoData.montoReal);
 };
 
 const normalizarSignoGastoTarjeta = (gastoData) => {

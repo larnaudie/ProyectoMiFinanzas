@@ -7,6 +7,11 @@ import {
   obtenerMonedaMovimiento,
   obtenerMonedasCuenta,
 } from "../../../utils/monedas.js";
+import {
+  EquivalenciaMontoUi,
+  UiExchangeReference,
+} from "../../../components/UiExchangeReference.jsx";
+import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -50,6 +55,10 @@ const formatearMonto = (monto, moneda) =>
   formatearMontoMoneda(numeroFinito(monto), moneda);
 
 const impactoConsumo = (gasto, campo) => {
+  if (campo === "montoReal" && gasto.incluirMontoReal !== true) {
+    return 0;
+  }
+
   const monto = numeroFinito(gasto[campo]);
   if (gasto.tipoMovimiento === "reintegro") return -Math.abs(monto);
   return monto < 0 ? Math.abs(monto) : 0;
@@ -189,6 +198,8 @@ function DashboardPage({ embedded = false }) {
 
     return monedas.length > 0 ? monedas : ["UYU"];
   }, [cuentaActual, cuentas, gastosDelDashboard]);
+  const manejaUi = monedasDashboard.includes("UI");
+  const cotizacionUi = useCotizacionUi(manejaUi);
 
   const datosMensualesPorMoneda = useMemo(() => {
     const cuentasPorId = new Map(
@@ -392,6 +403,15 @@ function DashboardPage({ embedded = false }) {
 
       {error && <p className="inline-error">{error}</p>}
 
+      {manejaUi && (
+        <UiExchangeReference
+          cotizacion={cotizacionUi.cotizacion}
+          cargando={cotizacionUi.cargando}
+          error={cotizacionUi.error}
+          onActualizar={cotizacionUi.actualizar}
+        />
+      )}
+
       <section
         className="dashboard-filters"
         aria-label="Filtros del dashboard"
@@ -452,24 +472,40 @@ function DashboardPage({ embedded = false }) {
         <article>
           <span>Monto bancario</span>
           {monedasDashboard.map((moneda) => (
-            <strong key={moneda}>
-              {formatearMonto(
-                totalesPorMoneda[moneda].montoBancario,
-                moneda,
+            <div className="dashboard-kpi-value" key={moneda}>
+              <strong>
+                {formatearMonto(
+                  totalesPorMoneda[moneda].montoBancario,
+                  moneda,
+                )}
+              </strong>
+              {moneda === "UI" && (
+                <EquivalenciaMontoUi
+                  monto={totalesPorMoneda[moneda].montoBancario}
+                  cotizacion={cotizacionUi.cotizacion}
+                />
               )}
-            </strong>
+            </div>
           ))}
           <small>Consumo acumulado de los meses filtrados</small>
         </article>
         <article>
           <span>Monto real</span>
           {monedasDashboard.map((moneda) => (
-            <strong key={moneda}>
-              {formatearMonto(
-                totalesPorMoneda[moneda].montoReal,
-                moneda,
+            <div className="dashboard-kpi-value" key={moneda}>
+              <strong>
+                {formatearMonto(
+                  totalesPorMoneda[moneda].montoReal,
+                  moneda,
+                )}
+              </strong>
+              {moneda === "UI" && (
+                <EquivalenciaMontoUi
+                  monto={totalesPorMoneda[moneda].montoReal}
+                  cotizacion={cotizacionUi.cotizacion}
+                />
               )}
-            </strong>
+            </div>
           ))}
           <small>Impacto personal acumulado de los meses filtrados</small>
         </article>
@@ -483,16 +519,23 @@ function DashboardPage({ embedded = false }) {
             monedasDashboard.map((moneda) => {
               const ahorro = totalesPorMoneda[moneda].variacion;
               return (
-                <strong
-                  className={
-                    ahorro < 0
-                      ? "dashboard-value-negative"
-                      : "dashboard-value-positive"
-                  }
-                  key={moneda}
-                >
-                  {formatearMonto(ahorro, moneda)}
-                </strong>
+                <div className="dashboard-kpi-value" key={moneda}>
+                  <strong
+                    className={
+                      ahorro < 0
+                        ? "dashboard-value-negative"
+                        : "dashboard-value-positive"
+                    }
+                  >
+                    {formatearMonto(ahorro, moneda)}
+                  </strong>
+                  {moneda === "UI" && (
+                    <EquivalenciaMontoUi
+                      monto={ahorro}
+                      cotizacion={cotizacionUi.cotizacion}
+                    />
+                  )}
+                </div>
               );
             })
           ) : (
@@ -581,9 +624,17 @@ function DashboardPage({ embedded = false }) {
                     <div className="monthly-bars">
                       <div className="monthly-bar-line">
                         <span className="monthly-bar-name">Bancario</span>
-                        <strong>
-                          {formatearMonto(mes.montoBancario, moneda)}
-                        </strong>
+                        <span className="monthly-bar-amount">
+                          <strong>
+                            {formatearMonto(mes.montoBancario, moneda)}
+                          </strong>
+                          {moneda === "UI" && (
+                            <EquivalenciaMontoUi
+                              monto={mes.montoBancario}
+                              cotizacion={cotizacionUi.cotizacion}
+                            />
+                          )}
+                        </span>
                         <div className="monthly-bar-track">
                           <span
                             className="monthly-bar-fill monthly-bar-banking"
@@ -598,9 +649,17 @@ function DashboardPage({ embedded = false }) {
                       </div>
                       <div className="monthly-bar-line">
                         <span className="monthly-bar-name">Real</span>
-                        <strong>
-                          {formatearMonto(mes.montoReal, moneda)}
-                        </strong>
+                        <span className="monthly-bar-amount">
+                          <strong>
+                            {formatearMonto(mes.montoReal, moneda)}
+                          </strong>
+                          {moneda === "UI" && (
+                            <EquivalenciaMontoUi
+                              monto={mes.montoReal}
+                              cotizacion={cotizacionUi.cotizacion}
+                            />
+                          )}
+                        </span>
                         <div className="monthly-bar-track">
                           <span
                             className="monthly-bar-fill monthly-bar-real"

@@ -29,6 +29,25 @@ test("conserva un monto real directo cuando no existe monto bancario", () => {
   assert.equal(gastoTieneMontosCompletos(gasto), true);
 });
 
+test("redondea los montos reales directos y calculados a dos decimales", () => {
+  assert.equal(
+    calcularMontoRealGasto({
+      montoBancario: 0,
+      montoReal: -145.761,
+      incluirMontoReal: true,
+    }),
+    -145.76,
+  );
+  assert.equal(
+    calcularMontoRealGasto({
+      montoBancario: 0,
+      montoReal: -399.505,
+      incluirMontoReal: false,
+    }),
+    -399.51,
+  );
+});
+
 test("considera incompleto un gasto sin ningún monto", () => {
   const gasto = {
     montoBancario: null,

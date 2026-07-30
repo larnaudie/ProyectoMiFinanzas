@@ -37,6 +37,15 @@ const movimientoImportadoSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  montoReal: {
+    type: Number,
+    default: 0,
+  },
+  tipoMonto: {
+    type: String,
+    enum: ["bancario", "real"],
+    default: "bancario",
+  },
   moneda: {
     type: String,
     enum: MONEDAS_SOPORTADAS,

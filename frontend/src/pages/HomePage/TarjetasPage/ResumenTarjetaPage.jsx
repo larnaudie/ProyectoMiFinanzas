@@ -6,6 +6,7 @@ import SearchableSubcategorySelect from "../../../components/SearchableSubcatego
 import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
+import { esMontoDistintoDeCero } from "../../../utils/montosGasto.js";
 
 const obtenerId = (valor) => (typeof valor === "object" ? valor?._id || "" : valor || "");
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
@@ -28,6 +29,10 @@ function ResumenTarjetaPage() {
   const [subcategorias, setSubcategorias] = useState([]);
   const [candidatos, setCandidatos] = useState([]);
   const [seleccionados, setSeleccionados] = useState([]);
+  const [bulkMontos, setBulkMontos] = useState({
+    montoBancario: "",
+    montoReal: "",
+  });
   const [pagoVinculando, setPagoVinculando] = useState(null);
   const [referenciaId, setReferenciaId] = useState("");
   const [busqueda, setBusqueda] = useState("");
@@ -72,7 +77,9 @@ function ResumenTarjetaPage() {
       (resultado, gasto) => {
         const moneda = gasto.moneda === "USD" ? "USD" : "UYU";
         resultado[moneda] += Number(gasto.montoBancario || 0);
-        resultado.montoReal[moneda] += Number(gasto.montoReal || 0);
+        if (gasto.incluirMontoReal === true) {
+          resultado.montoReal[moneda] += Number(gasto.montoReal || 0);
+        }
         return resultado;
       },
       { UYU: 0, USD: 0, montoReal: { UYU: 0, USD: 0 } },
@@ -126,6 +133,54 @@ function ResumenTarjetaPage() {
     setSeleccionados([]);
     setMensaje(`${exitosos.length} movimiento(s) confirmado(s).`);
     if (fallidos) setError(`${fallidos} movimiento(s) siguen pendientes porque les faltan datos, normalmente la subcategoría.`);
+    setProcesando(false);
+  };
+
+  const aplicarMontosSeleccionados = async () => {
+    if (seleccionados.length === 0) return;
+    if (
+      bulkMontos.montoBancario !== ""
+      && bulkMontos.montoReal !== ""
+    ) {
+      setError("Aplicá monto bancario o monto real, no ambos al mismo tiempo.");
+      return;
+    }
+    if (
+      bulkMontos.montoBancario === ""
+      && bulkMontos.montoReal === ""
+    ) {
+      setError("Ingresá un monto para aplicar.");
+      return;
+    }
+
+    const payload = bulkMontos.montoReal !== ""
+      ? {
+          montoBancario: 0,
+          montoReal: Number(bulkMontos.montoReal),
+          porcentaje: 0,
+          incluirMontoReal: true,
+        }
+      : {
+          montoBancario: Number(bulkMontos.montoBancario),
+        };
+
+    setProcesando(true);
+    setError("");
+    const resultados = await Promise.allSettled(
+      seleccionados.map((id) => api.patch(`/gastos/${id}`, payload)),
+    );
+    const exitosos = resultados.filter(
+      (resultado) => resultado.status === "fulfilled",
+    );
+    exitosos.forEach((resultado) =>
+      reemplazarGasto(resultado.value.data.gasto)
+    );
+    const fallidos = resultados.length - exitosos.length;
+    setBulkMontos({ montoBancario: "", montoReal: "" });
+    setMensaje(`${exitosos.length} movimiento(s) actualizado(s).`);
+    if (fallidos) {
+      setError(`${fallidos} movimiento(s) no se pudieron actualizar.`);
+    }
     setProcesando(false);
   };
 
@@ -183,6 +238,52 @@ function ResumenTarjetaPage() {
           </button>
         </div>
 
+        {seleccionados.length > 0 && (
+          <div className="selection-actions import-selection-actions import-bulk-panel">
+            <strong>{seleccionados.length} seleccionados</strong>
+            <label>
+              Monto bancario
+              <input
+                className="table-input table-input-number"
+                type="number"
+                step="0.01"
+                placeholder="Sin cambios"
+                value={bulkMontos.montoBancario}
+                onChange={(event) =>
+                  setBulkMontos((actual) => ({
+                    ...actual,
+                    montoBancario: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Monto real
+              <input
+                className="table-input table-input-number"
+                type="number"
+                step="0.01"
+                placeholder="Sin cambios"
+                value={bulkMontos.montoReal}
+                onChange={(event) =>
+                  setBulkMontos((actual) => ({
+                    ...actual,
+                    montoReal: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="selection-action"
+              disabled={procesando}
+              onClick={aplicarMontosSeleccionados}
+            >
+              Aplicar a seleccionados
+            </button>
+          </div>
+        )}
+
         <div className="table-shell import-expenses-table">
           <table>
             <thead>
@@ -207,7 +308,7 @@ function ResumenTarjetaPage() {
                   sortConfig={ordenMovimientos.sortConfig}
                   onSort={ordenMovimientos.requestSort}
                 />
-                <th>% real</th><th>Incluir</th>
+                <th>% real</th><th>Real</th><th>Incluir</th>
                 <th>Categoría</th><th>Subcategoría</th><th>Pago vinculado</th><th>Acciones</th>
               </tr>
             </thead>
@@ -231,7 +332,8 @@ function ResumenTarjetaPage() {
                       </select>
                     </td>
                     <td>{formatearMonto(gasto.montoBancario, gasto.moneda || "UYU")}</td>
-                    <td><input className="table-input table-input-small" type="number" min="0" max="100" value={gasto.porcentaje ?? ""} onChange={(e) => guardarCampo(gasto, "porcentaje", Number(e.target.value))} /></td>
+                    <td><input className="table-input table-input-small" type="number" min="0" max="100" value={gasto.porcentaje ?? ""} disabled={!esMontoDistintoDeCero(gasto.montoBancario)} onChange={(e) => guardarCampo(gasto, "porcentaje", Number(e.target.value))} /></td>
+                    <td><input className="table-input table-input-number" type="number" step="0.01" value={gasto.montoReal ?? 0} disabled={esMontoDistintoDeCero(gasto.montoBancario)} title={esMontoDistintoDeCero(gasto.montoBancario) ? "Se calcula con el monto bancario y el porcentaje" : "Monto real directo"} onChange={(e) => reemplazarGasto({ ...gasto, montoReal: e.target.value })} onBlur={(e) => guardarCampo(gasto, "montoReal", Number(e.target.value))} /></td>
                     <td><input type="checkbox" checked={Boolean(gasto.incluirMontoReal)} onChange={(e) => guardarCampo(gasto, "incluirMontoReal", e.target.checked)} /></td>
                     <td>
                       <SearchableCategorySelect

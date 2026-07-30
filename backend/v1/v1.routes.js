@@ -10,6 +10,7 @@ import categoriasRouter from "./1-routes/categorias.routes.js";
 import subcategoriasRouter from "./1-routes/subcategorias.routes.js";
 import importacionesRouter from "./1-routes/importacionExcel.routes.js";
 import tarjetasRouter from "./1-routes/tarjetasCredito.routes.js";
+import cotizacionesRouter from "./1-routes/cotizaciones.routes.js";
 //import prestamosRouter from "./1-routes/prestamos.routes.js";
 
 
@@ -28,6 +29,7 @@ router.use("/categorias", categoriasRouter);
 router.use("/subcategorias", subcategoriasRouter);
 router.use("/importaciones", importacionesRouter);
 router.use("/tarjetas", tarjetasRouter);
+router.use("/cotizaciones", cotizacionesRouter);
 router.use("/usuarios", usuariosRouter);
 //router.use("/prestamos", prestamosRouter);
 

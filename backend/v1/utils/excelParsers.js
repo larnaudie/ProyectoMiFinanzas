@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import XLSX from "xlsx";
 import { normalizarMontoBancarioTarjeta } from "./resumenTarjetaTotales.js";
 import { normalizarMoneda } from "./monedas.js";
+import { redondearMonto } from "./montosGasto.js";
 
 export const normalizarTexto = (texto) =>
   String(texto ?? "")
@@ -207,8 +208,12 @@ export const parsearExcelTarjeta = (buffer) => {
       const fecha = parsearFechaFlexible(fila[fechaIndex]);
       const tarjeta = String(fila[tarjetaIndex] || "").trim();
       const detalle = String(fila[detalleIndex] || "").trim();
-      const importePesos = parsearMontoFlexible(fila[pesosIndex]) || 0;
-      const importeDolares = parsearMontoFlexible(fila[importeDolaresIndex]) || 0;
+      const importePesos = redondearMonto(
+        parsearMontoFlexible(fila[pesosIndex]) || 0,
+      );
+      const importeDolares = redondearMonto(
+        parsearMontoFlexible(fila[importeDolaresIndex]) || 0,
+      );
       const usaPesos = importePesos !== 0;
       const montoEstadoCuenta = usaPesos ? importePesos : importeDolares;
       const moneda = usaPesos ? "UYU" : "USD";
@@ -269,17 +274,63 @@ export const parsearExcelTarjeta = (buffer) => {
 };
 
 export const parsearExcelBancario = (buffer) => {
-  const { filas, nombreHoja } = leerHoja(buffer, false);
-  const filaEncabezadosIndex = buscarFilaEncabezados(filas, [
+  const { filas, nombreHoja } = leerHoja(buffer, true);
+  const filaEncabezadosOficialIndex = buscarFilaEncabezados(filas, [
     "fecha",
     "referencia",
     "tipo movimiento",
   ]);
+  const filaEncabezadosSimpleIndex = buscarFilaEncabezados(filas, [
+    "fecha",
+    "detalle",
+    "monto",
+  ]);
 
-  if (filaEncabezadosIndex < 0) {
-    throw new Error("No se encontraron encabezados validos en el Excel bancario");
+  if (filaEncabezadosOficialIndex < 0 && filaEncabezadosSimpleIndex < 0) {
+    throw new Error(
+      "No se encontraron encabezados validos en el Excel bancario. Se esperaba el formato oficial o las columnas Fecha, Detalle y Monto.",
+    );
   }
 
+  if (filaEncabezadosOficialIndex < 0) {
+    const encabezados = filas[filaEncabezadosSimpleIndex];
+    const fechaIndex = buscarIndice(encabezados, ["fecha"]);
+    const detalleIndex = buscarIndice(encabezados, ["detalle"]);
+    const montoIndex = buscarIndice(encabezados, ["monto"]);
+    const moneda = String(
+      valorDebajoDeEtiqueta(filas, "moneda") || "UYU",
+    ).trim().toUpperCase();
+
+    const movimientos = filas
+      .slice(filaEncabezadosSimpleIndex + 1)
+      .map((fila) => {
+        const montoParseado = parsearMontoFlexible(fila[montoIndex]);
+        const montoReal = montoParseado === null
+          ? null
+          : redondearMonto(montoParseado);
+
+        return {
+          fechaBanco: parsearFechaFlexible(fila[fechaIndex]),
+          referenciaBanco: "",
+          detalleOriginal: String(fila[detalleIndex] || "").trim(),
+          montoBancario: 0,
+          montoReal,
+          tipoMonto: "real",
+          moneda: normalizarMoneda(moneda),
+        };
+      })
+      .filter(
+        (movimiento) =>
+          movimiento.fechaBanco &&
+          movimiento.detalleOriginal &&
+          movimiento.montoReal !== null &&
+          movimiento.montoReal !== 0,
+      );
+
+    return { nombreHoja, movimientos };
+  }
+
+  const filaEncabezadosIndex = filaEncabezadosOficialIndex;
   const encabezados = filas[filaEncabezadosIndex];
   const fechaIndex = buscarIndice(encabezados, ["fecha"]);
   const referenciaIndex = buscarIndice(encabezados, ["referencia"]);
@@ -292,8 +343,12 @@ export const parsearExcelBancario = (buffer) => {
   const movimientos = filas
     .slice(filaEncabezadosIndex + 1)
     .map((fila) => {
-      const debito = parsearMontoFlexible(fila[debitoIndex]) || 0;
-      const credito = parsearMontoFlexible(fila[creditoIndex]) || 0;
+      const debito = redondearMonto(
+        parsearMontoFlexible(fila[debitoIndex]) || 0,
+      );
+      const credito = redondearMonto(
+        parsearMontoFlexible(fila[creditoIndex]) || 0,
+      );
       const detalleTipo = String(fila[tipoIndex] || "").trim();
       const descripcion = descripcionIndex >= 0 ? String(fila[descripcionIndex] || "").trim() : "";
       return {
@@ -301,6 +356,8 @@ export const parsearExcelBancario = (buffer) => {
         referenciaBanco: String(fila[referenciaIndex] || "").trim(),
         detalleOriginal: descripcion || detalleTipo,
         montoBancario: debito !== 0 ? debito : credito,
+        montoReal: 0,
+        tipoMonto: "bancario",
         moneda: normalizarMoneda(moneda),
       };
     })
@@ -381,8 +438,18 @@ export const parsearExcelPersonal = (buffer, nombreHojaSeleccionada = null) => {
       const fila = filas[indice];
       const fecha = parsearFechaFlexible(fila[bloque.columnaIndex]);
       const detalle = String(fila[bloque.columnaIndex + 1] || "").trim();
-      const montoBancario = parsearMontoFlexible(fila[bloque.columnaIndex + 2]);
-      const montoReal = parsearMontoFlexible(fila[bloque.columnaIndex + 3]);
+      const montoBancarioParseado = parsearMontoFlexible(
+        fila[bloque.columnaIndex + 2],
+      );
+      const montoRealParseado = parsearMontoFlexible(
+        fila[bloque.columnaIndex + 3],
+      );
+      const montoBancario = montoBancarioParseado === null
+        ? null
+        : redondearMonto(montoBancarioParseado);
+      const montoReal = montoRealParseado === null
+        ? null
+        : redondearMonto(montoRealParseado);
       const nombreSubcategoria = String(fila[bloque.columnaIndex + 4] || "").trim();
 
       const tieneMontoBancario = montoBancario !== null && montoBancario !== 0;

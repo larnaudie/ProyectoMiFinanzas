@@ -5,6 +5,10 @@ import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
 import { obtenerMonedasCuenta } from "../../../utils/monedas.js";
+import {
+  calcularMontoRealGasto,
+  esMontoDistintoDeCero,
+} from "../../../utils/montosGasto.js";
 
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
 const mensajeError = (error) =>
@@ -23,6 +27,8 @@ const filtrosIniciales = {
 
 const bulkInicial = {
   tipo: "",
+  montoBancario: "",
+  montoReal: "",
   porcentaje: "",
   incluirMontoReal: "",
 };
@@ -60,7 +66,11 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
     const detalle = normalizarTexto(movimiento.detalle);
     const detalleBuscado = normalizarTexto(filtros.detalle);
     const fecha = fechaInput(movimiento.fecha);
-    const montoAbsoluto = Math.abs(Number(movimiento.montoBancario || 0));
+    const montoAbsoluto = Math.abs(Number(
+      esMontoDistintoDeCero(movimiento.montoBancario)
+        ? movimiento.montoBancario
+        : movimiento.montoReal || 0,
+    ));
 
     if (detalleBuscado && !detalle.includes(detalleBuscado)) return false;
     if (filtros.tipo && movimiento.tipo !== filtros.tipo) return false;
@@ -106,11 +116,19 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       setBulk(bulkInicial);
       setMensajeBulk("");
       setMovimientos(
-        (response.data.movimientos || []).map((movimiento) => ({
+        (response.data.movimientos || []).map((movimiento) => {
+          const preparado = {
           ...movimiento,
+          montoReal: movimiento.montoReal ?? 0,
           fecha: fechaInput(movimiento.fecha),
           seleccionado: true,
-        })),
+          };
+
+          return {
+            ...preparado,
+            montoReal: calcularMontoRealGasto(preparado),
+          };
+        }),
       );
     } catch (apiError) {
       console.error("Error al leer el Excel de tarjeta:", apiError);
@@ -123,11 +141,15 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
   const cambiarMovimiento = (sourceHash, campo, valor) => {
     setMensajeBulk("");
     setMovimientos((actuales) =>
-      actuales.map((movimiento) =>
-        movimiento.sourceHash === sourceHash
-          ? { ...movimiento, [campo]: valor }
-          : movimiento,
-      ),
+      actuales.map((movimiento) => {
+        if (movimiento.sourceHash !== sourceHash) return movimiento;
+
+        const actualizado = { ...movimiento, [campo]: valor };
+        return {
+          ...actualizado,
+          montoReal: calcularMontoRealGasto(actualizado),
+        };
+      }),
     );
   };
 
@@ -163,9 +185,25 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       return;
     }
 
+    if (bulk.montoBancario !== "" && bulk.montoReal !== "") {
+      setMensajeBulk(
+        "Aplica monto bancario o monto real, no ambos al mismo tiempo.",
+      );
+      return;
+    }
+
     const cambios = {};
     if (bulk.tipo) cambios.tipo = bulk.tipo;
-    if (bulk.porcentaje !== "") {
+    if (bulk.montoBancario !== "") {
+      cambios.montoBancario = Number(bulk.montoBancario);
+    }
+    if (bulk.montoReal !== "") {
+      cambios.montoBancario = 0;
+      cambios.montoReal = Number(bulk.montoReal);
+      cambios.porcentaje = 0;
+      cambios.incluirMontoReal = true;
+    }
+    if (bulk.porcentaje !== "" && bulk.montoReal === "") {
       const porcentaje = Number(bulk.porcentaje);
       if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
         setMensajeBulk("El porcentaje debe estar entre 0 y 100.");
@@ -173,7 +211,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       }
       cambios.porcentaje = porcentaje;
     }
-    if (bulk.incluirMontoReal !== "") {
+    if (bulk.incluirMontoReal !== "" && bulk.montoReal === "") {
       cambios.incluirMontoReal = bulk.incluirMontoReal === "true";
     }
 
@@ -185,11 +223,17 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
     const hashesSeleccionadosVisibles = new Set(
       seleccionadosVisibles.map((movimiento) => movimiento.sourceHash),
     );
-    setMovimientos((actuales) => actuales.map((movimiento) => (
-      hashesSeleccionadosVisibles.has(movimiento.sourceHash)
-        ? { ...movimiento, ...cambios }
-        : movimiento
-    )));
+    setMovimientos((actuales) => actuales.map((movimiento) => {
+      if (!hashesSeleccionadosVisibles.has(movimiento.sourceHash)) {
+        return movimiento;
+      }
+
+      const actualizado = { ...movimiento, ...cambios };
+      return {
+        ...actualizado,
+        montoReal: calcularMontoRealGasto(actualizado),
+      };
+    }));
     setMensajeBulk(
       `Cambios aplicados a ${seleccionadosVisibles.length} movimiento${seleccionadosVisibles.length === 1 ? "" : "s"} visible${seleccionadosVisibles.length === 1 ? "" : "s"}.`,
     );
@@ -208,6 +252,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
         ...payload,
         montoEstadoCuenta: Number(payload.montoEstadoCuenta),
         montoBancario: Number(payload.montoBancario),
+        montoReal: Number(payload.montoReal),
         porcentaje: Number(payload.porcentaje),
         incluirMontoReal: Boolean(payload.incluirMontoReal),
       };
@@ -374,6 +419,32 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
               </select>
             </label>
             <label>
+              Monto bancario
+              <input
+                className="table-input"
+                type="number"
+                step="0.01"
+                placeholder="Sin cambios"
+                value={bulk.montoBancario}
+                onChange={(event) =>
+                  cambiarBulk("montoBancario", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              Monto real
+              <input
+                className="table-input"
+                type="number"
+                step="0.01"
+                placeholder="Sin cambios"
+                value={bulk.montoReal}
+                onChange={(event) =>
+                  cambiarBulk("montoReal", event.target.value)
+                }
+              />
+            </label>
+            <label>
               Porcentaje real
               <input className="table-input" type="number" min="0" max="100" placeholder="Sin cambios" value={bulk.porcentaje} onChange={(event) => cambiarBulk("porcentaje", event.target.value)} />
             </label>
@@ -422,7 +493,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                     sortConfig={ordenTabla.sortConfig}
                     onSort={ordenTabla.requestSort}
                   />
-                  <th>% real</th><th>Incluir real</th>
+                  <th>% real</th><th>Real</th><th>Incluir real</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,13 +510,14 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                     </td>
                     <td>{movimiento.moneda}</td>
                     <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoBancario} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoBancario", e.target.value)} /></td>
-                    <td><input className="table-input table-input-small" type="number" min="0" max="100" value={movimiento.porcentaje} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "porcentaje", e.target.value)} /></td>
+                    <td><input className="table-input table-input-small" type="number" min="0" max="100" value={movimiento.porcentaje} disabled={!esMontoDistintoDeCero(movimiento.montoBancario)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "porcentaje", e.target.value)} /></td>
+                    <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoReal} disabled={esMontoDistintoDeCero(movimiento.montoBancario)} title={esMontoDistintoDeCero(movimiento.montoBancario) ? "Se calcula con el monto bancario y el porcentaje" : "Monto real directo"} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoReal", e.target.value)} /></td>
                     <td><input type="checkbox" checked={Boolean(movimiento.incluirMontoReal)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "incluirMontoReal", e.target.checked)} /></td>
                   </tr>
                 ))}
                 {movimientosFiltrados.length === 0 && (
                   <tr>
-                    <td className="credit-import-empty-row" colSpan="8">
+                    <td className="credit-import-empty-row" colSpan="9">
                       No hay movimientos que coincidan con los filtros.
                     </td>
                   </tr>

@@ -5,6 +5,7 @@ import Gasto from "../0.1-models/gasto.model.js";
 import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
 import Tarjeta from "../0.1-models/tarjeta.model.js";
 import { parsearExcelTarjeta } from "../utils/excelParsers.js";
+import { calcularMontoRealGasto } from "../utils/montosGasto.js";
 
 const errorHttp = (mensaje, status = 400) => {
   const error = new Error(mensaje);
@@ -112,11 +113,6 @@ const crearClaveResumen = (tarjetaId, resumen) =>
     )
     .digest("hex");
 
-const calcularMontoReal = (movimiento) => {
-  if (movimiento.incluirMontoReal !== true) return 0;
-  return Number(movimiento.montoBancario) * (Number(movimiento.porcentaje) / 100);
-};
-
 export const importarResumenTarjetaService = async ({
   usuarioId,
   tarjetaId,
@@ -157,7 +153,7 @@ export const importarResumenTarjetaService = async ({
           fecha: movimiento.fecha,
           montoBancario: movimiento.montoBancario,
           montoOriginalTarjeta: movimiento.montoEstadoCuenta,
-          montoReal: calcularMontoReal(movimiento),
+          montoReal: calcularMontoRealGasto(movimiento),
           porcentaje: movimiento.porcentaje,
           incluirMontoReal: movimiento.incluirMontoReal,
           moneda: movimiento.moneda,
@@ -248,4 +244,3 @@ export const obtenerResumenTarjetaService = async (usuarioId, tarjetaId, resumen
 
   return { resumen, gastos };
 };
-

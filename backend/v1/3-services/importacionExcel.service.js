@@ -16,6 +16,10 @@ import {
   obtenerMonedaMovimiento,
   obtenerMonedasCuenta,
 } from "../utils/monedas.js";
+import {
+  calcularMontoRealGasto,
+  esMontoDistintoDeCero,
+} from "../utils/montosGasto.js";
 
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
@@ -43,14 +47,48 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       referenciaBanco: movimiento.referenciaBanco,
       fechaBanco: movimiento.fechaBanco,
       montoBancario: movimiento.montoBancario,
+      montoReal: movimiento.montoReal,
       detalleNormalizado,
     });
 
-    const movimientoExistente = await MovimientoImportado.findOne({
+    let movimientoExistente = await MovimientoImportado.findOne({
       usuarioId,
       cuentaId,
       hashBanco,
     });
+
+    if (!movimientoExistente && movimiento.tipoMonto === "real") {
+      const hashAnterior = crearHashBanco({
+        usuarioId,
+        cuentaId,
+        referenciaBanco: movimiento.referenciaBanco,
+        fechaBanco: movimiento.fechaBanco,
+        montoBancario: movimiento.montoReal,
+        montoReal: 0,
+        detalleNormalizado,
+      });
+      const movimientoAnterior = await MovimientoImportado.findOne({
+        usuarioId,
+        cuentaId,
+        hashBanco: hashAnterior,
+      });
+
+      if (
+        movimientoAnterior
+        && movimientoAnterior.estadoImportacion !== "vinculado"
+        && !movimientoAnterior.gastoId
+      ) {
+        movimientoAnterior.montoBancario = 0;
+        movimientoAnterior.montoReal = movimiento.montoReal;
+        movimientoAnterior.tipoMonto = "real";
+        movimientoAnterior.hashBanco = hashBanco;
+        movimientoAnterior.archivoNombre = file.originalname;
+        movimientoAnterior.estadoImportacion = "pendiente";
+        await movimientoAnterior.save();
+      }
+
+      movimientoExistente = movimientoAnterior;
+    }
 
     if (movimientoExistente) {
       await liberarMovimientoSiGastoFueEliminado(movimientoExistente);
@@ -61,6 +99,7 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       cuentaId,
       fechaBanco: movimiento.fechaBanco,
       montoBancario: movimiento.montoBancario,
+      montoReal: movimiento.montoReal,
       detalleNormalizado,
     });
 
@@ -82,6 +121,8 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       detalleOriginal: movimiento.detalleOriginal,
       detalleNormalizado,
       montoBancario: movimiento.montoBancario,
+      montoReal: movimiento.montoReal || 0,
+      tipoMonto: movimiento.tipoMonto || "bancario",
       moneda: obtenerMonedaMovimiento(cuenta, movimiento.moneda),
       hashBanco,
       archivoNombre: file.originalname,
@@ -204,9 +245,7 @@ export const confirmarImportacionTarjetaCuentaService = async ({
 
   const operaciones = movimientos.map((movimiento) => {
     const hashImportacion = `${importacionKey}|${movimiento.sourceHash}`;
-    const montoReal = movimiento.incluirMontoReal === true
-      ? Number(movimiento.montoBancario) * (Number(movimiento.porcentaje) / 100)
-      : 0;
+    const montoReal = calcularMontoRealGasto(movimiento);
 
     return {
       updateOne: {
@@ -474,6 +513,7 @@ const buscarPosiblesDuplicados = async ({
   cuentaId,
   fechaBanco,
   montoBancario,
+  montoReal,
   detalleNormalizado,
 }) => {
   const desde = new Date(fechaBanco);
@@ -482,10 +522,17 @@ const buscarPosiblesDuplicados = async ({
   const hasta = new Date(fechaBanco);
   hasta.setDate(hasta.getDate() + 7);
 
+  const filtroMonto = esMontoDistintoDeCero(montoBancario)
+    ? { montoBancario: Number(montoBancario) }
+    : {
+        montoBancario: { $in: [0, null] },
+        montoReal: Number(montoReal),
+      };
+
   const gastos = await Gasto.find({
     usuarioId,
     cuentaId,
-    montoBancario,
+    ...filtroMonto,
     fecha: {
       $gte: desde,
       $lte: hasta,
@@ -505,16 +552,20 @@ const crearHashBanco = ({
   referenciaBanco,
   fechaBanco,
   montoBancario,
+  montoReal,
   detalleNormalizado,
 }) => {
   const fecha = new Date(fechaBanco).toISOString().slice(0, 10);
+  const montoClave = esMontoDistintoDeCero(montoBancario)
+    ? Number(montoBancario)
+    : `real:${Number(montoReal || 0)}`;
 
   return [
     usuarioId,
     cuentaId,
     referenciaBanco,
     fecha,
-    montoBancario,
+    montoClave,
     detalleNormalizado,
   ].join("|");
 };
@@ -694,8 +745,11 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
         detalle: data.detalle || movimiento.detalleOriginal,
         cuentaId: movimiento.cuentaId,
         fecha: data.fecha || movimiento.fechaBanco,
-        montoBancario: movimiento.montoBancario,
-        montoReal: data.montoReal,
+        montoBancario:
+          data.montoBancario === "" || data.montoBancario === null
+            ? 0
+            : data.montoBancario ?? movimiento.montoBancario,
+        montoReal: data.montoReal ?? movimiento.montoReal,
         porcentaje: data.porcentaje,
         incluirMontoReal: data.incluirMontoReal,
         categoriaId: data.categoriaId,

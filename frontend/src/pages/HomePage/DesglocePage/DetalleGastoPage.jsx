@@ -11,6 +11,11 @@ import { guardarCategorias } from "../../../features/slices/categoriasSlice";
 import { guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
 import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
 import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
+import {
+  calcularMontoRealGasto,
+  esMontoDistintoDeCero,
+  esPorcentajeGastoValido,
+} from "../../../utils/montosGasto.js";
 
 const obtenerId = (valor) => valor?._id || valor || "";
 
@@ -19,24 +24,9 @@ const fechaParaInput = (fecha) => {
   return String(fecha).slice(0, 10);
 };
 
-const esNumeroValido = (valor) => {
-  if (valor === "" || valor === null || valor === undefined) return false;
-  return Number.isFinite(Number(valor));
-};
-
-const esMontoBancarioValido = (valor) => {
-  return esNumeroValido(valor) && Number(valor) !== 0;
-};
-
-const esMontoRealValido = (valor) => {
-  return esNumeroValido(valor) && Number(valor) !== 0;
-};
-
-const esPorcentajeValido = (valor) => {
-  if (!esNumeroValido(valor)) return false;
-  const numero = Number(valor);
-  return numero >= 0 && numero <= 100;
-};
+const esMontoBancarioValido = esMontoDistintoDeCero;
+const esMontoRealValido = esMontoDistintoDeCero;
+const esPorcentajeValido = esPorcentajeGastoValido;
 
 const obtenerCamposFaltantes = (gasto) => {
   const campos = [];
@@ -173,9 +163,13 @@ const DetalleGastoPage = () => {
   };
 
   const handleChange = (campo, valor) => {
-    const nuevoForm = {
+    const actualizado = {
       ...form,
       [campo]: valor,
+    };
+    const nuevoForm = {
+      ...actualizado,
+      montoReal: calcularMontoRealGasto(actualizado),
     };
 
     setForm(nuevoForm);
@@ -368,6 +362,7 @@ const DetalleGastoPage = () => {
             Monto bancario
             <input
               type="number"
+              step="0.01"
               value={form.montoBancario ?? ""}
               onChange={(event) => handleChange("montoBancario", event.target.value)}
             />
@@ -387,6 +382,7 @@ const DetalleGastoPage = () => {
             Monto real directo
             <input
               type="number"
+              step="0.01"
               value={form.montoReal ?? ""}
               disabled={tieneMontoBancario}
               onChange={(event) => handleChange("montoReal", event.target.value)}
@@ -425,8 +421,7 @@ const DetalleGastoPage = () => {
           <label className="checkbox-row detail-checkbox">
             <input
               type="checkbox"
-              checked={!tieneMontoBancario || Boolean(form.incluirMontoReal)}
-              disabled={!tieneMontoBancario}
+              checked={Boolean(form.incluirMontoReal)}
               onChange={(event) =>
                 handleChange("incluirMontoReal", event.target.checked)
               }

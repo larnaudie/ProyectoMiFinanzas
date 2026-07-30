@@ -24,8 +24,19 @@ import SortableTableHeader, {
 import {
   MONEDAS_SOPORTADAS,
   obtenerMonedaMovimiento,
+  obtenerMonedasCuenta,
   simboloMoneda,
 } from "../../../utils/monedas.js";
+import {
+  EquivalenciaMontoUi,
+  UiExchangeReference,
+} from "../../../components/UiExchangeReference.jsx";
+import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
+import {
+  calcularMontoRealGasto,
+  esMontoDistintoDeCero,
+  esPorcentajeGastoValido,
+} from "../../../utils/montosGasto.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -123,24 +134,9 @@ const crearGastoInicial = () => ({
   subcategoriaId: "",
 });
 
-const esNumeroValido = (valor) => {
-  if (valor === "" || valor === null || valor === undefined) return false;
-  return Number.isFinite(Number(valor));
-};
-
-const esMontoBancarioValido = (valor) => {
-  return esNumeroValido(valor) && Number(valor) !== 0;
-};
-
-const esMontoRealValido = (valor) => {
-  return esNumeroValido(valor) && Number(valor) !== 0;
-};
-
-const esPorcentajeValido = (valor) => {
-  if (!esNumeroValido(valor)) return false;
-  const numero = Number(valor);
-  return numero >= 0 && numero <= 100;
-};
+const esMontoBancarioValido = esMontoDistintoDeCero;
+const esMontoRealValido = esMontoDistintoDeCero;
+const esPorcentajeValido = esPorcentajeGastoValido;
 
 const obtenerCamposFaltantesNuevoGasto = (gasto) => {
   const campos = [];
@@ -219,6 +215,8 @@ function DesglocePage() {
   );
 
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
+  const manejaUi = obtenerMonedasCuenta(cuentaActual).includes("UI");
+  const cotizacionUi = useCotizacionUi(manejaUi);
   const obtenerMonedaVisible = (gasto) => {
     const cuentaGasto = cuentas.find(
       (cuenta) => cuenta._id === obtenerId(gasto?.cuentaId),
@@ -235,6 +233,8 @@ function DesglocePage() {
   const [bulk, setBulk] = useState({
     categoriaId: "",
     subcategoriaId: "",
+    montoBancario: "",
+    montoReal: "",
     incluirMontoReal: "",
     cambiarEstado: false,
   });
@@ -465,9 +465,16 @@ function DesglocePage() {
   };
 
   const cambiarFormGasto = (campo, valor) => {
-    setFormGasto({
-      ...formGasto,
-      [campo]: valor,
+    setFormGasto((actual) => {
+      const actualizado = {
+        ...actual,
+        [campo]: valor,
+      };
+
+      return {
+        ...actualizado,
+        montoReal: calcularMontoRealGasto(actualizado),
+      };
     });
   };
 
@@ -558,6 +565,13 @@ function DesglocePage() {
   };
 
   const obtenerValorVisible = (gasto, campo) => {
+    if (campo === "montoReal") {
+      return calcularMontoRealGasto({
+        ...gasto,
+        ...(edicionesRapidas[gasto._id] || {}),
+      });
+    }
+
     // Si hay una edicion local pendiente, mostramos esa.
     if (edicionesRapidas[gasto._id]?.[campo] !== undefined) {
       return edicionesRapidas[gasto._id][campo];
@@ -739,6 +753,9 @@ function DesglocePage() {
     return gastosVisibles.reduce((total, gasto) => {
       const monedaGasto = obtenerMonedaVisible(gasto);
       if (moneda && monedaGasto !== moneda) return total;
+      if (campo === "montoReal" && gasto.incluirMontoReal !== true) {
+        return total;
+      }
       return total + Number(gasto[campo] || 0);
     }, 0);
   };
@@ -1113,6 +1130,16 @@ function DesglocePage() {
                   calcularTotal(gastosVisibles, "montoBancario", moneda),
                 )}
               </strong>
+              {moneda === "UI" && (
+                <EquivalenciaMontoUi
+                  monto={calcularTotal(
+                    gastosVisibles,
+                    "montoBancario",
+                    moneda,
+                  )}
+                  cotizacion={cotizacionUi.cotizacion}
+                />
+              )}
             </article>
           ))}
           {monedasTotales.map((moneda) => (
@@ -1124,6 +1151,12 @@ function DesglocePage() {
                   calcularTotal(gastosVisibles, "montoReal", moneda),
                 )}
               </strong>
+              {moneda === "UI" && (
+                <EquivalenciaMontoUi
+                  monto={calcularTotal(gastosVisibles, "montoReal", moneda)}
+                  cotizacion={cotizacionUi.cotizacion}
+                />
+              )}
             </article>
           ))}
         </div>
@@ -1356,6 +1389,7 @@ function DesglocePage() {
                     <input
                       className="table-input table-input-number"
                       type="number"
+                      step="0.01"
                       value={obtenerValorVisible(gasto, "montoBancario")}
                       onChange={(event) =>
                         guardarCambioRapido(
@@ -1387,6 +1421,7 @@ function DesglocePage() {
                     <input
                       className="table-input table-input-number"
                       type="number"
+                      step="0.01"
                       value={obtenerValorVisible(gasto, "montoReal")}
                       disabled={tieneMontoBancario}
                       title={
@@ -1436,11 +1471,9 @@ function DesglocePage() {
                   <td>
                     <input
                       type="checkbox"
-                      checked={
-                        !tieneMontoBancario
-                        || Boolean(obtenerValorVisible(gasto, "incluirMontoReal"))
-                      }
-                      disabled={!tieneMontoBancario}
+                      checked={Boolean(
+                        obtenerValorVisible(gasto, "incluirMontoReal"),
+                      )}
                       onChange={(event) =>
                         guardarCambioRapido(
                           gasto,
@@ -1558,11 +1591,25 @@ function DesglocePage() {
       return;
     }
 
+    if (bulk.montoBancario !== "" && bulk.montoReal !== "") {
+      alert("Aplica monto bancario o monto real, no ambos al mismo tiempo.");
+      return;
+    }
+
     const payload = {};
 
     if (bulk.categoriaId) payload.categoriaId = bulk.categoriaId;
     if (bulk.subcategoriaId) payload.subcategoriaId = bulk.subcategoriaId;
-    if (bulk.incluirMontoReal !== "") {
+    if (bulk.montoBancario !== "") {
+      payload.montoBancario = Number(bulk.montoBancario);
+    }
+    if (bulk.montoReal !== "") {
+      payload.montoBancario = 0;
+      payload.montoReal = Number(bulk.montoReal);
+      payload.porcentaje = 0;
+      payload.incluirMontoReal = true;
+    }
+    if (bulk.incluirMontoReal !== "" && bulk.montoReal === "") {
       payload.incluirMontoReal = bulk.incluirMontoReal === "true";
     }
     if (bulk.cambiarEstado) payload.cambiarEstado = true;
@@ -1600,6 +1647,8 @@ function DesglocePage() {
       setBulk({
         categoriaId: "",
         subcategoriaId: "",
+        montoBancario: "",
+        montoReal: "",
         incluirMontoReal: "",
         cambiarEstado: false,
       });
@@ -1682,6 +1731,15 @@ function DesglocePage() {
         ) : null}
       </div>
 
+      {manejaUi && (
+        <UiExchangeReference
+          cotizacion={cotizacionUi.cotizacion}
+          cargando={cotizacionUi.cargando}
+          error={cotizacionUi.error}
+          onActualizar={cotizacionUi.actualizar}
+        />
+      )}
+
       {mensajeAccion && <p className="detail-feedback">{mensajeAccion}</p>}
       {errorAccion && <p className="inline-error">{errorAccion}</p>}
 
@@ -1717,6 +1775,7 @@ function DesglocePage() {
               Monto bancario
               <input
                 type="number"
+                step="0.01"
                 value={formGasto.montoBancario}
                 onChange={(event) =>
                   cambiarFormGasto("montoBancario", event.target.value)
@@ -1740,6 +1799,7 @@ function DesglocePage() {
               Monto real directo
               <input
                 type="number"
+                step="0.01"
                 value={formGasto.montoReal}
                 disabled={esMontoBancarioValido(formGasto.montoBancario)}
                 onChange={(event) =>
@@ -1780,11 +1840,7 @@ function DesglocePage() {
             <label className="checkbox-row">
               <input
                 type="checkbox"
-                checked={
-                  !esMontoBancarioValido(formGasto.montoBancario)
-                  || formGasto.incluirMontoReal
-                }
-                disabled={!esMontoBancarioValido(formGasto.montoBancario)}
+                checked={Boolean(formGasto.incluirMontoReal)}
                 onChange={(event) =>
                   cambiarFormGasto("incluirMontoReal", event.target.checked)
                 }
@@ -2369,6 +2425,28 @@ function DesglocePage() {
           ariaLabel="Buscar subcategoría para aplicar a seleccionados"
           onChange={(subcategoriaId) =>
             cambiarBulk("subcategoriaId", subcategoriaId)
+          }
+        />
+
+        <input
+          type="number"
+          step="0.01"
+          value={bulk.montoBancario}
+          placeholder="Monto bancario sin cambios"
+          aria-label="Monto bancario para seleccionados"
+          onChange={(event) =>
+            cambiarBulk("montoBancario", event.target.value)
+          }
+        />
+
+        <input
+          type="number"
+          step="0.01"
+          value={bulk.montoReal}
+          placeholder="Monto real sin cambios"
+          aria-label="Monto real para seleccionados"
+          onChange={(event) =>
+            cambiarBulk("montoReal", event.target.value)
           }
         />
 

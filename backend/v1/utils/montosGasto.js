@@ -10,6 +10,17 @@ export const esMontoDistintoDeCero = (valor) => {
   return esNumeroValido(valor) && Number(valor) !== 0;
 };
 
+export const redondearMonto = (valor) => {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero)) return 0;
+
+  return (
+    Math.sign(numero)
+    * Math.round((Math.abs(numero) + Number.EPSILON) * 100)
+    / 100
+  );
+};
+
 export const esPorcentajeGastoValido = (valor) => {
   if (!esNumeroValido(valor)) {
     return false;
@@ -30,7 +41,7 @@ export const gastoTieneMontosCompletos = (gasto) => {
 export const calcularMontoRealGasto = (gasto) => {
   if (!esMontoDistintoDeCero(gasto?.montoBancario)) {
     return esMontoDistintoDeCero(gasto?.montoReal)
-      ? Number(gasto.montoReal)
+      ? redondearMonto(gasto.montoReal)
       : 0;
   }
 
@@ -41,6 +52,7 @@ export const calcularMontoRealGasto = (gasto) => {
     return 0;
   }
 
-  return Number(gasto.montoBancario) * (Number(gasto.porcentaje) / 100);
+  return redondearMonto(
+    Number(gasto.montoBancario) * (Number(gasto.porcentaje) / 100),
+  );
 };
-

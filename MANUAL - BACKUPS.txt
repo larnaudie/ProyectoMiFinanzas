@@ -1,0 +1,111 @@
+MI FINANZAS - MANUAL DE RESPALDOS
+=================================
+
+Los accesos se encuentran en la carpeta principal del proyecto:
+
+  - Crear Backup.cmd
+  - Restaurar Backup.cmd
+
+No es necesario usar Postman ni escribir comandos.
+
+
+1. CREAR UN RESPALDO
+--------------------
+
+1) Hace doble clic en "Crear Backup.cmd".
+2) Espera hasta ver el mensaje "RESPALDO CREADO Y VERIFICADO".
+3) Presiona una tecla para cerrar la ventana.
+
+Los archivos quedan guardados dentro de:
+
+  backups\
+
+Cada respaldo tiene fecha y hora en su nombre:
+
+  mifinanzas_2026-07-29_12-04-10.archive.gz
+
+Tambien se crea un archivo .sha256.txt que permite comprobar su integridad.
+
+
+2. RESTAURAR SIN TOCAR LA BASE ACTUAL (RECOMENDADO)
+---------------------------------------------------
+
+1) Hace doble clic en "Restaurar Backup.cmd".
+2) Elegi el numero del respaldo.
+3) Elegi la opcion:
+
+     [1] Crear una base de prueba separada
+
+El programa verificara el archivo y creara una base con un nombre parecido a:
+
+  miFinanzas_restaurada_20260729_121500
+
+La base "miFinanzas" que usa actualmente la aplicacion no se modifica.
+
+Para probar temporalmente esa copia hay que cambiar solamente el nombre de la
+base en MONGO_URI, dentro de backend\.env, y reiniciar el backend. Antes de
+editar ese archivo, conserva una copia de su contenido original.
+
+
+3. VOLVER COMPLETAMENTE A UN PUNTO ANTERIOR
+-------------------------------------------
+
+IMPORTANTE: esta opcion reemplaza los datos actuales.
+
+1) Cerra la terminal donde esta ejecutandose el backend.
+2) Hace doble clic en "Restaurar Backup.cmd".
+3) Elegi el numero del respaldo.
+4) Elegi:
+
+     [2] Reemplazar la base miFinanzas actual
+
+5) Escribi exactamente:
+
+     RESTAURAR
+
+Antes de reemplazar la base, el programa crea automaticamente otro respaldo
+del estado actual. De esta manera existe un punto adicional para volver atras.
+
+Cuando termine:
+
+1) Inicia nuevamente el backend.
+2) Actualiza la pagina de MiFinanzas.
+3) Inicia sesion con el usuario que existia en la fecha del respaldo.
+
+
+4. CANCELAR
+-----------
+
+En cualquier menu podes escribir:
+
+  0
+
+La operacion se cancela sin modificar datos.
+
+
+5. QUE CONTIENE EL ARCHIVO .archive.gz
+--------------------------------------
+
+Es un respaldo completo de MongoDB. Incluye:
+
+  - usuarios
+  - bancos
+  - cuentas
+  - categorias
+  - subcategorias
+  - gastos
+  - movimientos importados
+  - resumenes de tarjetas
+  - indices de la base
+
+No debe abrirse ni importarse mediante Postman.
+
+
+6. RECOMENDACIONES
+------------------
+
+- Crea un respaldo antes de cambios importantes.
+- Conserva al menos una copia fuera de la carpeta del proyecto.
+- No subas los archivos .archive.gz a GitHub: contienen informacion privada.
+- No cambies manualmente el contenido de un .archive.gz.
+- Para una restauracion definitiva, cerra siempre el backend primero.
