@@ -85,6 +85,7 @@ function DashboardPage({ embedded = false }) {
   const [fechaAnio, setFechaAnio] = useState(anioActual);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [comparacionesContraidas, setComparacionesContraidas] = useState({});
 
   useEffect(() => {
     const gastosUrl = cuentaId ? `/gastos?cuentaId=${cuentaId}` : "/gastos";
@@ -325,6 +326,13 @@ function DashboardPage({ embedded = false }) {
     if (valor === "mes" && !fechaAnio) setFechaAnio(anioActual);
   };
 
+  const alternarComparacion = (moneda) => {
+    setComparacionesContraidas((estadoActual) => ({
+      ...estadoActual,
+      [moneda]: !estadoActual[moneda],
+    }));
+  };
+
   if (loading) {
     return (
       <section
@@ -559,6 +567,14 @@ function DashboardPage({ embedded = false }) {
 
       {monedasDashboard.map((moneda) => {
         const datosMensuales = datosMensualesPorMoneda[moneda];
+        const comparacionContraida = Boolean(
+          comparacionesContraidas[moneda],
+        );
+        const comparacionId = [
+          "comparacion-mensual",
+          cuentaSeleccionada,
+          moneda.toLowerCase(),
+        ].join("-");
         const maximoBarras = Math.max(
           1,
           ...datosMensuales.flatMap((mes) => [
@@ -580,105 +596,132 @@ function DashboardPage({ embedded = false }) {
                   la comparación.
                 </p>
               </div>
+              <button
+                type="button"
+                className="monthly-comparison-toggle"
+                onClick={() => alternarComparacion(moneda)}
+                aria-expanded={!comparacionContraida}
+                aria-controls={comparacionId}
+                aria-label={
+                  comparacionContraida
+                    ? `Desplegar comparación mensual ${moneda}`
+                    : `Contraer comparación mensual ${moneda}`
+                }
+                title={
+                  comparacionContraida
+                    ? "Desplegar dashboard"
+                    : "Contraer dashboard"
+                }
+              >
+                <svg
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                  className={comparacionContraida ? "is-collapsed" : ""}
+                >
+                  <path d="M5.5 7.5 10 12l4.5-4.5" />
+                </svg>
+              </button>
             </header>
 
-            <div className="monthly-legend-row">
-              <span
-                className="monthly-legend-spacer"
-                aria-hidden="true"
-              />
-              <div className="dashboard-legend" aria-label="Leyenda">
-                <span>
-                  <i className="banking-dot" />
-                  Monto bancario
-                </span>
-                <span>
-                  <i className="real-dot" />
-                  Monto real
-                </span>
+            <div id={comparacionId} hidden={comparacionContraida}>
+              <div className="monthly-legend-row">
+                <span
+                  className="monthly-legend-spacer"
+                  aria-hidden="true"
+                />
+                <div className="dashboard-legend" aria-label="Leyenda">
+                  <span>
+                    <i className="banking-dot" />
+                    Monto bancario
+                  </span>
+                  <span>
+                    <i className="real-dot" />
+                    Monto real
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="monthly-bars-list">
-              {datosMensuales.map((mes) => {
-                const ahorroPositivo = mes.variacion >= 0;
+              <div className="monthly-bars-list">
+                {datosMensuales.map((mes) => {
+                  const ahorroPositivo = mes.variacion >= 0;
 
-                return (
-                  <article className="monthly-bar-row" key={mes.clave}>
-                    <div className="monthly-bar-label">
-                      <strong>{formatearMes(mes.clave)}</strong>
-                      <span>{mes.cantidad} movimientos</span>
-                      {muestraAhorro && (
-                        <small
-                          className={
-                            ahorroPositivo
-                              ? "monthly-saving-positive"
-                              : "monthly-saving-negative"
-                          }
-                        >
-                          {ahorroPositivo ? "Ahorro" : "Déficit"}:{" "}
-                          {formatearMonto(
-                            Math.abs(mes.variacion),
-                            moneda,
-                          )}
-                        </small>
-                      )}
-                    </div>
-                    <div className="monthly-bars">
-                      <div className="monthly-bar-line">
-                        <span className="monthly-bar-name">Bancario</span>
-                        <span className="monthly-bar-amount">
-                          <strong>
-                            {formatearMonto(mes.montoBancario, moneda)}
-                          </strong>
-                          {moneda === "UI" && (
-                            <EquivalenciaMontoUi
-                              monto={mes.montoBancario}
-                              cotizacion={cotizacionUi.cotizacion}
+                  return (
+                    <article className="monthly-bar-row" key={mes.clave}>
+                      <div className="monthly-bar-label">
+                        <strong>{formatearMes(mes.clave)}</strong>
+                        <span>{mes.cantidad} movimientos</span>
+                        {muestraAhorro && (
+                          <small
+                            className={
+                              ahorroPositivo
+                                ? "monthly-saving-positive"
+                                : "monthly-saving-negative"
+                            }
+                          >
+                            {ahorroPositivo ? "Ahorro" : "Déficit"}:{" "}
+                            {formatearMonto(
+                              Math.abs(mes.variacion),
+                              moneda,
+                            )}
+                          </small>
+                        )}
+                      </div>
+                      <div className="monthly-bars">
+                        <div className="monthly-bar-line">
+                          <span className="monthly-bar-name">Bancario</span>
+                          <span className="monthly-bar-amount">
+                            <strong>
+                              {formatearMonto(mes.montoBancario, moneda)}
+                            </strong>
+                            {moneda === "UI" && (
+                              <EquivalenciaMontoUi
+                                monto={mes.montoBancario}
+                                cotizacion={cotizacionUi.cotizacion}
+                              />
+                            )}
+                          </span>
+                          <div className="monthly-bar-track">
+                            <span
+                              className="monthly-bar-fill monthly-bar-banking"
+                              style={{
+                                width: `${Math.max(
+                                  0,
+                                  (mes.montoBancario / maximoBarras) * 100,
+                                )}%`,
+                              }}
                             />
-                          )}
-                        </span>
-                        <div className="monthly-bar-track">
-                          <span
-                            className="monthly-bar-fill monthly-bar-banking"
-                            style={{
-                              width: `${Math.max(
-                                0,
-                                (mes.montoBancario / maximoBarras) * 100,
-                              )}%`,
-                            }}
-                          />
+                          </div>
+                        </div>
+                        <div className="monthly-bar-line">
+                          <span className="monthly-bar-name">Real</span>
+                          <span className="monthly-bar-amount">
+                            <strong>
+                              {formatearMonto(mes.montoReal, moneda)}
+                            </strong>
+                            {moneda === "UI" && (
+                              <EquivalenciaMontoUi
+                                monto={mes.montoReal}
+                                cotizacion={cotizacionUi.cotizacion}
+                              />
+                            )}
+                          </span>
+                          <div className="monthly-bar-track">
+                            <span
+                              className="monthly-bar-fill monthly-bar-real"
+                              style={{
+                                width: `${Math.max(
+                                  0,
+                                  (mes.montoReal / maximoBarras) * 100,
+                                )}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
-                      <div className="monthly-bar-line">
-                        <span className="monthly-bar-name">Real</span>
-                        <span className="monthly-bar-amount">
-                          <strong>
-                            {formatearMonto(mes.montoReal, moneda)}
-                          </strong>
-                          {moneda === "UI" && (
-                            <EquivalenciaMontoUi
-                              monto={mes.montoReal}
-                              cotizacion={cotizacionUi.cotizacion}
-                            />
-                          )}
-                        </span>
-                        <div className="monthly-bar-track">
-                          <span
-                            className="monthly-bar-fill monthly-bar-real"
-                            style={{
-                              width: `${Math.max(
-                                0,
-                                (mes.montoReal / maximoBarras) * 100,
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           </section>
         );
