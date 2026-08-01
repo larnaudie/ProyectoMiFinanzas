@@ -1467,7 +1467,8 @@ button:disabled {
     top: 68px;
     bottom: 0;
     left: 64px;
-    width: 184px;
+    z-index: 85;
+    width: 224px;
     display: grid;
     grid-auto-rows: min-content;
     align-items: stretch;
@@ -1486,7 +1487,7 @@ button:disabled {
     box-shadow: 10px 0 26px rgba(16, 47, 41, 0.12);
     backdrop-filter: none;
     pointer-events: auto;
-    transition: left 240ms ease, box-shadow 240ms ease;
+    transition: left 240ms ease, width 240ms ease, box-shadow 240ms ease;
   }
 
   .sidebar-layout-open .secondary-sidebar-actions {
@@ -1515,8 +1516,11 @@ button:disabled {
     box-shadow: none;
     font-size: 13px;
     font-weight: 700;
+    line-height: 1.25;
     text-align: left;
     text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .secondary-sidebar-actions button:hover,

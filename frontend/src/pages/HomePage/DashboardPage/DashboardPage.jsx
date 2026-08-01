@@ -703,9 +703,6 @@ function DashboardPage({ embedded = false }) {
         </div>
         {cuentaActual && (
           <div className="action-row">
-            <Link className="secondary-link" to="/home#dashboard-general">
-              Dashboard general
-            </Link>
             <Link
               className="primary-link"
               to={`/cuentas/${cuentaActual._id}/gastos`}
