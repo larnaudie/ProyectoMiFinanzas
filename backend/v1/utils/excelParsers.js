@@ -3,6 +3,7 @@ import XLSX from "xlsx";
 import { normalizarMontoBancarioTarjeta } from "./resumenTarjetaTotales.js";
 import { normalizarMoneda } from "./monedas.js";
 import { redondearMonto } from "./montosGasto.js";
+import { extraerPlanCuotasTarjeta } from "./planesCuotasTarjeta.js";
 
 export const normalizarTexto = (texto) =>
   String(texto ?? "")
@@ -233,11 +234,25 @@ export const parsearExcelTarjeta = (buffer) => {
         montoBancario,
         moneda,
         tipo,
-        porcentaje: tipo === "pago" ? 0 : 100,
-        incluirMontoReal: tipo !== "pago",
+        montoReal: 0,
+        porcentaje: 0,
+        incluirMontoReal: false,
       };
 
-      return { ...movimiento, sourceHash: crearHashMovimiento(movimiento) };
+      const financiamientoTarjeta = tipo === "cuota"
+        ? extraerPlanCuotasTarjeta({
+          detalle,
+          fecha,
+          moneda,
+          monto: montoEstadoCuenta,
+        })
+        : null;
+
+      return {
+        ...movimiento,
+        ...(financiamientoTarjeta ? { financiamientoTarjeta } : {}),
+        sourceHash: crearHashMovimiento(movimiento),
+      };
     })
     .filter((movimiento) => movimiento.fecha && movimiento.detalle && movimiento.montoEstadoCuenta !== 0);
 

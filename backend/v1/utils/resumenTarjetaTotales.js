@@ -2,6 +2,8 @@ import {
   normalizarListaMonedas,
   normalizarMoneda,
 } from "./monedas.js";
+import { sumarCuotasFuturasPorMoneda } from "./planesCuotasTarjeta.js";
+import { redondearMonto } from "./montosGasto.js";
 
 const numeroFinito = (valor) => {
   const numero = Number(valor);
@@ -26,8 +28,10 @@ export const calcularTotalesResumen = (
   resumen,
   gastos = [],
   monedasHabilitadas,
+  planesCuotas = [],
 ) => {
   const totales = {};
+  const cuotasFuturasPorMoneda = sumarCuotasFuturasPorMoneda(planesCuotas);
   const monedasBase = monedasHabilitadas === undefined
     ? ["UYU", "USD"]
     : monedasHabilitadas;
@@ -60,6 +64,7 @@ export const calcularTotalesResumen = (
       : numeroFinito(saldoFinalInformado);
     const deuda = Math.max(0, saldoFinal);
     const saldoAFavor = Math.max(0, -saldoFinal);
+    const cuotasFuturas = numeroFinito(cuotasFuturasPorMoneda[moneda]);
     const consumos = movimientos.reduce((total, gasto) => {
       const impacto = calcularImpactoDeuda(gasto);
       return total + Math.max(0, impacto);
@@ -84,6 +89,16 @@ export const calcularTotalesResumen = (
         (total, gasto) => total + numeroFinito(gasto.montoBancario),
         0,
       );
+    const creditoDisponibleSegunCierre = limite === null
+      ? null
+      : limite - saldoFinal;
+    const creditoDisponibleOperativo = creditoDisponibleSegunCierre === null
+      ? null
+      : redondearMonto(creditoDisponibleSegunCierre - cuotasFuturas);
+    const exposicionOperativa = Math.max(0, saldoFinal + cuotasFuturas);
+    const porcentajeUsado = limite && limite > 0
+      ? Number(((exposicionOperativa / limite) * 100).toFixed(2))
+      : 0;
 
     totales[moneda] = {
       limite,
@@ -97,10 +112,19 @@ export const calcularTotalesResumen = (
       montoBancarioPendiente,
       deuda,
       saldoAFavor,
-      disponible: limite === null ? null : Math.max(0, limite - saldoFinal),
-      porcentajeUsado: limite && limite > 0
-        ? Math.min(100, Number(((deuda / limite) * 100).toFixed(2)))
-        : 0,
+      cuotasFuturas,
+      disponibleSegunCierre: creditoDisponibleSegunCierre === null
+        ? null
+        : Math.max(0, creditoDisponibleSegunCierre),
+      disponibleOperativoCalculado: creditoDisponibleOperativo,
+      disponible: creditoDisponibleOperativo === null
+        ? null
+        : Math.max(0, creditoDisponibleOperativo),
+      excesoLimite: creditoDisponibleOperativo === null
+        ? 0
+        : Math.max(0, -creditoDisponibleOperativo),
+      porcentajeUsado,
+      porcentajeBarra: Math.min(100, porcentajeUsado),
       cantidad: movimientos.length,
       pendientes: movimientos.filter((gasto) => gasto.estado === "pendiente").length,
       creados: movimientos.filter((gasto) => gasto.estado === "creado").length,

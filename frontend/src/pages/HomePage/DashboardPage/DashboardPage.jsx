@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
 import {
   formatearMontoMoneda,
@@ -12,7 +12,17 @@ import {
   UiExchangeReference,
 } from "../../../components/UiExchangeReference.jsx";
 import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
-import { calcularResultadoCuentaGasto } from "../../../utils/resultadoEconomico.js";
+import { PlanesCuotasTarjeta } from "../../../components/PlanesCuotasTarjeta.jsx";
+import { RegistroSubcategorias } from "../../../components/RegistroSubcategorias.jsx";
+import { MovimientosPendientesDashboard } from "../../../components/MovimientosPendientesDashboard.jsx";
+import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
+import { calcularDisponibleOperativoTarjeta } from "../../../utils/disponibleTarjeta.js";
+import { construirRegistroGastosPorSubcategoria } from "../../../utils/registroSubcategorias.js";
+import {
+  calcularResultadoCuentaGasto,
+  calcularResultadoTarjetaGasto,
+  esPagoTarjeta,
+} from "../../../utils/resultadoEconomico.js";
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -55,6 +65,26 @@ const formatearMes = (clave) => {
 const formatearMonto = (monto, moneda) =>
   formatearMontoMoneda(numeroFinito(monto), moneda);
 
+const formatearFecha = (fecha) => (
+  fecha
+    ? new Date(fecha).toLocaleDateString("es-UY", { timeZone: "UTC" })
+    : "Sin fecha"
+);
+
+const cantidadMovimientosResumen = (totales = {}) => (
+  Object.values(totales).reduce(
+    (cantidad, total) => cantidad + numeroFinito(total?.cantidad),
+    0,
+  )
+);
+
+const cantidadPendientesResumen = (totales = {}) => (
+  Object.values(totales).reduce(
+    (cantidad, total) => cantidad + numeroFinito(total?.pendientes),
+    0,
+  )
+);
+
 const impactoConsumo = (gasto, campo) => {
   if (campo === "montoReal" && gasto.incluirMontoReal !== true) {
     return 0;
@@ -65,51 +95,111 @@ const impactoConsumo = (gasto, campo) => {
   return monto < 0 ? Math.abs(monto) : 0;
 };
 
+const impactoSaldoTarjeta = (gasto) => {
+  const monto = Math.abs(numeroFinito(gasto.montoBancario));
+  return ["pago", "reintegro"].includes(gasto.tipoMovimiento)
+    ? -monto
+    : monto;
+};
+
+const pagoOReintegroTarjeta = (gasto) => (
+  ["pago", "reintegro"].includes(gasto.tipoMovimiento)
+    ? Math.abs(numeroFinito(gasto.montoBancario))
+    : 0
+);
+
 const crearAcumuladoMensual = (clave) => ({
   clave,
   montoBancario: 0,
   montoReal: 0,
   variacion: 0,
+  pagosTarjeta: 0,
+  saldoTarjeta: 0,
   cantidad: 0,
   pendientes: 0,
 });
 
 function DashboardPage({ embedded = false }) {
   const { cuentaId } = useParams();
+  const contextoLayout = useOutletContext() || {};
+  const {
+    menuAbierto,
+    alEntrarMenu: mantenerMenuAbierto,
+    alSalirMenu: permitirCerrarMenu,
+  } = contextoLayout;
   const cuentaSeleccionada = cuentaId || "todas";
   const anioActual = String(new Date().getFullYear());
   const [cuentas, setCuentas] = useState([]);
   const [gastos, setGastos] = useState([]);
+  const [resumenesTarjeta, setResumenesTarjeta] = useState([]);
   const [fechaModo, setFechaModo] = useState("mes");
   const [fechaMes, setFechaMes] = useState("");
   const [fechaAnio, setFechaAnio] = useState(anioActual);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [comparacionesContraidas, setComparacionesContraidas] = useState({});
+  const [comparacionesContraidas, setComparacionesContraidas] = useState(false);
+  const [resumenesContraidos, setResumenesContraidos] = useState({});
+  const [panelCategoriasContraido, setPanelCategoriasContraido] = useState(false);
+  const [panelResumenesContraido, setPanelResumenesContraido] = useState(false);
 
   useEffect(() => {
     const gastosUrl = cuentaId ? `/gastos?cuentaId=${cuentaId}` : "/gastos";
+    let activo = true;
+
     setLoading(true);
     setError("");
+    setResumenesTarjeta([]);
+    setComparacionesContraidas(false);
+    setResumenesContraidos({});
+    setPanelCategoriasContraido(false);
+    setPanelResumenesContraido(false);
 
-    Promise.all([api.get("/cuentas"), api.get(gastosUrl)])
-      .then(([cuentasResponse, gastosResponse]) => {
-        setCuentas(cuentasResponse.data.cuentas || []);
+    const cargarDashboard = async () => {
+      try {
+        const [cuentasResponse, gastosResponse] = await Promise.all([
+          api.get("/cuentas"),
+          api.get(gastosUrl),
+        ]);
+        const cuentasCargadas = cuentasResponse.data.cuentas || [];
+        const cuentaCargada = cuentasCargadas.find(
+          (cuenta) => cuenta._id === cuentaId,
+        );
+        let resumenesCargados = [];
+
+        if (cuentaCargada?.tipoCuenta === "credito") {
+          const resumenesResponse = await api.get(
+            `/importaciones/cuentas/${cuentaId}/resumenes-tarjeta`,
+          );
+          resumenesCargados = resumenesResponse.data.resumenes || [];
+        }
+
+        if (!activo) return;
+        setCuentas(cuentasCargadas);
         setGastos(gastosResponse.data.gastos || []);
-      })
-      .catch((apiError) => {
+        setResumenesTarjeta(resumenesCargados);
+      } catch (apiError) {
+        if (!activo) return;
         console.error("Error al cargar el dashboard:", apiError);
         setError(
           apiError.response?.data?.message ||
             "No se pudieron cargar los datos del dashboard.",
         );
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (activo) setLoading(false);
+      }
+    };
+
+    cargarDashboard();
+
+    return () => {
+      activo = false;
+    };
   }, [cuentaId]);
 
   const cuentaActual = cuentas.find(
     (cuenta) => cuenta._id === cuentaSeleccionada,
   );
+  const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
 
   const gastosDelDashboard = useMemo(
     () =>
@@ -201,11 +291,59 @@ function DashboardPage({ embedded = false }) {
     return monedas.length > 0 ? monedas : ["UYU"];
   }, [cuentaActual, cuentas, gastosDelDashboard]);
   const manejaUi = monedasDashboard.includes("UI");
-  const cotizacionUi = useCotizacionUi(manejaUi);
+  const requiereCotizacionCredito = esCuentaCredito
+    && monedasDashboard.includes("UYU")
+    && monedasDashboard.includes("USD");
+  const cotizacionUi = useCotizacionUi(
+    manejaUi || requiereCotizacionCredito,
+  );
+
+  const resumenesFiltrados = useMemo(() => {
+    if (!esCuentaCredito) return [];
+
+    return resumenesTarjeta.filter((resumen) => {
+      const claveCierre = resumen.cierre
+        ? String(resumen.cierre).slice(0, 7)
+        : "";
+      if (fechaModo !== "mes") return true;
+      if (fechaAnio && claveCierre.slice(0, 4) !== fechaAnio) return false;
+      if (fechaMes && claveCierre.slice(5, 7) !== fechaMes) return false;
+      return true;
+    });
+  }, [
+    esCuentaCredito,
+    fechaAnio,
+    fechaMes,
+    fechaModo,
+    resumenesTarjeta,
+  ]);
+
+  const gastosPorResumen = useMemo(() => {
+    const agrupados = new Map();
+
+    gastosDelDashboard.forEach((gasto) => {
+      const resumenId = obtenerId(gasto.resumenTarjetaId);
+      if (!resumenId) return;
+      const movimientos = agrupados.get(resumenId) || [];
+      movimientos.push(gasto);
+      agrupados.set(resumenId, movimientos);
+    });
+
+    agrupados.forEach((movimientos) => {
+      movimientos.sort(
+        (a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0),
+      );
+    });
+
+    return agrupados;
+  }, [gastosDelDashboard]);
 
   const datosMensualesPorMoneda = useMemo(() => {
     const cuentasPorId = new Map(
       cuentas.map((cuenta) => [cuenta._id, cuenta]),
+    );
+    const gastosPorId = new Map(
+      gastosDelDashboard.map((gasto) => [obtenerId(gasto._id), gasto]),
     );
     const clavesPermitidas = new Set(meses);
     const movimientosInternosVinculados = new Set();
@@ -213,7 +351,10 @@ function DashboardPage({ embedded = false }) {
     gastosDelDashboard.forEach((gasto) => {
       const referenciaId = obtenerId(gasto.origen?.referenciaId);
       if (!referenciaId) return;
-      movimientosInternosVinculados.add(gasto._id);
+      const gastoId = obtenerId(gasto._id);
+      const referencia = gastosPorId.get(referenciaId);
+      if (esPagoTarjeta(gasto) || esPagoTarjeta(referencia)) return;
+      movimientosInternosVinculados.add(gastoId);
       movimientosInternosVinculados.add(referenciaId);
     });
 
@@ -247,19 +388,24 @@ function DashboardPage({ embedded = false }) {
 
       const esMovimientoInterno =
         cuentaSeleccionada === "todas" &&
-        movimientosInternosVinculados.has(gasto._id);
+        movimientosInternosVinculados.has(obtenerId(gasto._id));
 
       if (!esMovimientoInterno) {
         acumulado.montoBancario += impactoConsumo(
           gasto,
           "montoBancario",
         );
-        acumulado.montoReal += impactoConsumo(gasto, "montoReal");
+        if (cuentaGasto?.tipoCuenta === "credito") {
+          acumulado.pagosTarjeta += pagoOReintegroTarjeta(gasto);
+          acumulado.saldoTarjeta += impactoSaldoTarjeta(gasto);
+        } else {
+          acumulado.montoReal += impactoConsumo(gasto, "montoReal");
+        }
       }
 
-      if (cuentaGasto?.tipoCuenta !== "credito") {
-        acumulado.variacion += calcularResultadoCuentaGasto(gasto);
-      }
+      acumulado.variacion += cuentaGasto?.tipoCuenta === "credito"
+        ? calcularResultadoTarjetaGasto(gasto)
+        : calcularResultadoCuentaGasto(gasto);
       acumulado.cantidad += 1;
     });
 
@@ -290,12 +436,18 @@ function DashboardPage({ embedded = false }) {
                 resultado.montoBancario + mes.montoBancario,
               montoReal: resultado.montoReal + mes.montoReal,
               variacion: resultado.variacion + mes.variacion,
+              pagosTarjeta:
+                resultado.pagosTarjeta + mes.pagosTarjeta,
+              saldoTarjeta:
+                resultado.saldoTarjeta + mes.saldoTarjeta,
               pendientes: resultado.pendientes + mes.pendientes,
             }),
             {
               montoBancario: 0,
               montoReal: 0,
               variacion: 0,
+              pagosTarjeta: 0,
+              saldoTarjeta: 0,
               pendientes: 0,
             },
           ),
@@ -304,12 +456,119 @@ function DashboardPage({ embedded = false }) {
     [datosMensualesPorMoneda, monedasDashboard],
   );
 
+  const maximosComparacionPorMoneda = useMemo(
+    () => Object.fromEntries(
+      monedasDashboard.map((moneda) => [
+        moneda,
+        Math.max(
+          1,
+          ...datosMensualesPorMoneda[moneda].flatMap((mes) => [
+            mes.montoBancario,
+            esCuentaCredito ? mes.pagosTarjeta : mes.montoReal,
+          ]),
+        ),
+      ]),
+    ),
+    [datosMensualesPorMoneda, esCuentaCredito, monedasDashboard],
+  );
+
+  const ultimoResumenFiltrado = useMemo(
+    () => [...resumenesFiltrados].sort(
+      (a, b) => new Date(b.cierre || 0) - new Date(a.cierre || 0),
+    )[0] || null,
+    [resumenesFiltrados],
+  );
+
+  const disponibleOperativoTarjeta = useMemo(
+    () => (
+      esCuentaCredito && ultimoResumenFiltrado
+        ? calcularDisponibleOperativoTarjeta(
+          ultimoResumenFiltrado,
+          cotizacionUi.cotizacion,
+        )
+        : null
+    ),
+    [
+      cotizacionUi.cotizacion,
+      esCuentaCredito,
+      ultimoResumenFiltrado,
+    ],
+  );
+
+  const desgloseCategoriasTarjeta = useMemo(() => {
+    if (!esCuentaCredito) return [];
+
+    const mesesPermitidos = new Set(meses);
+    const agrupados = new Map();
+
+    gastosDelDashboard.forEach((gasto) => {
+      const claveMes = gasto.fecha ? String(gasto.fecha).slice(0, 7) : "";
+      if (
+        gasto.estado !== "creado"
+        || !mesesPermitidos.has(claveMes)
+        || gasto.tipoMovimiento === "pago"
+      ) {
+        return;
+      }
+
+      const categoria =
+        gasto.categoriaId?.nombreCategoria || "Sin categoría";
+      const subcategoria =
+        gasto.subcategoriaId?.nombreSubcategoria || "Sin subcategoría";
+      const moneda = obtenerMonedaMovimiento(cuentaActual, gasto.moneda);
+      const clave = `${categoria}|${subcategoria}`;
+      const fila = agrupados.get(clave) || {
+        categoria,
+        subcategoria,
+        montos: {},
+      };
+
+      fila.montos[moneda] = numeroFinito(fila.montos[moneda])
+        + impactoSaldoTarjeta(gasto);
+      agrupados.set(clave, fila);
+    });
+
+    return [...agrupados.values()].sort((a, b) => {
+      const totalA = Object.values(a.montos)
+        .reduce((total, monto) => total + Math.abs(numeroFinito(monto)), 0);
+      const totalB = Object.values(b.montos)
+        .reduce((total, monto) => total + Math.abs(numeroFinito(monto)), 0);
+      return totalB - totalA;
+    });
+  }, [
+    cuentaActual,
+    esCuentaCredito,
+    gastosDelDashboard,
+    meses,
+  ]);
+
+  const registroGastosSubcategorias = useMemo(
+    () => construirRegistroGastosPorSubcategoria({
+      gastos: gastosDelDashboard,
+      cuentas,
+      meses,
+    }),
+    [cuentas, gastosDelDashboard, meses],
+  );
+
+  const movimientosPendientesFiltrados = useMemo(() => {
+    const mesesPermitidos = new Set(meses);
+
+    return gastosDelDashboard
+      .filter((gasto) => {
+        const claveMes = gasto.fecha ? String(gasto.fecha).slice(0, 7) : "";
+        return gasto.estado === "pendiente" && mesesPermitidos.has(claveMes);
+      })
+      .sort((a, b) => (
+        new Date(b.fecha || 0) - new Date(a.fecha || 0)
+        || String(a.detalle || "").localeCompare(String(b.detalle || ""), "es")
+      ));
+  }, [gastosDelDashboard, meses]);
+
   const pendientesTotales = monedasDashboard.reduce(
     (total, moneda) => total + totalesPorMoneda[moneda].pendientes,
     0,
   );
-  const muestraAhorro =
-    !cuentaActual || cuentaActual.tipoCuenta !== "credito";
   const tituloCuenta = cuentaActual?.nombreCuenta || "Todas las cuentas";
   const nombreMesSeleccionado =
     MESES_DEL_ANIO.find((mes) => mes.valor === fechaMes)?.nombre || "";
@@ -321,15 +580,51 @@ function DashboardPage({ embedded = false }) {
           fechaAnio ? `de ${fechaAnio}` : "de todos los años",
         ].join(" ");
 
+  const seccionesDashboard = [
+    { id: "dashboard-resumen", etiqueta: "Resumen mensual" },
+    ...(pendientesTotales > 0
+      ? [{
+          id: "dashboard-movimientos-pendientes",
+          etiqueta: "Movimientos pendientes",
+        }]
+      : []),
+    ...(esCuentaCredito && disponibleOperativoTarjeta
+      ? [{
+          id: "dashboard-conciliacion",
+          etiqueta: "Conciliación del límite",
+        }]
+      : []),
+    ...(!esCuentaCredito
+      ? [{
+          id: "dashboard-registro-subcategorias",
+          etiqueta: "Registro por subcategoría",
+        }]
+      : []),
+    { id: "dashboard-comparaciones", etiqueta: "Comparaciones" },
+    ...(esCuentaCredito
+      ? [
+          {
+            id: "dashboard-categorias",
+            etiqueta: "Categorías y subcategorías",
+          },
+          { id: "dashboard-resumenes", etiqueta: "Resúmenes del período" },
+        ]
+      : []),
+  ];
+
   const cambiarModoFecha = (valor) => {
     setFechaModo(valor);
     if (valor === "mes" && !fechaAnio) setFechaAnio(anioActual);
   };
 
-  const alternarComparacion = (moneda) => {
-    setComparacionesContraidas((estadoActual) => ({
+  const alternarComparacion = () => {
+    setComparacionesContraidas((estadoActual) => !estadoActual);
+  };
+
+  const alternarResumen = (resumenId) => {
+    setResumenesContraidos((estadoActual) => ({
       ...estadoActual,
-      [moneda]: !estadoActual[moneda],
+      [resumenId]: !estadoActual[resumenId],
     }));
   };
 
@@ -347,6 +642,15 @@ function DashboardPage({ embedded = false }) {
     <section
       className={`${embedded ? "" : "page-section "}dashboard-page${embedded ? " dashboard-page-embedded" : ""}`}
     >
+      <nav
+        className="expense-floating-actions secondary-sidebar-actions section-navigation-only"
+        aria-label="Navegación de secciones del dashboard"
+        onMouseEnter={menuAbierto ? mantenerMenuAbierto : undefined}
+        onMouseLeave={menuAbierto ? permitirCerrarMenu : undefined}
+      >
+        <NavegacionSecciones secciones={seccionesDashboard} />
+      </nav>
+
       {!embedded && cuentas.length > 0 && (
         <nav
           className="dashboard-account-shortcuts dashboard-account-shortcuts-top"
@@ -390,9 +694,11 @@ function DashboardPage({ embedded = false }) {
               : "Dashboard general"}
           </h1>
           <p>
-            {cuentaActual
-              ? "Analizá el monto bancario, el monto real y el ahorro de esta cuenta mes a mes."
-              : "Compará todas tus cuentas por mes, con los importes separados por moneda."}
+            {esCuentaCredito
+              ? "Analizá consumos bancarios, categorías y deuda de la tarjeta por mes y por resumen."
+              : cuentaActual
+                ? "Analizá el monto bancario, el monto real y el ahorro de esta cuenta mes a mes."
+                : "Compará todas tus cuentas por mes, con los importes separados por moneda."}
           </p>
         </div>
         {cuentaActual && (
@@ -422,7 +728,8 @@ function DashboardPage({ embedded = false }) {
       )}
 
       <section
-        className="dashboard-filters"
+        id="dashboard-resumen"
+        className="dashboard-filters page-scroll-section"
         aria-label="Filtros del dashboard"
       >
         <label>
@@ -479,7 +786,7 @@ function DashboardPage({ embedded = false }) {
 
       <section className="dashboard-kpis">
         <article>
-          <span>Monto bancario</span>
+          <span>{esCuentaCredito ? "Consumos de tarjeta" : "Monto bancario"}</span>
           {monedasDashboard.map((moneda) => (
             <div className="dashboard-kpi-value" key={moneda}>
               <strong>
@@ -496,248 +803,788 @@ function DashboardPage({ embedded = false }) {
               )}
             </div>
           ))}
-          <small>Consumo acumulado de los meses filtrados</small>
+          <small>
+            {esCuentaCredito
+              ? "Compras y cuotas de los meses filtrados"
+              : "Consumo acumulado de los meses filtrados"}
+          </small>
         </article>
         <article>
-          <span>Monto real</span>
+          <span>{esCuentaCredito ? "Pagos y reintegros" : "Monto real"}</span>
           {monedasDashboard.map((moneda) => (
             <div className="dashboard-kpi-value" key={moneda}>
               <strong>
                 {formatearMonto(
-                  totalesPorMoneda[moneda].montoReal,
+                  esCuentaCredito
+                    ? totalesPorMoneda[moneda].pagosTarjeta
+                    : totalesPorMoneda[moneda].montoReal,
                   moneda,
                 )}
               </strong>
               {moneda === "UI" && (
                 <EquivalenciaMontoUi
-                  monto={totalesPorMoneda[moneda].montoReal}
+                  monto={
+                    esCuentaCredito
+                      ? totalesPorMoneda[moneda].pagosTarjeta
+                      : totalesPorMoneda[moneda].montoReal
+                  }
                   cotizacion={cotizacionUi.cotizacion}
                 />
               )}
             </div>
           ))}
-          <small>Impacto personal acumulado de los meses filtrados</small>
-        </article>
-        <article>
-          <span>
-            {muestraAhorro
-              ? "Ahorro total de los meses"
-              : "Ahorro total"}
-          </span>
-          {muestraAhorro ? (
-            monedasDashboard.map((moneda) => {
-              const ahorro = totalesPorMoneda[moneda].variacion;
-              return (
-                <div className="dashboard-kpi-value" key={moneda}>
-                  <strong
-                    className={
-                      ahorro < 0
-                        ? "dashboard-value-negative"
-                        : "dashboard-value-positive"
-                    }
-                  >
-                    {formatearMonto(ahorro, moneda)}
-                  </strong>
-                  {moneda === "UI" && (
-                    <EquivalenciaMontoUi
-                      monto={ahorro}
-                      cotizacion={cotizacionUi.cotizacion}
-                    />
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            <strong>No aplica</strong>
-          )}
           <small>
-            {muestraAhorro
-              ? cuentaSeleccionada === "todas"
-                ? "Sumatoria de los resultados de todas las cuentas"
-                : "Monto real incluido más transferencias netas"
-              : "Las tarjetas no representan ahorro"}
+            {esCuentaCredito
+              ? "Reducen la deuda; no generan impacto económico en la tarjeta"
+              : "Impacto personal acumulado de los meses filtrados"}
           </small>
         </article>
         <article>
+          <span>
+            {esCuentaCredito
+              ? "Deuda al último cierre"
+              : "Ahorro total de los meses"}
+          </span>
+          {monedasDashboard.map((moneda) => {
+            const totalCierre = ultimoResumenFiltrado?.totales?.[moneda];
+            const resultado = esCuentaCredito
+              ? numeroFinito(totalCierre?.deuda)
+              : totalesPorMoneda[moneda].variacion;
+            return (
+              <div className="dashboard-kpi-value" key={moneda}>
+                <strong
+                  className={
+                    esCuentaCredito && totalCierre?.excesoLimite > 0
+                      ? "dashboard-value-negative"
+                      : resultado < 0
+                      ? "dashboard-value-negative"
+                      : "dashboard-value-positive"
+                  }
+                >
+                  {formatearMonto(resultado, moneda)}
+                </strong>
+                {moneda === "UI" && (
+                  <EquivalenciaMontoUi
+                    monto={resultado}
+                    cotizacion={cotizacionUi.cotizacion}
+                  />
+                )}
+                {esCuentaCredito && totalCierre && (
+                  <span className="dashboard-kpi-context">
+                    {totalCierre.excesoLimite > 0
+                      ? `Excede el límite en ${formatearMonto(totalCierre.excesoLimite, moneda)}`
+                      : `Disponible operativo ${formatearMonto(totalCierre.disponible, moneda)}`}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          <small>
+            {esCuentaCredito
+              ? ultimoResumenFiltrado
+                ? `Cierre ${formatearFecha(ultimoResumenFiltrado.cierre)}; sin monto real`
+                : "Todavía no hay un resumen dentro del período"
+              : cuentaSeleccionada === "todas"
+                ? "Sumatoria de los resultados de todas las cuentas"
+                : "Monto real incluido más transferencias netas"}
+          </small>
+        </article>
+        <article
+          className={pendientesTotales > 0 ? "dashboard-pending-kpi is-clickable" : "dashboard-pending-kpi"}
+        >
+          {pendientesTotales > 0 && (
+            <a
+              className="dashboard-kpi-overlay-link"
+              href="#dashboard-movimientos-pendientes"
+              aria-label={`Ver ${pendientesTotales} movimientos pendientes`}
+            />
+          )}
           <span>Movimientos pendientes</span>
           <strong>{pendientesTotales}</strong>
-          <small>Dentro de los meses filtrados</small>
+          <small>
+            {pendientesTotales > 0
+              ? "Ver lista dentro del período filtrado →"
+              : "Dentro de los meses filtrados"}
+          </small>
         </article>
       </section>
 
-      {monedasDashboard.map((moneda) => {
-        const datosMensuales = datosMensualesPorMoneda[moneda];
-        const comparacionContraida = Boolean(
-          comparacionesContraidas[moneda],
-        );
-        const comparacionId = [
-          "comparacion-mensual",
-          cuentaSeleccionada,
-          moneda.toLowerCase(),
-        ].join("-");
-        const maximoBarras = Math.max(
-          1,
-          ...datosMensuales.flatMap((mes) => [
-            mes.montoBancario,
-            mes.montoReal,
-          ]),
-        );
+      {pendientesTotales > 0 && (
+        <MovimientosPendientesDashboard
+          movimientos={movimientosPendientesFiltrados}
+          cuentas={cuentas}
+          mostrarCuenta={cuentaSeleccionada === "todas"}
+        />
+      )}
 
-        return (
-          <section className="monthly-comparison-card" key={moneda}>
-            <header className="monthly-comparison-header">
-              <div>
-                <h2>
-                  Comparación mensual
-                  {monedasDashboard.length > 1 ? ` · ${moneda}` : ""}
-                </h2>
-                <p>
-                  Cada mes conserva exactamente dos barras para facilitar
-                  la comparación.
-                </p>
+      {esCuentaCredito && disponibleOperativoTarjeta && (
+        <section
+          id="dashboard-conciliacion"
+          className="credit-operational-reconciliation page-scroll-section"
+        >
+          <header>
+            <div>
+              <span>Conciliación del límite</span>
+              <h2>Disponible operativo estimado</h2>
+            </div>
+            <strong>
+              {disponibleOperativoTarjeta.disponible === null
+                ? (cotizacionUi.error
+                  ? "Cotización no disponible"
+                  : "Consultando cotización...")
+                : formatearMonto(
+                  disponibleOperativoTarjeta.disponible,
+                  disponibleOperativoTarjeta.moneda,
+                )}
+            </strong>
+          </header>
+          <div className="credit-operational-formula">
+            <div>
+              <span>Límite</span>
+              <strong>
+                {formatearMonto(
+                  disponibleOperativoTarjeta.limite,
+                  disponibleOperativoTarjeta.moneda,
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>
+                {disponibleOperativoTarjeta.saldoFinal <= 0
+                  ? "Saldo a favor"
+                  : "Deuda del cierre"}
+              </span>
+              <strong>
+                {formatearMonto(
+                  Math.abs(disponibleOperativoTarjeta.saldoFinal),
+                  disponibleOperativoTarjeta.moneda,
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>Cuotas futuras</span>
+              <strong>
+                -{formatearMonto(
+                  disponibleOperativoTarjeta.cuotasFuturas,
+                  disponibleOperativoTarjeta.moneda,
+                )}
+              </strong>
+            </div>
+            {disponibleOperativoTarjeta.ajustesMoneda.map((ajuste) => (
+              <div key={ajuste.moneda}>
+                <span>Ajuste por saldo {ajuste.moneda}</span>
+                <strong>
+                  {ajuste.ajuste >= 0 ? "+" : ""}
+                  {formatearMonto(
+                    ajuste.ajuste,
+                    disponibleOperativoTarjeta.moneda,
+                  )}
+                </strong>
               </div>
-              <button
-                type="button"
-                className="monthly-comparison-toggle"
-                onClick={() => alternarComparacion(moneda)}
-                aria-expanded={!comparacionContraida}
-                aria-controls={comparacionId}
-                aria-label={
-                  comparacionContraida
-                    ? `Desplegar comparación mensual ${moneda}`
-                    : `Contraer comparación mensual ${moneda}`
-                }
-                title={
-                  comparacionContraida
-                    ? "Desplegar dashboard"
-                    : "Contraer dashboard"
-                }
+            ))}
+          </div>
+          <p>
+            Se toma el último cierre, se descuentan las cuotas todavía no
+            facturadas y, cuando el límite es compartido, se convierten los
+            saldos de otras monedas con la referencia BCU disponible.
+          </p>
+        </section>
+      )}
+
+      {!esCuentaCredito && (
+        <RegistroSubcategorias
+          registros={registroGastosSubcategorias}
+          mostrarCuentas={cuentaSeleccionada === "todas"}
+        />
+      )}
+
+      <section
+        id="dashboard-comparaciones"
+        className="monthly-comparison-card monthly-comparisons-card page-scroll-section"
+      >
+        <header className="monthly-comparison-header">
+          <div>
+            <h2>Comparaciones</h2>
+            <p>
+              Cada mes reúne UYU, USD y UI en ese orden. Los importes y las
+              escalas permanecen separados por moneda.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="monthly-comparison-toggle"
+            onClick={alternarComparacion}
+            aria-expanded={!comparacionesContraidas}
+            aria-controls="comparaciones-mensuales-dashboard"
+            aria-label={
+              comparacionesContraidas
+                ? "Desplegar comparaciones"
+                : "Contraer comparaciones"
+            }
+            title={
+              comparacionesContraidas
+                ? "Desplegar comparaciones"
+                : "Contraer comparaciones"
+            }
+          >
+            <svg
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+              className={comparacionesContraidas ? "is-collapsed" : ""}
+            >
+              <path d="M5.5 7.5 10 12l4.5-4.5" />
+            </svg>
+          </button>
+        </header>
+
+        <div
+          id="comparaciones-mensuales-dashboard"
+          hidden={comparacionesContraidas}
+        >
+          <div className="monthly-combined-legend">
+            <div className="dashboard-legend" aria-label="Leyenda">
+              <span>
+                <i className="banking-dot" />
+                {esCuentaCredito ? "Consumos" : "Monto bancario"}
+              </span>
+              <span>
+                <i className="real-dot" />
+                {esCuentaCredito ? "Pagos y reintegros" : "Monto real"}
+              </span>
+            </div>
+          </div>
+
+          <div className="monthly-periods-list">
+            {meses.map((claveMes, indiceMes) => {
+              const cantidadMovimientos = monedasDashboard.reduce(
+                (total, moneda) =>
+                  total
+                  + (datosMensualesPorMoneda[moneda][indiceMes]?.cantidad || 0),
+                0,
+              );
+
+              return (
+                <article className="monthly-period-group" key={claveMes}>
+                  <header className="monthly-period-header">
+                    <strong>{formatearMes(claveMes)}</strong>
+                    <span>{cantidadMovimientos} movimientos</span>
+                  </header>
+
+                  <div className="monthly-period-currencies">
+                    {monedasDashboard.map((moneda) => {
+                      const mes = datosMensualesPorMoneda[moneda][indiceMes];
+                      const segundoMonto = esCuentaCredito
+                        ? mes.pagosTarjeta
+                        : mes.montoReal;
+                      const resultado = esCuentaCredito
+                        ? mes.saldoTarjeta
+                        : mes.variacion;
+                      const resultadoPositivo = esCuentaCredito
+                        ? resultado < 0
+                        : resultado > 0;
+                      const sinVariacion = resultado === 0;
+                      const etiquetaResultado = sinVariacion
+                        ? "Sin variación"
+                        : esCuentaCredito
+                          ? resultadoPositivo
+                            ? "Redujo deuda"
+                            : "Aumentó deuda"
+                          : resultadoPositivo
+                            ? "Ahorro"
+                            : "Déficit";
+                      const maximoBarras = maximosComparacionPorMoneda[moneda];
+
+                      return (
+                        <section
+                          className="monthly-currency-comparison"
+                          key={`${claveMes}-${moneda}`}
+                        >
+                          <div className="monthly-currency-summary">
+                            <strong>{moneda}</strong>
+                            <span>{mes.cantidad} movimientos</span>
+                            <small
+                              className={
+                                resultadoPositivo || sinVariacion
+                                  ? "monthly-saving-positive"
+                                  : "monthly-saving-negative"
+                              }
+                            >
+                              {etiquetaResultado}: {formatearMonto(
+                                Math.abs(resultado),
+                                moneda,
+                              )}
+                            </small>
+                          </div>
+
+                          <div className="monthly-bars">
+                            <div className="monthly-bar-line">
+                              <span className="monthly-bar-name">
+                                {esCuentaCredito ? "Consumos" : "Bancario"}
+                              </span>
+                              <span className="monthly-bar-amount">
+                                <strong>
+                                  {formatearMonto(mes.montoBancario, moneda)}
+                                </strong>
+                                {moneda === "UI" && (
+                                  <EquivalenciaMontoUi
+                                    monto={mes.montoBancario}
+                                    cotizacion={cotizacionUi.cotizacion}
+                                  />
+                                )}
+                              </span>
+                              <div className="monthly-bar-track">
+                                <span
+                                  className="monthly-bar-fill monthly-bar-banking"
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      (mes.montoBancario / maximoBarras) * 100,
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="monthly-bar-line">
+                              <span className="monthly-bar-name">
+                                {esCuentaCredito ? "Pagos" : "Real"}
+                              </span>
+                              <span className="monthly-bar-amount">
+                                <strong>
+                                  {formatearMonto(segundoMonto, moneda)}
+                                </strong>
+                                {moneda === "UI" && (
+                                  <EquivalenciaMontoUi
+                                    monto={segundoMonto}
+                                    cotizacion={cotizacionUi.cotizacion}
+                                  />
+                                )}
+                              </span>
+                              <div className="monthly-bar-track">
+                                <span
+                                  className="monthly-bar-fill monthly-bar-real"
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      (segundoMonto / maximoBarras) * 100,
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {esCuentaCredito && (
+        <section
+          id="dashboard-categorias"
+          className="monthly-comparison-card credit-category-breakdown page-scroll-section"
+        >
+          <header className="monthly-comparison-header">
+            <div>
+              <h2>Consumos por categoría y subcategoría</h2>
+              <p>
+                Usa únicamente el monto bancario de compras, cuotas y
+                reintegros. Los pagos de la tarjeta no se reparten como gasto.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="monthly-comparison-toggle"
+              onClick={() => setPanelCategoriasContraido((actual) => !actual)}
+              aria-expanded={!panelCategoriasContraido}
+              aria-controls="dashboard-categorias-tarjeta"
+              aria-label={
+                panelCategoriasContraido
+                  ? "Desplegar categorías de tarjeta"
+                  : "Contraer categorías de tarjeta"
+              }
+              title={
+                panelCategoriasContraido
+                  ? "Desplegar categorías"
+                  : "Contraer categorías"
+              }
+            >
+              <svg
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+                className={panelCategoriasContraido ? "is-collapsed" : ""}
               >
-                <svg
-                  viewBox="0 0 20 20"
-                  aria-hidden="true"
-                  className={comparacionContraida ? "is-collapsed" : ""}
-                >
-                  <path d="M5.5 7.5 10 12l4.5-4.5" />
-                </svg>
-              </button>
-            </header>
+                <path d="M5.5 7.5 10 12l4.5-4.5" />
+              </svg>
+            </button>
+          </header>
 
-            <div id={comparacionId} hidden={comparacionContraida}>
-              <div className="monthly-legend-row">
-                <span
-                  className="monthly-legend-spacer"
-                  aria-hidden="true"
-                />
-                <div className="dashboard-legend" aria-label="Leyenda">
-                  <span>
-                    <i className="banking-dot" />
-                    Monto bancario
-                  </span>
-                  <span>
-                    <i className="real-dot" />
-                    Monto real
-                  </span>
-                </div>
+          <div
+            id="dashboard-categorias-tarjeta"
+            className="credit-category-breakdown-content"
+            hidden={panelCategoriasContraido}
+          >
+            {desgloseCategoriasTarjeta.length === 0 ? (
+              <p className="credit-dashboard-summary-empty-row">
+                No hay consumos creados y categorizados en este período.
+              </p>
+            ) : (
+              <div className="credit-dashboard-movements-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Categoría</th>
+                      <th>Subcategoría</th>
+                      {monedasDashboard.map((moneda) => (
+                        <th key={moneda}>{moneda}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {desgloseCategoriasTarjeta.map((fila) => (
+                      <tr key={`${fila.categoria}-${fila.subcategoria}`}>
+                        <td>{fila.categoria}</td>
+                        <td>{fila.subcategoria}</td>
+                        {monedasDashboard.map((moneda) => (
+                          <td key={moneda}>
+                            {formatearMonto(fila.montos[moneda], moneda)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            )}
+          </div>
+        </section>
+      )}
 
-              <div className="monthly-bars-list">
-                {datosMensuales.map((mes) => {
-                  const ahorroPositivo = mes.variacion >= 0;
+      {esCuentaCredito && (
+        <section
+          id="dashboard-resumenes"
+          className="monthly-comparison-card credit-dashboard-summaries page-scroll-section"
+        >
+          <header className="monthly-comparison-header">
+            <div>
+              <h2>Resúmenes del período</h2>
+              <p>
+                Se agrupan por fecha de cierre. Las compras mantienen su fecha
+                original en la comparación mensual.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="monthly-comparison-toggle"
+              onClick={() => setPanelResumenesContraido((actual) => !actual)}
+              aria-expanded={!panelResumenesContraido}
+              aria-controls="dashboard-resumenes-tarjeta"
+              aria-label={
+                panelResumenesContraido
+                  ? "Desplegar resúmenes de tarjeta"
+                  : "Contraer resúmenes de tarjeta"
+              }
+              title={
+                panelResumenesContraido
+                  ? "Desplegar resúmenes"
+                  : "Contraer resúmenes"
+              }
+            >
+              <svg
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+                className={panelResumenesContraido ? "is-collapsed" : ""}
+              >
+                <path d="M5.5 7.5 10 12l4.5-4.5" />
+              </svg>
+            </button>
+          </header>
 
-                  return (
-                    <article className="monthly-bar-row" key={mes.clave}>
-                      <div className="monthly-bar-label">
-                        <strong>{formatearMes(mes.clave)}</strong>
-                        <span>{mes.cantidad} movimientos</span>
-                        {muestraAhorro && (
-                          <small
-                            className={
-                              ahorroPositivo
-                                ? "monthly-saving-positive"
-                                : "monthly-saving-negative"
-                            }
+          <div
+            id="dashboard-resumenes-tarjeta"
+            className="credit-dashboard-summary-list"
+            hidden={panelResumenesContraido}
+          >
+            {resumenesFiltrados.length === 0 ? (
+              <div className="credit-dashboard-summary-empty">
+                <strong>No hay resúmenes con cierre en este período.</strong>
+                <span>
+                  Las compras pueden igualmente aparecer arriba según su fecha.
+                </span>
+              </div>
+            ) : (
+              resumenesFiltrados.map((resumen) => {
+                const resumenContraido = Boolean(
+                  resumenesContraidos[resumen._id],
+                );
+                const resumenContenidoId = `dashboard-resumen-${resumen._id}`;
+                const movimientos = gastosPorResumen.get(resumen._id) || [];
+                const monedasResumen = monedasDashboard.filter(
+                  (moneda) => resumen.totales?.[moneda],
+                );
+
+                return (
+                  <article
+                    className="credit-summary-card credit-dashboard-summary-card"
+                    key={resumen._id}
+                  >
+                    <header className="credit-summary-card-header">
+                      <div>
+                        <p className="eyebrow">Resumen</p>
+                        <h3>
+                          {resumen.periodo
+                            || `Cierre ${formatearFecha(resumen.cierre)}`}
+                        </h3>
+                        <p>
+                          Cierre: {formatearFecha(resumen.cierre)}
+                          {" · "}
+                          Vencimiento: {formatearFecha(resumen.vencimiento)}
+                        </p>
+                      </div>
+                      <div className="credit-dashboard-summary-header-actions">
+                        <span className="credit-summary-count">
+                          {cantidadMovimientosResumen(resumen.totales)} movimientos
+                        </span>
+                        <button
+                          type="button"
+                          className="monthly-comparison-toggle"
+                          onClick={() => alternarResumen(resumen._id)}
+                          aria-expanded={!resumenContraido}
+                          aria-controls={resumenContenidoId}
+                          aria-label={
+                            resumenContraido
+                              ? `Desplegar resumen ${resumen.periodo || ""}`
+                              : `Contraer resumen ${resumen.periodo || ""}`
+                          }
+                          title={
+                            resumenContraido
+                              ? "Desplegar resumen"
+                              : "Contraer resumen"
+                          }
+                        >
+                          <svg
+                            viewBox="0 0 20 20"
+                            aria-hidden="true"
+                            className={resumenContraido ? "is-collapsed" : ""}
                           >
-                            {ahorroPositivo ? "Ahorro" : "Déficit"}:{" "}
-                            {formatearMonto(
-                              Math.abs(mes.variacion),
-                              moneda,
-                            )}
-                          </small>
+                            <path d="M5.5 7.5 10 12l4.5-4.5" />
+                          </svg>
+                        </button>
+                      </div>
+                    </header>
+
+                    <div
+                      id={resumenContenidoId}
+                      className="credit-dashboard-summary-content"
+                      hidden={resumenContraido}
+                    >
+                      <div className="credit-summary-currencies">
+                        {monedasResumen.map((moneda) => {
+                          const total = resumen.totales[moneda];
+                          return (
+                            <section
+                              className="credit-summary-currency"
+                              key={moneda}
+                            >
+                              <div className="credit-summary-currency-title">
+                                <strong>{moneda}</strong>
+                                <span>{total.porcentajeUsado}% utilizado</span>
+                              </div>
+                              <div className="credit-summary-amounts">
+                                <div>
+                                  <span>Límite</span>
+                                  <strong>
+                                    {total.limite === null
+                                      ? "No informado"
+                                      : formatearMonto(total.limite, moneda)}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Consumos</span>
+                                  <strong>
+                                    {formatearMonto(total.consumos, moneda)}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Pagos y reintegros</span>
+                                  <strong>
+                                    {formatearMonto(
+                                      total.pagosYReintegros,
+                                      moneda,
+                                    )}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Deuda del resumen</span>
+                                  <strong className="credit-summary-debt">
+                                    {formatearMonto(total.deuda, moneda)}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Cuotas futuras</span>
+                                  <strong>
+                                    {formatearMonto(
+                                      total.cuotasFuturas,
+                                      moneda,
+                                    )}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>
+                                    {total.excesoLimite > 0
+                                      ? "Exceso del límite"
+                                      : "Disponible operativo"}
+                                  </span>
+                                  <strong
+                                    className={
+                                      total.excesoLimite > 0
+                                        ? "credit-summary-debt"
+                                        : "credit-summary-available"
+                                    }
+                                  >
+                                    {formatearMonto(
+                                      total.excesoLimite > 0
+                                        ? total.excesoLimite
+                                        : total.disponible,
+                                      moneda,
+                                    )}
+                                  </strong>
+                                </div>
+                              </div>
+                              <div
+                                className="credit-summary-progress"
+                                aria-label={`${total.porcentajeUsado}% del límite utilizado`}
+                              >
+                                <span
+                                  style={{
+                                    width: `${total.porcentajeBarra ?? Math.min(100, total.porcentajeUsado)}%`,
+                                  }}
+                                />
+                              </div>
+                            </section>
+                          );
+                        })}
+                      </div>
+
+                      <PlanesCuotasTarjeta
+                        planes={resumen.planesCuotas || []}
+                        compacto
+                      />
+
+                      <div className="credit-dashboard-movements">
+                        <div className="credit-dashboard-movements-header">
+                          <div>
+                            <strong>Movimientos del resumen</strong>
+                            <span>
+                              {cantidadPendientesResumen(resumen.totales)}
+                              {" "}
+                              pendientes
+                            </span>
+                          </div>
+                          <Link
+                            className="secondary-link"
+                            to={`/cuentas/${cuentaActual._id}/resumenes/${resumen._id}/gastos`}
+                          >
+                            Abrir desglose
+                          </Link>
+                        </div>
+
+                        {movimientos.length === 0 ? (
+                          <p className="credit-dashboard-summary-empty-row">
+                            No hay movimientos para mostrar.
+                          </p>
+                        ) : (
+                          <div className="credit-dashboard-movements-table">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Fecha</th>
+                                  <th>Detalle</th>
+                                  <th>Tipo</th>
+                                  <th>Bancario</th>
+                                  <th>Categoría</th>
+                                  <th>Subcategoría</th>
+                                  <th>Estado</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {movimientos.map((movimiento) => {
+                                  const moneda = obtenerMonedaMovimiento(
+                                    cuentaActual,
+                                    movimiento.moneda,
+                                  );
+                                  return (
+                                    <tr key={movimiento._id}>
+                                      <td>{formatearFecha(movimiento.fecha)}</td>
+                                      <td title={movimiento.detalle}>
+                                        {movimiento.detalle}
+                                      </td>
+                                      <td>
+                                        {movimiento.tipoMovimiento || "manual"}
+                                      </td>
+                                      <td>
+                                        {formatearMonto(
+                                          movimiento.montoBancario,
+                                          moneda,
+                                        )}
+                                      </td>
+                                      <td>
+                                        {movimiento.categoriaId
+                                          ?.nombreCategoria || "Sin categoría"}
+                                      </td>
+                                      <td>
+                                        {movimiento.subcategoriaId
+                                          ?.nombreSubcategoria || "Sin subcategoría"}
+                                      </td>
+                                      <td>{movimiento.estado}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
                       </div>
-                      <div className="monthly-bars">
-                        <div className="monthly-bar-line">
-                          <span className="monthly-bar-name">Bancario</span>
-                          <span className="monthly-bar-amount">
-                            <strong>
-                              {formatearMonto(mes.montoBancario, moneda)}
-                            </strong>
-                            {moneda === "UI" && (
-                              <EquivalenciaMontoUi
-                                monto={mes.montoBancario}
-                                cotizacion={cotizacionUi.cotizacion}
-                              />
-                            )}
-                          </span>
-                          <div className="monthly-bar-track">
-                            <span
-                              className="monthly-bar-fill monthly-bar-banking"
-                              style={{
-                                width: `${Math.max(
-                                  0,
-                                  (mes.montoBancario / maximoBarras) * 100,
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                        <div className="monthly-bar-line">
-                          <span className="monthly-bar-name">Real</span>
-                          <span className="monthly-bar-amount">
-                            <strong>
-                              {formatearMonto(mes.montoReal, moneda)}
-                            </strong>
-                            {moneda === "UI" && (
-                              <EquivalenciaMontoUi
-                                monto={mes.montoReal}
-                                cotizacion={cotizacionUi.cotizacion}
-                              />
-                            )}
-                          </span>
-                          <div className="monthly-bar-track">
-                            <span
-                              className="monthly-bar-fill monthly-bar-real"
-                              style={{
-                                width: `${Math.max(
-                                  0,
-                                  (mes.montoReal / maximoBarras) * 100,
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </section>
+      )}
 
       <aside className="dashboard-savings-note">
         <span className="dashboard-savings-icon">$</span>
         <div>
-          <h3>¿Cómo se calcula el ahorro total?</h3>
-          {cuentaSeleccionada === "todas" ? (
+          <h3>
+            {esCuentaCredito
+              ? "¿Cómo se interpreta la tarjeta?"
+              : "¿Cómo se calcula el ahorro total?"}
+          </h3>
+          {esCuentaCredito ? (
+            <p>
+              La tarjeta conserva únicamente el flujo bancario: compras y
+              cuotas aumentan la deuda; pagos y reintegros la reducen. El
+              impacto económico se registra una sola vez en la cuenta
+              bancaria desde la que pagás la tarjeta. El vínculo sirve para
+              conciliar ambos movimientos, no para anular ese pago. Las
+              cuotas futuras reducen el límite operativo hasta que cada plan
+              llega a su última cuota.
+            </p>
+          ) : cuentaSeleccionada === "todas" ? (
             <p>
               El dashboard general suma el resultado de cada cuenta usando la
-              misma regla individual: monto real cuando Incluye está activado
-              y monto bancario para las transferencias. Las transferencias
-              entre cuentas de la misma moneda se compensan entre origen y
-              destino. UYU, USD y UI permanecen separados.
+              regla correspondiente: monto real para consumos incluidos,
+              monto bancario para transferencias y cero impacto directo para
+              la tarjeta. El pago realizado desde la cuenta bancaria conserva
+              su impacto económico aunque esté vinculado. UYU, USD y UI
+              permanecen separados.
             </p>
           ) : (
             <p>

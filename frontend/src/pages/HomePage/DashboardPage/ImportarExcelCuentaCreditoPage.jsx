@@ -1,16 +1,23 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Link,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router-dom";
 import { api } from "../../../services/api.js";
+import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
+import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
 import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
+import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
 import { obtenerMonedasCuenta } from "../../../utils/monedas.js";
-import {
-  calcularMontoRealGasto,
-  esMontoDistintoDeCero,
-} from "../../../utils/montosGasto.js";
 
 const fechaInput = (fecha) => (fecha ? String(fecha).slice(0, 10) : "");
+const obtenerId = (valor) => (
+  typeof valor === "object" ? valor?._id || "" : valor || ""
+);
 const mensajeError = (error) =>
   error.response?.data?.message || error.response?.data?.mensaje || "No se pudo procesar el archivo.";
 
@@ -22,15 +29,16 @@ const filtrosIniciales = {
   fechaHasta: "",
   montoDesde: "",
   montoHasta: "",
+  categoriaId: "",
+  subcategoriaId: "",
   seleccion: "",
 };
 
 const bulkInicial = {
   tipo: "",
   montoBancario: "",
-  montoReal: "",
-  porcentaje: "",
-  incluirMontoReal: "",
+  categoriaId: "",
+  subcategoriaId: "",
 };
 
 const normalizarTexto = (texto) => String(texto || "")
@@ -47,6 +55,10 @@ const columnasOrdenablesTarjeta = {
 function ImportarExcelCuentaCreditoPage({ cuenta }) {
   const { cuentaId } = useParams();
   const navigate = useNavigate();
+  const contextoLayout = useOutletContext();
+  const menuAbierto = contextoLayout?.menuAbierto || false;
+  const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
+  const permitirCerrarMenu = contextoLayout?.alSalirMenu;
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
@@ -55,7 +67,37 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const [bulk, setBulk] = useState(bulkInicial);
   const [mensajeBulk, setMensajeBulk] = useState("");
+  const [categorias, setCategorias] = useState([]);
+  const [subcategorias, setSubcategorias] = useState([]);
+  const [modalCatalogo, setModalCatalogo] = useState("");
+  const [nombreCategoria, setNombreCategoria] = useState("");
+  const [formSubcategoria, setFormSubcategoria] = useState({
+    nombreSubcategoria: "",
+    categoria: "",
+  });
+  const [guardandoCatalogo, setGuardandoCatalogo] = useState(false);
+  const [errorCatalogo, setErrorCatalogo] = useState("");
+  const [mensajeCatalogo, setMensajeCatalogo] = useState("");
   const monedasHabilitadas = obtenerMonedasCuenta(cuenta);
+
+  useEffect(() => {
+    let activo = true;
+
+    Promise.all([api.get("/categorias"), api.get("/subcategorias")])
+      .then(([categoriasResponse, subcategoriasResponse]) => {
+        if (!activo) return;
+        setCategorias(categoriasResponse.data.categorias || []);
+        setSubcategorias(subcategoriasResponse.data.subcategorias || []);
+      })
+      .catch((apiError) => {
+        console.error("Error al cargar categorías y subcategorías:", apiError);
+        if (activo) setError("No se pudieron cargar las categorías y subcategorías.");
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
 
   const seleccionados = useMemo(
     () => movimientos.filter((movimiento) => movimiento.seleccionado),
@@ -66,11 +108,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
     const detalle = normalizarTexto(movimiento.detalle);
     const detalleBuscado = normalizarTexto(filtros.detalle);
     const fecha = fechaInput(movimiento.fecha);
-    const montoAbsoluto = Math.abs(Number(
-      esMontoDistintoDeCero(movimiento.montoBancario)
-        ? movimiento.montoBancario
-        : movimiento.montoReal || 0,
-    ));
+    const montoAbsoluto = Math.abs(Number(movimiento.montoBancario || 0));
 
     if (detalleBuscado && !detalle.includes(detalleBuscado)) return false;
     if (filtros.tipo && movimiento.tipo !== filtros.tipo) return false;
@@ -79,6 +117,8 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
     if (filtros.fechaHasta && fecha > filtros.fechaHasta) return false;
     if (filtros.montoDesde !== "" && montoAbsoluto < Number(filtros.montoDesde)) return false;
     if (filtros.montoHasta !== "" && montoAbsoluto > Number(filtros.montoHasta)) return false;
+    if (filtros.categoriaId && movimiento.categoriaId !== filtros.categoriaId) return false;
+    if (filtros.subcategoriaId && movimiento.subcategoriaId !== filtros.subcategoriaId) return false;
     if (filtros.seleccion === "seleccionados" && !movimiento.seleccionado) return false;
     if (filtros.seleccion === "no_seleccionados" && movimiento.seleccionado) return false;
 
@@ -91,9 +131,18 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
 
   const todosVisiblesSeleccionados = movimientosFiltrados.length > 0
     && movimientosFiltrados.every((movimiento) => movimiento.seleccionado);
-  const seleccionadosVisibles = movimientosFiltrados.filter(
-    (movimiento) => movimiento.seleccionado,
-  );
+  const subcategoriasFiltro = filtros.categoriaId
+    ? subcategorias.filter(
+        (subcategoria) =>
+          obtenerId(subcategoria.categoria) === filtros.categoriaId,
+      )
+    : subcategorias;
+  const subcategoriasBulk = bulk.categoriaId
+    ? subcategorias.filter(
+        (subcategoria) =>
+          obtenerId(subcategoria.categoria) === bulk.categoriaId,
+      )
+    : subcategorias;
 
   const previsualizar = async (event) => {
     event.preventDefault();
@@ -116,19 +165,16 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       setBulk(bulkInicial);
       setMensajeBulk("");
       setMovimientos(
-        (response.data.movimientos || []).map((movimiento) => {
-          const preparado = {
+        (response.data.movimientos || []).map((movimiento) => ({
           ...movimiento,
-          montoReal: movimiento.montoReal ?? 0,
+          montoReal: 0,
+          porcentaje: 0,
+          incluirMontoReal: false,
+          categoriaId: obtenerId(movimiento.categoriaId),
+          subcategoriaId: obtenerId(movimiento.subcategoriaId),
           fecha: fechaInput(movimiento.fecha),
           seleccionado: true,
-          };
-
-          return {
-            ...preparado,
-            montoReal: calcularMontoRealGasto(preparado),
-          };
-        }),
+        })),
       );
     } catch (apiError) {
       console.error("Error al leer el Excel de tarjeta:", apiError);
@@ -144,11 +190,36 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       actuales.map((movimiento) => {
         if (movimiento.sourceHash !== sourceHash) return movimiento;
 
-        const actualizado = { ...movimiento, [campo]: valor };
-        return {
-          ...actualizado,
-          montoReal: calcularMontoRealGasto(actualizado),
-        };
+        if (campo === "categoriaId") {
+          const subcategoriaActual = subcategorias.find(
+            (subcategoria) => subcategoria._id === movimiento.subcategoriaId,
+          );
+          const categoriaSubcategoria = obtenerId(subcategoriaActual?.categoria);
+
+          return {
+            ...movimiento,
+            categoriaId: valor,
+            subcategoriaId:
+              categoriaSubcategoria && categoriaSubcategoria !== valor
+                ? ""
+                : movimiento.subcategoriaId,
+          };
+        }
+
+        if (campo === "subcategoriaId") {
+          const subcategoria = subcategorias.find(
+            (item) => item._id === valor,
+          );
+
+          return {
+            ...movimiento,
+            subcategoriaId: valor,
+            categoriaId:
+              obtenerId(subcategoria?.categoria) || movimiento.categoriaId,
+          };
+        }
+
+        return { ...movimiento, [campo]: valor };
       }),
     );
   };
@@ -180,15 +251,8 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
   };
 
   const aplicarBulk = () => {
-    if (seleccionadosVisibles.length === 0) {
-      setMensajeBulk("Seleccioná al menos un movimiento visible para aplicar cambios.");
-      return;
-    }
-
-    if (bulk.montoBancario !== "" && bulk.montoReal !== "") {
-      setMensajeBulk(
-        "Aplica monto bancario o monto real, no ambos al mismo tiempo.",
-      );
+    if (seleccionados.length === 0) {
+      setMensajeBulk("Seleccioná al menos un movimiento para aplicar cambios.");
       return;
     }
 
@@ -197,46 +261,145 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
     if (bulk.montoBancario !== "") {
       cambios.montoBancario = Number(bulk.montoBancario);
     }
-    if (bulk.montoReal !== "") {
-      cambios.montoBancario = 0;
-      cambios.montoReal = Number(bulk.montoReal);
-      cambios.porcentaje = 0;
-      cambios.incluirMontoReal = true;
-    }
-    if (bulk.porcentaje !== "" && bulk.montoReal === "") {
-      const porcentaje = Number(bulk.porcentaje);
-      if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
-        setMensajeBulk("El porcentaje debe estar entre 0 y 100.");
-        return;
-      }
-      cambios.porcentaje = porcentaje;
-    }
-    if (bulk.incluirMontoReal !== "" && bulk.montoReal === "") {
-      cambios.incluirMontoReal = bulk.incluirMontoReal === "true";
-    }
-
+    if (bulk.categoriaId) cambios.categoriaId = bulk.categoriaId;
+    if (bulk.subcategoriaId) cambios.subcategoriaId = bulk.subcategoriaId;
     if (Object.keys(cambios).length === 0) {
       setMensajeBulk("Elegí al menos un cambio masivo para aplicar.");
       return;
     }
 
-    const hashesSeleccionadosVisibles = new Set(
-      seleccionadosVisibles.map((movimiento) => movimiento.sourceHash),
+    const hashesSeleccionados = new Set(
+      seleccionados.map((movimiento) => movimiento.sourceHash),
     );
     setMovimientos((actuales) => actuales.map((movimiento) => {
-      if (!hashesSeleccionadosVisibles.has(movimiento.sourceHash)) {
+      if (!hashesSeleccionados.has(movimiento.sourceHash)) {
         return movimiento;
       }
 
-      const actualizado = { ...movimiento, ...cambios };
+      const subcategoria = cambios.subcategoriaId
+        ? subcategorias.find((item) => item._id === cambios.subcategoriaId)
+        : null;
+      const categoriaFinal = obtenerId(subcategoria?.categoria)
+        || cambios.categoriaId
+        || movimiento.categoriaId;
+      const subcategoriaActual = subcategorias.find(
+        (item) => item._id === movimiento.subcategoriaId,
+      );
+      const categoriaSubcategoriaActual = obtenerId(
+        subcategoriaActual?.categoria,
+      );
+      const subcategoriaFinal = cambios.subcategoriaId
+        || (
+          cambios.categoriaId
+          && categoriaSubcategoriaActual
+          && categoriaSubcategoriaActual !== categoriaFinal
+            ? ""
+            : movimiento.subcategoriaId
+        );
+
       return {
-        ...actualizado,
-        montoReal: calcularMontoRealGasto(actualizado),
+        ...movimiento,
+        ...cambios,
+        categoriaId: categoriaFinal,
+        subcategoriaId: subcategoriaFinal,
+        montoReal: 0,
+        porcentaje: 0,
+        incluirMontoReal: false,
       };
     }));
     setMensajeBulk(
-      `Cambios aplicados a ${seleccionadosVisibles.length} movimiento${seleccionadosVisibles.length === 1 ? "" : "s"} visible${seleccionadosVisibles.length === 1 ? "" : "s"}.`,
+      `Cambios aplicados a ${seleccionados.length} movimiento${seleccionados.length === 1 ? "" : "s"} seleccionado${seleccionados.length === 1 ? "" : "s"}.`,
     );
+  };
+
+  const eliminarSeleccionados = () => {
+    if (seleccionados.length === 0) {
+      setMensajeBulk("Seleccioná al menos un movimiento para eliminar.");
+      return;
+    }
+
+    const cantidadEliminada = seleccionados.length;
+    const hashesSeleccionados = new Set(
+      seleccionados.map((movimiento) => movimiento.sourceHash),
+    );
+
+    setMovimientos((actuales) => actuales.filter(
+      (movimiento) => !hashesSeleccionados.has(movimiento.sourceHash),
+    ));
+    setMensajeBulk(
+      `${cantidadEliminada} movimiento${cantidadEliminada === 1 ? "" : "s"} eliminado${cantidadEliminada === 1 ? "" : "s"} de la previsualización.`,
+    );
+  };
+
+  const abrirModalCatalogo = (tipo) => {
+    setModalCatalogo(tipo);
+    setErrorCatalogo("");
+    setNombreCategoria("");
+    setFormSubcategoria({ nombreSubcategoria: "", categoria: "" });
+  };
+
+  const cerrarModalCatalogo = () => {
+    if (guardandoCatalogo) return;
+    setModalCatalogo("");
+    setErrorCatalogo("");
+  };
+
+  const guardarCategoria = async () => {
+    const nombre = nombreCategoria.trim();
+    if (!nombre) {
+      setErrorCatalogo("El nombre de la categoría es obligatorio.");
+      return;
+    }
+
+    setGuardandoCatalogo(true);
+    setErrorCatalogo("");
+    try {
+      const { data } = await api.post("/categorias", {
+        nombreCategoria: nombre,
+      });
+      setCategorias((actuales) => [
+        ...actuales.filter((categoria) => categoria._id !== data.categoria._id),
+        data.categoria,
+      ]);
+      setMensajeCatalogo(`Categoría "${data.categoria.nombreCategoria}" creada.`);
+      setModalCatalogo("");
+    } catch (apiError) {
+      setErrorCatalogo(mensajeError(apiError));
+    } finally {
+      setGuardandoCatalogo(false);
+    }
+  };
+
+  const guardarSubcategoria = async () => {
+    const nombre = formSubcategoria.nombreSubcategoria.trim();
+    if (!nombre) {
+      setErrorCatalogo("El nombre de la subcategoría es obligatorio.");
+      return;
+    }
+
+    setGuardandoCatalogo(true);
+    setErrorCatalogo("");
+    try {
+      const payload = { nombreSubcategoria: nombre };
+      if (formSubcategoria.categoria) {
+        payload.categoria = formSubcategoria.categoria;
+      }
+      const { data } = await api.post("/subcategorias", payload);
+      setSubcategorias((actuales) => [
+        ...actuales.filter(
+          (subcategoria) => subcategoria._id !== data.subcategoria._id,
+        ),
+        data.subcategoria,
+      ]);
+      setMensajeCatalogo(
+        `Subcategoría "${data.subcategoria.nombreSubcategoria}" creada.`,
+      );
+      setModalCatalogo("");
+    } catch (apiError) {
+      setErrorCatalogo(mensajeError(apiError));
+    } finally {
+      setGuardandoCatalogo(false);
+    }
   };
 
   const confirmarImportacion = async () => {
@@ -252,9 +415,9 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
         ...payload,
         montoEstadoCuenta: Number(payload.montoEstadoCuenta),
         montoBancario: Number(payload.montoBancario),
-        montoReal: Number(payload.montoReal),
-        porcentaje: Number(payload.porcentaje),
-        incluirMontoReal: Boolean(payload.incluirMontoReal),
+        montoReal: 0,
+        porcentaje: 0,
+        incluirMontoReal: false,
       };
     });
 
@@ -277,20 +440,62 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
 
   return (
     <section className="page-section import-page">
+      <nav
+        className="import-floating-actions secondary-sidebar-actions"
+        aria-label="Acciones rápidas de importación"
+        onMouseEnter={
+          menuAbierto && mantenerMenuAbierto
+            ? mantenerMenuAbierto
+            : undefined
+        }
+        onMouseLeave={
+          menuAbierto && permitirCerrarMenu
+            ? permitirCerrarMenu
+            : undefined
+        }
+      >
+        <span>Acciones rápidas</span>
+        <Link className="secondary-link" to={`/cuentas/${cuentaId}/gastos`}>
+          Volver a resúmenes
+        </Link>
+        <button type="button" onClick={() => abrirModalCatalogo("categoria")}>
+          Crear categoría
+        </button>
+        <button type="button" onClick={() => abrirModalCatalogo("subcategoria")}>
+          Crear subcategoría
+        </button>
+        <NavegacionSecciones
+          secciones={[
+            { id: "importar-estado-tarjeta", etiqueta: "Importar archivo" },
+            ...(preview
+              ? [{
+                  id: "movimientos-detectados-tarjeta",
+                  etiqueta: "Movimientos detectados",
+                }]
+              : []),
+          ]}
+        />
+      </nav>
+
       <header className="page-header">
         <div>
           <h1>Importar Excel</h1>
           <p>{cuenta.nombreCuenta}: este importador lee el formato bancario del estado de tarjeta.</p>
         </div>
-        <Link className="secondary-link compact-link" to={`/cuentas/${cuentaId}/gastos`}>
-          Volver a resúmenes
-        </Link>
       </header>
 
-      <form className="upload-panel import-upload-panel credit-account-import" onSubmit={previsualizar}>
+      <form
+        id="importar-estado-tarjeta"
+        className="upload-panel import-upload-panel credit-account-import page-scroll-section"
+        onSubmit={previsualizar}
+      >
         <div>
           <h2>Importar Excel bancario</h2>
-          <p>Formato oficial de movimientos de tarjeta. Detecta compras, cuotas, reintegros y pagos.</p>
+          <p>
+            Formato oficial de movimientos de tarjeta. Detecta compras, cuotas,
+            reintegros y pagos. En crédito se conserva únicamente el monto
+            bancario.
+          </p>
         </div>
         <label>
           Archivo Excel bancario
@@ -304,9 +509,15 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
       </form>
 
       {error && <p className="inline-error">{error}</p>}
+      {mensajeCatalogo && (
+        <p className="detail-feedback">{mensajeCatalogo}</p>
+      )}
 
       {preview && (
-        <section className="credit-card-panel">
+        <section
+          id="movimientos-detectados-tarjeta"
+          className="credit-card-panel page-scroll-section"
+        >
           <div className="import-section-header">
             <div>
               <h2>Movimientos detectados</h2>
@@ -314,9 +525,6 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                 Período {preview.resumen.periodo || "sin período"} · cierre {fechaInput(preview.resumen.cierre)} · {seleccionados.length} seleccionados
               </p>
             </div>
-            <button type="button" disabled={loading || seleccionados.length === 0} onClick={confirmarImportacion}>
-              {loading ? "Guardando..." : "Crear resumen"}
-            </button>
           </div>
 
           <section className="credit-import-filters" aria-labelledby="credit-import-filters-title">
@@ -382,6 +590,34 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                 <input type="number" min="0" step="0.01" value={filtros.montoHasta} onChange={(event) => cambiarFiltro("montoHasta", event.target.value)} />
               </label>
               <label>
+                Categoría
+                <SearchableCategorySelect
+                  categorias={categorias}
+                  value={filtros.categoriaId}
+                  placeholder="Todas"
+                  ariaLabel="Filtrar por categoría"
+                  onChange={(categoriaId) =>
+                    setFiltros((actuales) => ({
+                      ...actuales,
+                      categoriaId,
+                      subcategoriaId: "",
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Subcategoría
+                <SearchableSubcategorySelect
+                  subcategorias={subcategoriasFiltro}
+                  value={filtros.subcategoriaId}
+                  placeholder="Todas"
+                  ariaLabel="Filtrar por subcategoría"
+                  onChange={(subcategoriaId) =>
+                    cambiarFiltro("subcategoriaId", subcategoriaId)
+                  }
+                />
+              </label>
+              <label>
                 Selección
                 <select value={filtros.seleccion} onChange={(event) => cambiarFiltro("seleccion", event.target.value)}>
                   <option value="">Todos</option>
@@ -403,10 +639,7 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
 
           <section className="selection-actions import-selection-actions credit-import-bulk" aria-labelledby="credit-import-bulk-title">
             <strong id="credit-import-bulk-title">
-              {seleccionadosVisibles.length} seleccionado{seleccionadosVisibles.length === 1 ? "" : "s"} visible{seleccionadosVisibles.length === 1 ? "" : "s"}
-              {seleccionados.length !== seleccionadosVisibles.length
-                ? ` · ${seleccionados.length} en total`
-                : ""}
+              {seleccionados.length} seleccionado{seleccionados.length === 1 ? "" : "s"}
             </strong>
             <label>
               Tipo
@@ -432,33 +665,65 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
               />
             </label>
             <label>
-              Monto real
-              <input
-                className="table-input"
-                type="number"
-                step="0.01"
+              Categoría
+              <SearchableCategorySelect
+                categorias={categorias}
+                value={bulk.categoriaId}
                 placeholder="Sin cambios"
-                value={bulk.montoReal}
-                onChange={(event) =>
-                  cambiarBulk("montoReal", event.target.value)
+                ariaLabel="Categoría para movimientos seleccionados"
+                onChange={(categoriaId) =>
+                  setBulk((actual) => ({
+                    ...actual,
+                    categoriaId,
+                    subcategoriaId: "",
+                  }))
                 }
               />
             </label>
             <label>
-              Porcentaje real
-              <input className="table-input" type="number" min="0" max="100" placeholder="Sin cambios" value={bulk.porcentaje} onChange={(event) => cambiarBulk("porcentaje", event.target.value)} />
+              Subcategoría
+              <SearchableSubcategorySelect
+                subcategorias={subcategoriasBulk}
+                value={bulk.subcategoriaId}
+                placeholder="Sin cambios"
+                ariaLabel="Subcategoría para movimientos seleccionados"
+                onChange={(subcategoriaId) =>
+                  cambiarBulk("subcategoriaId", subcategoriaId)
+                }
+              />
             </label>
             <label>
-              Incluir real
-              <select className="table-select" value={bulk.incluirMontoReal} onChange={(event) => cambiarBulk("incluirMontoReal", event.target.value)}>
-                <option value="">Sin cambios</option>
-                <option value="true">Sí</option>
-                <option value="false">No</option>
-              </select>
+              Impacto económico
+              <span className="credit-import-operational-note">
+                No aplica en cuentas de crédito
+              </span>
             </label>
-            <button type="button" className="selection-action" disabled={seleccionadosVisibles.length === 0} onClick={aplicarBulk}>
-              Aplicar a visibles
-            </button>
+            <div className="credit-import-bulk-actions">
+              <button
+                type="button"
+                className="selection-action"
+                disabled={seleccionados.length === 0}
+                onClick={aplicarBulk}
+              >
+                Aplicar a seleccionados
+              </button>
+              <button
+                type="button"
+                className="selection-action create-action"
+                disabled={loading || seleccionados.length === 0}
+                onClick={confirmarImportacion}
+              >
+                {loading ? "Creando..." : "Crear seleccionados"}
+              </button>
+              <button
+                type="button"
+                className="selection-action delete-action"
+                disabled={loading || seleccionados.length === 0}
+                onClick={eliminarSeleccionados}
+              >
+                Eliminar seleccionados
+              </button>
+            </div>
             {mensajeBulk && <p className="bulk-message">{mensajeBulk}</p>}
           </section>
 
@@ -493,31 +758,69 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
                     sortConfig={ordenTabla.sortConfig}
                     onSort={ordenTabla.requestSort}
                   />
-                  <th>% real</th><th>Real</th><th>Incluir real</th>
+                  <th>Categoría</th>
+                  <th>Subcategoría</th>
                 </tr>
               </thead>
               <tbody>
-                {ordenTabla.sortedRows.map((movimiento) => (
-                  <tr key={movimiento.sourceHash}>
-                    <td><input type="checkbox" checked={movimiento.seleccionado} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "seleccionado", e.target.checked)} /></td>
-                    <td><input className="table-input" type="date" value={movimiento.fecha} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "fecha", e.target.value)} /></td>
-                    <td><textarea className="table-input table-input-wide table-detail-textarea" rows={1} value={movimiento.detalle} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "detalle", e.target.value)} /></td>
-                    <td>
-                      <select className="table-select" value={movimiento.tipo} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "tipo", e.target.value)}>
-                        <option value="compra">Compra</option><option value="cuota">Cuota</option>
-                        <option value="pago">Pago</option><option value="reintegro">Reintegro</option>
-                      </select>
-                    </td>
-                    <td>{movimiento.moneda}</td>
-                    <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoBancario} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoBancario", e.target.value)} /></td>
-                    <td><input className="table-input table-input-small" type="number" min="0" max="100" value={movimiento.porcentaje} disabled={!esMontoDistintoDeCero(movimiento.montoBancario)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "porcentaje", e.target.value)} /></td>
-                    <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoReal} disabled={esMontoDistintoDeCero(movimiento.montoBancario)} title={esMontoDistintoDeCero(movimiento.montoBancario) ? "Se calcula con el monto bancario y el porcentaje" : "Monto real directo"} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoReal", e.target.value)} /></td>
-                    <td><input type="checkbox" checked={Boolean(movimiento.incluirMontoReal)} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "incluirMontoReal", e.target.checked)} /></td>
-                  </tr>
-                ))}
+                {ordenTabla.sortedRows.map((movimiento) => {
+                  const subcategoriasDisponibles = movimiento.categoriaId
+                    ? subcategorias.filter(
+                        (subcategoria) =>
+                          obtenerId(subcategoria.categoria)
+                            === movimiento.categoriaId,
+                      )
+                    : subcategorias;
+
+                  return (
+                    <tr key={movimiento.sourceHash}>
+                      <td><input type="checkbox" checked={movimiento.seleccionado} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "seleccionado", e.target.checked)} /></td>
+                      <td><input className="table-input" type="date" value={movimiento.fecha} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "fecha", e.target.value)} /></td>
+                      <td><textarea className="table-input table-input-wide table-detail-textarea" rows={1} value={movimiento.detalle} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "detalle", e.target.value)} /></td>
+                      <td>
+                        <select className="table-select" value={movimiento.tipo} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "tipo", e.target.value)}>
+                          <option value="compra">Compra</option><option value="cuota">Cuota</option>
+                          <option value="pago">Pago</option><option value="reintegro">Reintegro</option>
+                        </select>
+                      </td>
+                      <td>{movimiento.moneda}</td>
+                      <td><input className="table-input table-input-number" type="number" step="0.01" value={movimiento.montoBancario} onChange={(e) => cambiarMovimiento(movimiento.sourceHash, "montoBancario", e.target.value)} /></td>
+                      <td>
+                        <SearchableCategorySelect
+                          categorias={categorias}
+                          value={movimiento.categoriaId}
+                          placeholder="Sin categoría"
+                          ariaLabel={`Categoría para ${movimiento.detalle}`}
+                          onChange={(categoriaId) =>
+                            cambiarMovimiento(
+                              movimiento.sourceHash,
+                              "categoriaId",
+                              categoriaId,
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <SearchableSubcategorySelect
+                          subcategorias={subcategoriasDisponibles}
+                          value={movimiento.subcategoriaId}
+                          placeholder="Sin subcategoría"
+                          ariaLabel={`Subcategoría para ${movimiento.detalle}`}
+                          onChange={(subcategoriaId) =>
+                            cambiarMovimiento(
+                              movimiento.sourceHash,
+                              "subcategoriaId",
+                              subcategoriaId,
+                            )
+                          }
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
                 {movimientosFiltrados.length === 0 && (
                   <tr>
-                    <td className="credit-import-empty-row" colSpan="9">
+                    <td className="credit-import-empty-row" colSpan="8">
                       No hay movimientos que coincidan con los filtros.
                     </td>
                   </tr>
@@ -526,6 +829,125 @@ function ImportarExcelCuentaCreditoPage({ cuenta }) {
             </table>
           </div>
         </section>
+      )}
+
+      {modalCatalogo === "categoria" && (
+        <div className="modal-backdrop">
+          <section className="edit-modal import-catalog-modal">
+            <div className="edit-modal-header">
+              <div>
+                <h2>Crear categoría</h2>
+                <p>Aparecerá inmediatamente en todos los desplegables.</p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cerrar
+              </button>
+            </div>
+            <label>
+              Nombre
+              <input
+                autoFocus
+                type="text"
+                value={nombreCategoria}
+                onChange={(event) => setNombreCategoria(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") guardarCategoria();
+                }}
+              />
+            </label>
+            {errorCatalogo && <p className="error-text">{errorCatalogo}</p>}
+            <div className="edit-modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={guardarCategoria}
+              >
+                {guardandoCatalogo ? "Creando..." : "Crear categoría"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {modalCatalogo === "subcategoria" && (
+        <div className="modal-backdrop">
+          <section className="edit-modal import-catalog-modal">
+            <div className="edit-modal-header">
+              <div>
+                <h2>Crear subcategoría</h2>
+                <p>Podés asociarla a una categoría o dejarla sin categoría.</p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cerrar
+              </button>
+            </div>
+            <label>
+              Nombre
+              <input
+                autoFocus
+                type="text"
+                value={formSubcategoria.nombreSubcategoria}
+                onChange={(event) =>
+                  setFormSubcategoria((actual) => ({
+                    ...actual,
+                    nombreSubcategoria: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Categoría (opcional)
+              <SearchableCategorySelect
+                categorias={categorias}
+                value={formSubcategoria.categoria}
+                placeholder="Sin categoría"
+                ariaLabel="Categoría de la nueva subcategoría"
+                onChange={(categoria) =>
+                  setFormSubcategoria((actual) => ({
+                    ...actual,
+                    categoria,
+                  }))
+                }
+              />
+            </label>
+            {errorCatalogo && <p className="error-text">{errorCatalogo}</p>}
+            <div className="edit-modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={cerrarModalCatalogo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={guardandoCatalogo}
+                onClick={guardarSubcategoria}
+              >
+                {guardandoCatalogo ? "Creando..." : "Crear subcategoría"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </section>
   );

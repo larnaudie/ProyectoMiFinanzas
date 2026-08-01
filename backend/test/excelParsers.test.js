@@ -132,6 +132,21 @@ test("parsea compras y pagos de tarjeta con signos normalizados", () => {
   assert.equal(movimientos[2].montoBancario, 804.16);
 });
 
+test("extrae el plan de cuotas al leer el estado de tarjeta", () => {
+  const buffer = crearBuffer([
+    ["Cuenta", "Fecha de Cierre", "Vencimiento", "Período Consultado"],
+    ["770060620870", "28/7/2026", "13/08/2026", "Julio 2026"],
+    ["Fecha", "Tarjeta", "Detalle", "Importe $", "Importe U$S"],
+    ["11/06/2026", "XXXXX-5409", "Dlo Tiendamia U Cuota 02 10", "1.365,91", "0,00"],
+  ]);
+
+  const { movimientos } = parsearExcelTarjeta(buffer);
+  assert.equal(movimientos[0].tipo, "cuota");
+  assert.equal(movimientos[0].financiamientoTarjeta.cuotaActual, 2);
+  assert.equal(movimientos[0].financiamientoTarjeta.cuotasTotales, 10);
+  assert.equal(movimientos[0].financiamientoTarjeta.montoFuturo, 10927.28);
+});
+
 test("el formato personal genera huellas estables y distingue filas repetidas", () => {
   const buffer = crearBuffer([
     ["Fecha", "Detalle", "Flujo Bancario", "% Economia Real", "Categoria"],

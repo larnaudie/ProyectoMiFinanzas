@@ -6,6 +6,7 @@ import {
   MONEDAS_SOPORTADAS,
   obtenerMonedasCuenta,
 } from "../../../utils/monedas.js";
+import { PlanesCuotasTarjeta } from "../../../components/PlanesCuotasTarjeta.jsx";
 
 const formatearFecha = (fecha) => (
   fecha
@@ -183,14 +184,39 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
                           </div>
                         )}
                         <div>
-                          <span>Crédito disponible</span>
-                          <strong className="credit-summary-available">
-                            {formatearMonto(total.disponible, moneda)}
+                          <span>Cuotas futuras</span>
+                          <strong>
+                            {formatearMonto(total.cuotasFuturas, moneda)}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>
+                            {total.excesoLimite > 0
+                              ? "Exceso del límite"
+                              : "Disponible operativo"}
+                          </span>
+                          <strong
+                            className={
+                              total.excesoLimite > 0
+                                ? "credit-summary-debt"
+                                : "credit-summary-available"
+                            }
+                          >
+                            {formatearMonto(
+                              total.excesoLimite > 0
+                                ? total.excesoLimite
+                                : total.disponible,
+                              moneda,
+                            )}
                           </strong>
                         </div>
                       </div>
                       <div className="credit-summary-progress" aria-label={`${total.porcentajeUsado}% del límite utilizado`}>
-                        <span style={{ width: `${total.porcentajeUsado}%` }} />
+                        <span
+                          style={{
+                            width: `${total.porcentajeBarra ?? Math.min(100, total.porcentajeUsado)}%`,
+                          }}
+                        />
                       </div>
                       <p className="credit-summary-breakdown">
                         Saldo anterior {formatearMonto(total.saldoAnterior, moneda)}
@@ -206,6 +232,8 @@ function ResumenesCuentaCreditoPage({ cuenta }) {
                   );
                 })}
               </div>
+
+              <PlanesCuotasTarjeta planes={resumen.planesCuotas || []} />
 
               <footer className="credit-summary-card-footer">
                 <span>

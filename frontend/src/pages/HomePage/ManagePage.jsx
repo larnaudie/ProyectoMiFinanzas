@@ -146,7 +146,13 @@ function ManagePage() {
       nombreKey: "nombreSubcategoria",
       campos: [
         { name: "nombreSubcategoria", label: "Nombre de la subcategoria", type: "text" },
-        { name: "categoria", label: "Categoria", type: "select", options: categorias },
+        {
+          name: "categoria",
+          label: "Categoria (opcional)",
+          type: "select",
+          options: categorias,
+          required: false,
+        },
       ],
       agregar: agregarSubcategoria,
       actualizar: actualizarSubcategoria,
@@ -432,7 +438,7 @@ function ManagePage() {
                         <SearchableCategorySelect
                           categorias={campo.options}
                           value={form[campo.name] || ""}
-                          placeholder="Seleccionar categoría"
+                          placeholder="Sin categoría"
                           ariaLabel="Buscar categoría para la subcategoría"
                           onChange={(categoriaId) =>
                             cambiarCampo(campo.name, categoriaId)

@@ -5,7 +5,6 @@ import Gasto from "../0.1-models/gasto.model.js";
 import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
 import Tarjeta from "../0.1-models/tarjeta.model.js";
 import { parsearExcelTarjeta } from "../utils/excelParsers.js";
-import { calcularMontoRealGasto } from "../utils/montosGasto.js";
 
 const errorHttp = (mensaje, status = 400) => {
   const error = new Error(mensaje);
@@ -144,6 +143,14 @@ export const importarResumenTarjetaService = async ({
         hashImportacion: movimiento.sourceHash,
       },
       update: {
+        $set: {
+          montoBancario: movimiento.montoBancario,
+          montoOriginalTarjeta: movimiento.montoEstadoCuenta,
+          montoReal: 0,
+          porcentaje: 0,
+          incluirMontoReal: false,
+          tipoMovimiento: movimiento.tipo,
+        },
         $setOnInsert: {
           usuarioId,
           cuentaId: tarjeta.cuentaId,
@@ -151,14 +158,8 @@ export const importarResumenTarjetaService = async ({
           resumenTarjetaId: resumenGuardado._id,
           detalle: movimiento.detalle,
           fecha: movimiento.fecha,
-          montoBancario: movimiento.montoBancario,
-          montoOriginalTarjeta: movimiento.montoEstadoCuenta,
-          montoReal: calcularMontoRealGasto(movimiento),
-          porcentaje: movimiento.porcentaje,
-          incluirMontoReal: movimiento.incluirMontoReal,
           moneda: movimiento.moneda,
           estado: "pendiente",
-          tipoMovimiento: movimiento.tipo,
           origen: { tipo: "tarjeta", referenciaId: null },
           hashImportacion: movimiento.sourceHash,
           resumenTarjeta: {

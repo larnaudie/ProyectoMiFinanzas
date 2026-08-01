@@ -12,37 +12,53 @@ const movimientoBase = {
   fecha: "2026-07-02",
   detalle: "Gasto contemplado",
   montoEstadoCuenta: -100,
+  montoBancario: -100,
   moneda: "UYU",
   tipo: "compra",
-  incluirMontoReal: true,
+  categoriaId: "b".repeat(24),
+  subcategoriaId: "c".repeat(24),
+  montoReal: 0,
+  porcentaje: 0,
+  incluirMontoReal: false,
 };
 
-test("la importacion de tarjeta admite monto real directo sin monto bancario", () => {
+test("la importacion de tarjeta admite solo impacto bancario", () => {
   const { error, value } = importarResumenTarjetaSchema.validate({
     resumen: resumenValido,
-    movimientos: [{
-      ...movimientoBase,
-      montoBancario: 0,
-      montoReal: -100,
-      porcentaje: 0,
-    }],
+    movimientos: [movimientoBase],
   });
 
   assert.equal(error, undefined);
-  assert.equal(value.movimientos[0].montoBancario, 0);
-  assert.equal(value.movimientos[0].montoReal, -100);
+  assert.equal(value.movimientos[0].montoBancario, -100);
+  assert.equal(value.movimientos[0].montoReal, 0);
+  assert.equal(value.movimientos[0].porcentaje, 0);
+  assert.equal(value.movimientos[0].incluirMontoReal, false);
+  assert.equal(value.movimientos[0].categoriaId, "b".repeat(24));
+  assert.equal(value.movimientos[0].subcategoriaId, "c".repeat(24));
 });
 
-test("la importacion de tarjeta rechaza un movimiento sin monto bancario ni real", () => {
+test("la importacion de tarjeta rechaza un movimiento sin monto bancario", () => {
   const { error } = importarResumenTarjetaSchema.validate({
     resumen: resumenValido,
     movimientos: [{
       ...movimientoBase,
       montoBancario: 0,
-      montoReal: 0,
-      porcentaje: 0,
+      montoReal: -100,
+      incluirMontoReal: true,
     }],
   });
 
-  assert.match(error?.message || "", /monto bancario o monto real/);
+  assert.match(error?.message || "", /montoBancario/);
+});
+
+test("la importacion de tarjeta rechaza impacto economico directo", () => {
+  const { error } = importarResumenTarjetaSchema.validate({
+    resumen: resumenValido,
+    movimientos: [{
+      ...movimientoBase,
+      montoReal: -100,
+    }],
+  });
+
+  assert.match(error?.message || "", /montoReal/);
 });

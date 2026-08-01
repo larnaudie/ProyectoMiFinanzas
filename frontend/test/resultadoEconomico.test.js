@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   calcularResultadoCuentaGasto,
   calcularResultadoEconomicoGasto,
+  calcularResultadoTarjetaGasto,
+  esPagoTarjeta,
 } from "../src/utils/resultadoEconomico.js";
 
 test("un ingreso real incluido aumenta el resultado económico", () => {
@@ -110,4 +112,60 @@ test("el dashboard general equivale a sumar resultados individuales", () => {
   assert.equal(cuentaCorriente, 0);
   assert.equal(cajaAhorro, 3510);
   assert.equal(cuentaCorriente + cajaAhorro, 3510);
+});
+
+test("una compra de tarjeta no genera impacto económico directo", () => {
+  assert.equal(calcularResultadoTarjetaGasto({
+    tipoMovimiento: "compra",
+    montoReal: -5000,
+    incluirMontoReal: true,
+    origen: { tipo: "tarjeta" },
+  }), 0);
+});
+
+test("un reintegro de tarjeta no genera impacto económico directo", () => {
+  assert.equal(calcularResultadoTarjetaGasto({
+    tipoMovimiento: "reintegro",
+    montoReal: -750,
+    incluirMontoReal: true,
+    origen: { tipo: "tarjeta" },
+  }), 0);
+});
+
+test("un pago de tarjeta es económicamente neutral", () => {
+  const pago = {
+    tipoMovimiento: "pago",
+    montoBancario: 5000,
+    montoReal: 5000,
+    incluirMontoReal: true,
+    origen: { tipo: "tarjeta" },
+  };
+
+  assert.equal(esPagoTarjeta(pago), true);
+  assert.equal(calcularResultadoTarjetaGasto(pago), 0);
+});
+
+test("un movimiento de tarjeta no incluido es neutral", () => {
+  assert.equal(calcularResultadoTarjetaGasto({
+    tipoMovimiento: "compra",
+    montoBancario: -5000,
+    montoReal: -5000,
+    incluirMontoReal: false,
+    origen: { tipo: "tarjeta" },
+  }), 0);
+});
+
+test("un pago de tarjeta vinculado conserva el impacto del banco", () => {
+  const pagoTarjeta = calcularResultadoTarjetaGasto({
+    tipoMovimiento: "pago",
+    montoBancario: 5000,
+    origen: { tipo: "tarjeta" },
+  });
+  const salidaBanco = calcularResultadoCuentaGasto({
+    montoBancario: -5000,
+    montoReal: -5000,
+    incluirMontoReal: true,
+  });
+
+  assert.equal(pagoTarjeta + salidaBanco, -5000);
 });

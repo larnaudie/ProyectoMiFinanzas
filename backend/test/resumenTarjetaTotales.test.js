@@ -58,6 +58,24 @@ test("un saldo a favor aumenta el crédito disponible por encima del límite", (
   assert.equal(totales.UYU.saldoMovimientos, -18170.47);
 });
 
+test("informa cuanto se excedio el limite de la tarjeta", () => {
+  const totales = calcularTotalesResumen(
+    {
+      limiteCredito: { UYU: 93000 },
+      saldoAnterior: { UYU: 0 },
+      saldoFinal: { UYU: 95000 },
+    },
+    [],
+    ["UYU"],
+  );
+
+  assert.equal(totales.UYU.deuda, 95000);
+  assert.equal(totales.UYU.disponible, 0);
+  assert.equal(totales.UYU.excesoLimite, 2000);
+  assert.equal(totales.UYU.porcentajeUsado, 102.15);
+  assert.equal(totales.UYU.porcentajeBarra, 100);
+});
+
 test("separa el monto bancario creado del pendiente por moneda", () => {
   const totales = calcularTotalesResumen(
     { limiteCredito: { UYU: 93000, USD: 1000 } },
@@ -109,4 +127,25 @@ test("calcula resúmenes usando las monedas habilitadas de la tarjeta", () => {
   assert.deepEqual(Object.keys(totales), ["UI"]);
   assert.equal(totales.UI.deuda, 1250);
   assert.equal(totales.UI.disponible, 3750);
+});
+
+test("resta las cuotas futuras del disponible operativo sin alterar la deuda", () => {
+  const totales = calcularTotalesResumen(
+    {
+      limiteCredito: { UYU: 93000 },
+      saldoFinal: { UYU: -19026.92 },
+    },
+    [],
+    ["UYU"],
+    [
+      { moneda: "UYU", montoFuturo: 10927.28 },
+      { moneda: "UYU", montoFuturo: 6692 },
+    ],
+  );
+
+  assert.equal(totales.UYU.deuda, 0);
+  assert.equal(totales.UYU.saldoAFavor, 19026.92);
+  assert.equal(totales.UYU.cuotasFuturas, 17619.28);
+  assert.equal(totales.UYU.disponibleSegunCierre, 112026.92);
+  assert.equal(totales.UYU.disponible, 94407.64);
 });

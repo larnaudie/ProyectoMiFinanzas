@@ -25,6 +25,83 @@ const moverCuenta = (cuentas, idOrigen, idDestino) => {
 
 const obtenerRutaCuenta = (cuenta) => `/cuentas/${cuenta._id}/gastos`;
 
+function QuickExpensePanel({
+  gastoRapido,
+  cuentas,
+  creandoRapido,
+  errorRapido,
+  onChange,
+  onFileChange,
+  onSubmit,
+}) {
+  return (
+    <section className="quick-expense-panel quick-expense-panel-top">
+      <div className="quick-expense-copy">
+        <span>Crear gasto rápido</span>
+        <h2>¿Estás apurado?</h2>
+        <p>
+          Creá un gasto pendiente con cuenta, detalle y fecha. La factura es
+          opcional y podés completar el resto más adelante.
+        </p>
+      </div>
+
+      <form className="quick-expense-form" onSubmit={onSubmit}>
+        <label>
+          Cuenta
+          <select
+            value={gastoRapido.cuentaId}
+            onChange={(event) => onChange("cuentaId", event.target.value)}
+          >
+            <option value="">Seleccionar cuenta</option>
+            {cuentas.map((cuenta) => (
+              <option key={cuenta._id} value={cuenta._id}>
+                {cuenta.nombreCuenta}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Detalle
+          <input
+            type="text"
+            value={gastoRapido.detalle}
+            placeholder="Ej: Compra supermercado"
+            onChange={(event) => onChange("detalle", event.target.value)}
+          />
+        </label>
+
+        <label>
+          Fecha
+          <input
+            type="date"
+            value={gastoRapido.fecha}
+            onChange={(event) => onChange("fecha", event.target.value)}
+          />
+        </label>
+
+        <label className="quick-file-field">
+          Factura
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            capture="environment"
+            onChange={(event) => onFileChange(event.target.files?.[0] || null)}
+          />
+        </label>
+
+        {errorRapido && (
+          <p className="error-text quick-expense-error">{errorRapido}</p>
+        )}
+
+        <button type="submit" disabled={creandoRapido || cuentas.length === 0}>
+          {creandoRapido ? "Creando..." : "Crear gasto rápido"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function HomePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -229,6 +306,16 @@ function HomePage() {
         </div>
       </header>
 
+      <QuickExpensePanel
+        gastoRapido={gastoRapido}
+        cuentas={cuentasParaGastoRapido}
+        creandoRapido={creandoRapido}
+        errorRapido={errorRapido}
+        onChange={cambiarGastoRapido}
+        onFileChange={setFacturaRapida}
+        onSubmit={crearGastoRapido}
+      />
+
       {loading && <p>Cargando cuentas...</p>}
       {error && <p className="error-text">{error}</p>}
       {errorOrden && <p className="error-text">{errorOrden}</p>}
@@ -315,68 +402,6 @@ function HomePage() {
         <DashboardPage embedded />
       </div>
 
-      <section className="quick-expense-panel">
-        <div className="quick-expense-copy">
-          <span>Crear Gasto Rapido</span>
-          <h2>Estas apurado?</h2>
-          <p>
-            Estas apurado y queres crear un gasto solamente con un detalle,
-            fecha y factura? Usa esta funcionalidad.
-          </p>
-        </div>
-
-        <form className="quick-expense-form" onSubmit={crearGastoRapido}>
-          <label>
-            Cuenta
-            <select
-              value={gastoRapido.cuentaId}
-              onChange={(event) => cambiarGastoRapido("cuentaId", event.target.value)}
-            >
-              <option value="">Seleccionar cuenta</option>
-              {cuentasParaGastoRapido.map((cuenta) => (
-                <option key={cuenta._id} value={cuenta._id}>
-                  {cuenta.nombreCuenta}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Detalle
-            <input
-              type="text"
-              value={gastoRapido.detalle}
-              placeholder="Ej: Compra supermercado"
-              onChange={(event) => cambiarGastoRapido("detalle", event.target.value)}
-            />
-          </label>
-
-          <label>
-            Fecha
-            <input
-              type="date"
-              value={gastoRapido.fecha}
-              onChange={(event) => cambiarGastoRapido("fecha", event.target.value)}
-            />
-          </label>
-
-          <label className="quick-file-field">
-            Factura
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              capture="environment"
-              onChange={(event) => setFacturaRapida(event.target.files?.[0] || null)}
-            />
-          </label>
-
-          {errorRapido && <p className="error-text quick-expense-error">{errorRapido}</p>}
-
-          <button type="submit" disabled={creandoRapido || cuentasParaGastoRapido.length === 0}>
-            {creandoRapido ? "Creando..." : "Crear Gasto Rapido"}
-          </button>
-        </form>
-      </section>
     </section>
   );
 }

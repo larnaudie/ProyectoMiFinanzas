@@ -14,3 +14,10 @@ export const calcularResultadoCuentaGasto = (gasto) => (
     ? numeroFinito(gasto.montoReal)
     : numeroFinito(gasto?.montoBancario)
 );
+
+export const esPagoTarjeta = (gasto) => (
+  gasto?.origen?.tipo === "tarjeta"
+  && gasto?.tipoMovimiento === "pago"
+);
+
+export const calcularResultadoTarjetaGasto = () => 0;

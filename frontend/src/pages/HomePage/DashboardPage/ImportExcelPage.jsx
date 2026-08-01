@@ -6,6 +6,7 @@ import SearchableSubcategorySelect from "../../../components/SearchableSubcatego
 import SortableTableHeader, {
   useSortableRows,
 } from "../../../components/SortableTableHeader.jsx";
+import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
 import {
   calcularMontoRealGasto as calcularMontoReal,
   esMontoDistintoDeCero as montoDistintoDeCero,
@@ -1245,6 +1246,21 @@ function ImportExcelPage() {
         <button type="button" onClick={() => abrirModalCatalogo("subcategoria")}>
           Crear subcategoría
         </button>
+        <NavegacionSecciones
+          secciones={[
+            { id: "importar-archivos", etiqueta: "Importar archivos" },
+            ...(gastosPersonales.length > 0
+              ? [{
+                  id: "previsualizacion-personal",
+                  etiqueta: "Previsualización personal",
+                }]
+              : []),
+            {
+              id: "movimientos-pendientes-importados",
+              etiqueta: "Movimientos pendientes",
+            },
+          ]}
+        />
       </nav>
 
       <header className="page-header">
@@ -1262,7 +1278,10 @@ function ImportExcelPage() {
       )}
       {error && <p className="error-text import-message">{error}</p>}
 
-      <section className="import-actions-grid">
+      <section
+        id="importar-archivos"
+        className="import-actions-grid page-scroll-section"
+      >
         <form className="upload-panel import-upload-panel" onSubmit={importar}>
           <div>
             <h2>Importar Excel bancario</h2>
@@ -1395,7 +1414,10 @@ function ImportExcelPage() {
         />
       )}
 
-      <section className="table-shell">
+      <section
+        id="movimientos-pendientes-importados"
+        className="table-shell page-scroll-section"
+      >
         <div className="import-section-header">
           <div>
             <h2>Movimientos pendientes</h2>
@@ -1601,7 +1623,10 @@ function TablaGastosPersonales({
   const ordenTabla = useSortableRows(gastos, columnasOrdenablesImportacion);
 
   return (
-    <section className="page-section">
+    <section
+      id="previsualizacion-personal"
+      className="page-section page-scroll-section"
+    >
       <header className="page-header">
         <div>
           <h2>Previsualización del Excel personal</h2>

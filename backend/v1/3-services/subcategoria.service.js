@@ -16,7 +16,16 @@ export const obtenerSubcategoriasService = async (usuarioId) => {
 }
 
 export const actualizarSubcategoriaService = async (usuarioId, id, data) => {
-    const subcategoriaActualizada = await Subcategoria.findOneAndUpdate({ _id: id, usuarioId }, limpiarCategoriaVacia(data), { returnDocument: "after" });
+    const quitarCategoria = data.categoria === "" || data.categoria === null;
+    const datosActualizados = limpiarCategoriaVacia(data);
+    const actualizacion = quitarCategoria
+        ? { $set: datosActualizados, $unset: { categoria: "" } }
+        : { $set: datosActualizados };
+    const subcategoriaActualizada = await Subcategoria.findOneAndUpdate(
+        { _id: id, usuarioId },
+        actualizacion,
+        { returnDocument: "after" },
+    );
     return subcategoriaActualizada;
 }
 

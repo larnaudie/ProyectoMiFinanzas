@@ -32,6 +32,7 @@ import {
   UiExchangeReference,
 } from "../../../components/UiExchangeReference.jsx";
 import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
+import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
 import {
   calcularMontoRealGasto,
   esMontoDistintoDeCero,
@@ -215,6 +216,8 @@ function DesglocePage() {
   );
 
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
+  const esCuentaCredito =
+    cuentaActual?.tipoCuenta === "credito" || Boolean(resumenId);
   const manejaUi = obtenerMonedasCuenta(cuentaActual).includes("UI");
   const cotizacionUi = useCotizacionUi(manejaUi);
   const obtenerMonedaVisible = (gasto) => {
@@ -565,6 +568,10 @@ function DesglocePage() {
   };
 
   const obtenerValorVisible = (gasto, campo) => {
+    if (esCuentaCredito && campo === "montoReal") return 0;
+    if (esCuentaCredito && campo === "porcentaje") return 0;
+    if (esCuentaCredito && campo === "incluirMontoReal") return false;
+
     if (campo === "montoReal") {
       return calcularMontoRealGasto({
         ...gasto,
@@ -1142,7 +1149,7 @@ function DesglocePage() {
               )}
             </article>
           ))}
-          {monedasTotales.map((moneda) => (
+          {!esCuentaCredito && monedasTotales.map((moneda) => (
             <article key={`real-${moneda}`}>
               <span>Total monto real {moneda}</span>
               <strong>
@@ -1238,16 +1245,18 @@ function DesglocePage() {
                 sortConfig={ordenTabla.sortConfig}
                 onSort={ordenTabla.requestSort}
               />
-              <th>%</th>
-              <SortableTableHeader
-                label="Real"
-                sortKey="montoReal"
-                sortConfig={ordenTabla.sortConfig}
-                onSort={ordenTabla.requestSort}
-              />
+              {!esCuentaCredito && <th>%</th>}
+              {!esCuentaCredito && (
+                <SortableTableHeader
+                  label="Real"
+                  sortKey="montoReal"
+                  sortConfig={ordenTabla.sortConfig}
+                  onSort={ordenTabla.requestSort}
+                />
+              )}
               <th>Categoria</th>
               <th>Subcategoria</th>
-              <th>Incluye</th>
+              {!esCuentaCredito && <th>Incluye</th>}
               <th>{resumenId ? "Vincular gasto" : "Transferencia interna"}</th>
               {mostrarColumnaCrear && <th>Crear</th>}
             </tr>
@@ -1400,44 +1409,48 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>
-                    <input
-                      className="table-input table-input-small"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={obtenerValorVisible(gasto, "porcentaje")}
-                      disabled={!tieneMontoBancario}
-                      onChange={(event) =>
-                        guardarCambioRapido(
-                          gasto,
-                          "porcentaje",
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="table-input table-input-number"
-                      type="number"
-                      step="0.01"
-                      value={obtenerValorVisible(gasto, "montoReal")}
-                      disabled={tieneMontoBancario}
-                      title={
-                        tieneMontoBancario
-                          ? "Se calcula con el monto bancario y el porcentaje"
-                          : "Monto real directo"
-                      }
-                      onChange={(event) =>
-                        guardarCambioRapido(
-                          gasto,
-                          "montoReal",
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </td>
+                  {!esCuentaCredito && (
+                    <td>
+                      <input
+                        className="table-input table-input-small"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={obtenerValorVisible(gasto, "porcentaje")}
+                        disabled={!tieneMontoBancario}
+                        onChange={(event) =>
+                          guardarCambioRapido(
+                            gasto,
+                            "porcentaje",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </td>
+                  )}
+                  {!esCuentaCredito && (
+                    <td>
+                      <input
+                        className="table-input table-input-number"
+                        type="number"
+                        step="0.01"
+                        value={obtenerValorVisible(gasto, "montoReal")}
+                        disabled={tieneMontoBancario}
+                        title={
+                          tieneMontoBancario
+                            ? "Se calcula con el monto bancario y el porcentaje"
+                            : "Monto real directo"
+                        }
+                        onChange={(event) =>
+                          guardarCambioRapido(
+                            gasto,
+                            "montoReal",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </td>
+                  )}
                   <td>
                     <SearchableCategorySelect
                       categorias={categorias}
@@ -1468,7 +1481,7 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>
+                  {!esCuentaCredito && <td>
                     <input
                       type="checkbox"
                       checked={Boolean(
@@ -1482,7 +1495,7 @@ function DesglocePage() {
                         )
                       }
                     />
-                  </td>
+                  </td>}
 
                   <td className="linked-expense-cell">
                       {referencia ? (
@@ -1591,7 +1604,11 @@ function DesglocePage() {
       return;
     }
 
-    if (bulk.montoBancario !== "" && bulk.montoReal !== "") {
+    if (
+      !esCuentaCredito
+      && bulk.montoBancario !== ""
+      && bulk.montoReal !== ""
+    ) {
       alert("Aplica monto bancario o monto real, no ambos al mismo tiempo.");
       return;
     }
@@ -1603,13 +1620,17 @@ function DesglocePage() {
     if (bulk.montoBancario !== "") {
       payload.montoBancario = Number(bulk.montoBancario);
     }
-    if (bulk.montoReal !== "") {
+    if (!esCuentaCredito && bulk.montoReal !== "") {
       payload.montoBancario = 0;
       payload.montoReal = Number(bulk.montoReal);
       payload.porcentaje = 0;
       payload.incluirMontoReal = true;
     }
-    if (bulk.incluirMontoReal !== "" && bulk.montoReal === "") {
+    if (
+      !esCuentaCredito
+      && bulk.incluirMontoReal !== ""
+      && bulk.montoReal === ""
+    ) {
       payload.incluirMontoReal = bulk.incluirMontoReal === "true";
     }
     if (bulk.cambiarEstado) payload.cambiarEstado = true;
@@ -1717,6 +1738,12 @@ function DesglocePage() {
               Importar Excel
             </Link>
           )}
+          <NavegacionSecciones
+            secciones={[
+              { id: "filtros-gastos", etiqueta: "Filtros" },
+              { id: "lista-gastos", etiqueta: "Lista de gastos" },
+            ]}
+          />
         </nav>
       </div>
 
@@ -2198,7 +2225,10 @@ function DesglocePage() {
         </div>
       )}
 
-      <section className="filters-panel">
+      <section
+        id="filtros-gastos"
+        className="filters-panel page-scroll-section"
+      >
         <h3>Filtros</h3>
 
         <label>
@@ -2357,7 +2387,7 @@ function DesglocePage() {
           </>
         )}
 
-        <label>
+        {!esCuentaCredito && <label>
           Monto real
           <select
             value={filtros.montoRealModo}
@@ -2367,9 +2397,9 @@ function DesglocePage() {
             <option value="monto">Monto exacto</option>
             <option value="rango">Por rango</option>
           </select>
-        </label>
+        </label>}
 
-        {filtros.montoRealModo === "monto" && (
+        {!esCuentaCredito && filtros.montoRealModo === "monto" && (
           <label>
             Monto real exacto
             <input
@@ -2380,7 +2410,7 @@ function DesglocePage() {
           </label>
         )}
 
-        {filtros.montoRealModo === "rango" && (
+        {!esCuentaCredito && filtros.montoRealModo === "rango" && (
           <>
             <label>
               Real desde
@@ -2439,7 +2469,7 @@ function DesglocePage() {
           }
         />
 
-        <input
+        {!esCuentaCredito && <input
           type="number"
           step="0.01"
           value={bulk.montoReal}
@@ -2448,9 +2478,9 @@ function DesglocePage() {
           onChange={(event) =>
             cambiarBulk("montoReal", event.target.value)
           }
-        />
+        />}
 
-        <select
+        {!esCuentaCredito && <select
           value={bulk.incluirMontoReal}
           onChange={(event) =>
             cambiarBulk("incluirMontoReal", event.target.value)
@@ -2459,7 +2489,7 @@ function DesglocePage() {
           <option value="">Monto real sin cambios</option>
           <option value="true">Incluir en monto real</option>
           <option value="false">No incluir en monto real</option>
-        </select>
+        </select>}
 
         <label className="checkbox-row">
           <input
@@ -2476,7 +2506,7 @@ function DesglocePage() {
 
         {resultadoBulk && <p className="bulk-message">{resultadoBulk}</p>}
       </section>
-      <header className="page-header">
+      <header id="lista-gastos" className="page-header page-scroll-section">
         <div>
           <h1>Lista de Gastos</h1>
           <p>Edicion rapida con guardado automatico despues de 1 segundo.</p>

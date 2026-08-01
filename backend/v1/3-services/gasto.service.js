@@ -15,6 +15,9 @@ import {
   obtenerMonedaMovimiento,
 } from "../utils/monedas.js";
 import { aplicarPoliticaImpactoEconomico } from "../utils/politicaImpactoEconomico.js";
+import {
+  aplicarPoliticaCuentaCredito,
+} from "../utils/politicaCuentaCredito.js";
 
 const presentarGasto = (gasto) => {
   if (!gasto) return gasto;
@@ -24,10 +27,12 @@ const presentarGasto = (gasto) => {
     ? datos.cuentaId
     : null;
 
-  return {
+  const presentado = {
     ...datos,
     moneda: obtenerMonedaMovimiento(cuenta, datos.moneda),
   };
+
+  return aplicarPoliticaCuentaCredito(presentado, cuenta);
 };
 
 export const obtenerGastosService = async (usuarioId, filtros = {}) => {
@@ -97,6 +102,14 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   normalizarSignoGastoTarjeta(datosCombinados);
   normalizarMontosGasto(datosCombinados);
   await aplicarPoliticaSubcategoria(datosCombinados, usuarioId);
+  const cuentaGasto = await Cuenta.findOne({
+    _id: gastoData.cuentaId || gastoActual.cuentaId,
+    usuarioId,
+  }).select("tipoCuenta");
+  Object.assign(
+    datosCombinados,
+    aplicarPoliticaCuentaCredito(datosCombinados, cuentaGasto),
+  );
   if (datosCombinados.origen?.tipo === "tarjeta") {
     gastoData.montoBancario = datosCombinados.montoBancario;
   }
@@ -162,21 +175,29 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
 
 export const crearGastoService = async (data, usuarioId) => {
   const gastoData = limpiarCamposVacios(data);
+  let cuentaGasto = null;
 
   if (gastoData.cuentaId) {
-    const cuenta = await Cuenta.findOne({
+    cuentaGasto = await Cuenta.findOne({
       _id: gastoData.cuentaId,
       usuarioId,
     }).select("moneda tipoCuenta monedas");
 
-    if (cuenta) {
-      gastoData.moneda = obtenerMonedaMovimiento(cuenta, gastoData.moneda);
+    if (cuentaGasto) {
+      gastoData.moneda = obtenerMonedaMovimiento(
+        cuentaGasto,
+        gastoData.moneda,
+      );
     }
   }
 
   normalizarSignoGastoTarjeta(gastoData);
   normalizarMontosGasto(gastoData);
   await aplicarPoliticaSubcategoria(gastoData, usuarioId);
+  Object.assign(
+    gastoData,
+    aplicarPoliticaCuentaCredito(gastoData, cuentaGasto),
+  );
 
   await validarReferenciaOrigen(gastoData, usuarioId);
   await validarDuplicadoTarjeta(gastoData, usuarioId);

@@ -2,6 +2,7 @@ import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
 import Cuenta from "../0.1-models/cuenta.model.js";
 import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
+import Categoria from "../0.1-models/categoria.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 import { crearGastoService } from "./gasto.service.js";
 import {
@@ -17,9 +18,12 @@ import {
   obtenerMonedasCuenta,
 } from "../utils/monedas.js";
 import {
-  calcularMontoRealGasto,
   esMontoDistintoDeCero,
 } from "../utils/montosGasto.js";
+import {
+  construirPlanesCuotasResumen,
+  extraerPlanCuotasTarjeta,
+} from "../utils/planesCuotasTarjeta.js";
 
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
@@ -179,6 +183,65 @@ const validarMonedasCuentaCredito = (cuenta, movimientos) => {
   }
 };
 
+const normalizarCatalogosMovimientosTarjeta = async (
+  usuarioId,
+  movimientos,
+) => {
+  const categoriaIds = [
+    ...new Set(movimientos.map((movimiento) => movimiento.categoriaId).filter(Boolean)),
+  ];
+  const subcategoriaIds = [
+    ...new Set(movimientos.map((movimiento) => movimiento.subcategoriaId).filter(Boolean)),
+  ];
+
+  const [categorias, subcategorias] = await Promise.all([
+    categoriaIds.length > 0
+      ? Categoria.find({ usuarioId, _id: { $in: categoriaIds } }).select("_id").lean()
+      : [],
+    subcategoriaIds.length > 0
+      ? Subcategoria.find({ usuarioId, _id: { $in: subcategoriaIds } })
+        .select("_id categoria")
+        .lean()
+      : [],
+  ]);
+  const categoriasValidas = new Set(
+    categorias.map((categoria) => String(categoria._id)),
+  );
+  const subcategoriasValidas = new Map(
+    subcategorias.map((subcategoria) => [String(subcategoria._id), subcategoria]),
+  );
+
+  return movimientos.map((movimiento) => {
+    const categoriaId = movimiento.categoriaId
+      ? String(movimiento.categoriaId)
+      : "";
+    const subcategoriaId = movimiento.subcategoriaId
+      ? String(movimiento.subcategoriaId)
+      : "";
+
+    if (categoriaId && !categoriasValidas.has(categoriaId)) {
+      const error = new Error("La categoría seleccionada no existe");
+      error.status = 400;
+      throw error;
+    }
+
+    const subcategoria = subcategoriaId
+      ? subcategoriasValidas.get(subcategoriaId)
+      : null;
+    if (subcategoriaId && !subcategoria) {
+      const error = new Error("La subcategoría seleccionada no existe");
+      error.status = 400;
+      throw error;
+    }
+
+    return {
+      ...movimiento,
+      categoriaId: subcategoria?.categoria || categoriaId || null,
+      subcategoriaId: subcategoria?._id || null,
+    };
+  });
+};
+
 export const importarExcelTarjetaService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
@@ -207,6 +270,24 @@ export const confirmarImportacionTarjetaCuentaService = async ({
 }) => {
   const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);
   validarMonedasCuentaCredito(cuenta, movimientos);
+  const movimientosConPlanes = movimientos.map((movimiento) => {
+    const financiamientoTarjeta = movimiento.tipo === "cuota"
+      ? extraerPlanCuotasTarjeta({
+        detalle: movimiento.detalle,
+        fecha: movimiento.fecha,
+        moneda: movimiento.moneda,
+        monto: movimiento.montoEstadoCuenta,
+      })
+      : null;
+    return {
+      ...movimiento,
+      financiamientoTarjeta,
+    };
+  });
+  const movimientosNormalizados = await normalizarCatalogosMovimientosTarjeta(
+    usuarioId,
+    movimientosConPlanes,
+  );
 
   const cierre = new Date(resumen.cierre).toISOString().slice(0, 10);
   const importacionKey = [
@@ -243,10 +324,8 @@ export const confirmarImportacionTarjetaCuentaService = async ({
     { new: true, upsert: true, setDefaultsOnInsert: true },
   );
 
-  const operaciones = movimientos.map((movimiento) => {
+  const operaciones = movimientosNormalizados.map((movimiento) => {
     const hashImportacion = `${importacionKey}|${movimiento.sourceHash}`;
-    const montoReal = calcularMontoRealGasto(movimiento);
-
     return {
       updateOne: {
         filter: { usuarioId, cuentaId, hashImportacion },
@@ -254,17 +333,35 @@ export const confirmarImportacionTarjetaCuentaService = async ({
           $set: {
             resumenTarjetaId: resumenGuardado._id,
             montoBancario: movimiento.montoBancario,
+            montoReal: 0,
+            porcentaje: 0,
+            incluirMontoReal: false,
             montoOriginalTarjeta: movimiento.montoEstadoCuenta,
             tipoMovimiento: movimiento.tipo,
+            ...(movimiento.financiamientoTarjeta
+              ? {
+                financiamientoTarjeta: {
+                  planKey: movimiento.financiamientoTarjeta.planKey,
+                  detalleBase: movimiento.financiamientoTarjeta.detalleBase,
+                  cuotaActual: movimiento.financiamientoTarjeta.cuotaActual,
+                  cuotasTotales: movimiento.financiamientoTarjeta.cuotasTotales,
+                  montoCuota: movimiento.financiamientoTarjeta.montoCuota,
+                  estimado: movimiento.financiamientoTarjeta.estimado !== false,
+                },
+              }
+              : {}),
+            ...(movimiento.categoriaId
+              ? { categoriaId: movimiento.categoriaId }
+              : {}),
+            ...(movimiento.subcategoriaId
+              ? { subcategoriaId: movimiento.subcategoriaId }
+              : {}),
           },
           $setOnInsert: {
             usuarioId,
             cuentaId,
             detalle: movimiento.detalle,
             fecha: movimiento.fecha,
-            montoReal,
-            porcentaje: movimiento.porcentaje,
-            incluirMontoReal: movimiento.incluirMontoReal,
             moneda: movimiento.moneda,
             estado: "pendiente",
             origen: { tipo: "tarjeta", referenciaId: null },
@@ -286,7 +383,9 @@ export const confirmarImportacionTarjetaCuentaService = async ({
   const resultado = operaciones.length > 0
     ? await Gasto.bulkWrite(operaciones, { ordered: false })
     : { upsertedCount: 0 };
-  const hashes = movimientos.map((movimiento) => `${importacionKey}|${movimiento.sourceHash}`);
+  const hashes = movimientosNormalizados.map(
+    (movimiento) => `${importacionKey}|${movimiento.sourceHash}`,
+  );
   const gastos = await Gasto.find({ usuarioId, cuentaId, hashImportacion: { $in: hashes } })
     .sort({ fecha: 1, _id: 1 });
 
@@ -299,9 +398,10 @@ export const confirmarImportacionTarjetaCuentaService = async ({
 
   return {
     resumen: resumenGuardado,
-    totalLeidos: movimientos.length,
+    totalLeidos: movimientosNormalizados.length,
     totalCreados: resultado.upsertedCount || 0,
-    totalDuplicados: movimientos.length - (resultado.upsertedCount || 0),
+    totalDuplicados:
+      movimientosNormalizados.length - (resultado.upsertedCount || 0),
     gastos,
   };
 };
@@ -316,14 +416,19 @@ const obtenerGastosDeResumenes = async (usuarioId, resumenes) => {
   }).lean();
 };
 
-const presentarResumenCuentaCredito = (resumen, gastos, cuenta) => ({
-  ...resumen.toObject(),
-  totales: calcularTotalesResumen(
-    resumen,
-    gastos,
-    obtenerMonedasCuenta(cuenta),
-  ),
-});
+const presentarResumenCuentaCredito = (resumen, gastos, cuenta) => {
+  const planesCuotas = construirPlanesCuotasResumen(gastos);
+  return {
+    ...resumen.toObject(),
+    planesCuotas,
+    totales: calcularTotalesResumen(
+      resumen,
+      gastos,
+      obtenerMonedasCuenta(cuenta),
+      planesCuotas,
+    ),
+  };
+};
 
 export const obtenerResumenesCuentaCreditoService = async ({ usuarioId, cuentaId }) => {
   const cuenta = await obtenerCuentaCredito(usuarioId, cuentaId);

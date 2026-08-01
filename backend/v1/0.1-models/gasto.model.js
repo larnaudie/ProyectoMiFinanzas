@@ -65,6 +65,14 @@ const gastoSchema = new mongoose.Schema(
     },
     hashImportacion: { type: String, default: null },
     montoOriginalTarjeta: { type: Number, default: null },
+    financiamientoTarjeta: {
+      planKey: { type: String, default: null },
+      detalleBase: { type: String, default: null },
+      cuotaActual: { type: Number, default: null },
+      cuotasTotales: { type: Number, default: null },
+      montoCuota: { type: Number, default: null },
+      estimado: { type: Boolean, default: true },
+    },
     resumenTarjeta: {
       tarjeta: { type: String, default: null },
       cierre: { type: Date, default: null },
