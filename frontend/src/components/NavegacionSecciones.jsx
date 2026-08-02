@@ -63,6 +63,9 @@ export function NavegacionSecciones({ secciones = [] }) {
       window.removeEventListener("scroll", solicitarActualizacion);
       window.removeEventListener("resize", solicitarActualizacion);
     };
+    // La clave representa el contenido estable; evita reiniciar el scrollspy
+    // cuando el padre recrea el mismo array de secciones al renderizar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claveSecciones]);
 
   const irASeccion = (seccionId) => {

@@ -158,6 +158,7 @@ function ManagePage() {
       actualizar: actualizarSubcategoria,
       eliminar: eliminarSubcategoria,
       extra: (item) => categorias.find((categoria) => categoria._id === obtenerId(item.categoria))?.nombreCategoria || "Sin categoria",
+      cantidadGastos: (item) => Number(item.cantidadGastos || 0),
     },
     tarjetas: {
       titulo: "Tarjetas",
@@ -264,7 +265,15 @@ function ManagePage() {
 
     request
       .then((response) => {
-        const itemGuardado = response.data[entidad.responseKey];
+        const itemGuardadoOriginal = response.data[entidad.responseKey];
+        const itemGuardado = modal.entidadKey === "subcategorias"
+          ? {
+              ...itemGuardadoOriginal,
+              cantidadGastos: modal.tipo === "crear"
+                ? 0
+                : Number(modal.item?.cantidadGastos || 0),
+            }
+          : itemGuardadoOriginal;
         dispatch(modal.tipo === "crear" ? entidad.agregar(itemGuardado) : entidad.actualizar(itemGuardado));
         cerrarModal();
       })
@@ -293,7 +302,10 @@ function ManagePage() {
     const entidad = entidades[entidadKey];
 
     return (
-      <section className="manage-card" key={entidadKey}>
+      <section
+        className={`manage-card manage-card-${entidadKey}`}
+        key={entidadKey}
+      >
         <header className="manage-card-header">
           <div>
             <h2>{entidad.titulo}</h2>
@@ -324,6 +336,7 @@ function ManagePage() {
                 <tr>
                   <th>Nombre</th>
                   {entidad.extra && <th>Detalle</th>}
+                  {entidad.cantidadGastos && <th>Gastos</th>}
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -332,6 +345,19 @@ function ManagePage() {
                   <tr key={item._id}>
                     <td>{item[entidad.nombreKey]}</td>
                     {entidad.extra && <td>{entidad.extra(item)}</td>}
+                    {entidad.cantidadGastos && (
+                      <td>
+                        <span
+                          className={`manage-expense-count${
+                            entidad.cantidadGastos(item) === 0
+                              ? " is-empty"
+                              : ""
+                          }`}
+                        >
+                          {entidad.cantidadGastos(item)}
+                        </span>
+                      </td>
+                    )}
                     <td>
                       <div className="manage-actions">
                         <button

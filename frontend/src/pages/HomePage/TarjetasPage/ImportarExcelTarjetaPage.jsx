@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
-import SortableTableHeader, {
-  useSortableRows,
-} from "../../../components/SortableTableHeader.jsx";
+import SortableTableHeader from "../../../components/SortableTableHeader.jsx";
+import { useSortableRows } from "../../../hooks/useSortableRows.js";
 import {
   calcularMontoRealGasto,
   esMontoDistintoDeCero,

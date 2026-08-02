@@ -18,9 +18,8 @@ import { agregarCategoria, guardarCategorias } from "../../../features/slices/ca
 import { agregarSubcategoria, guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
 import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
 import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
-import SortableTableHeader, {
-  useSortableRows,
-} from "../../../components/SortableTableHeader.jsx";
+import SortableTableHeader from "../../../components/SortableTableHeader.jsx";
+import { useSortableRows } from "../../../hooks/useSortableRows.js";
 import {
   MONEDAS_SOPORTADAS,
   obtenerMonedaMovimiento,
@@ -33,6 +32,13 @@ import {
 } from "../../../components/UiExchangeReference.jsx";
 import { useCotizacionUi } from "../../../hooks/useCotizacionUi.js";
 import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
+import ExpenseFiltersPanel from "../../../components/ExpenseFiltersPanel.jsx";
+import {
+  crearFiltrosGastosIniciales,
+  fechaParaInput,
+  filtrarGastos,
+  obtenerFechaActualParaFiltro,
+} from "../../../utils/filtrosGastos.js";
 import {
   calcularMontoRealGasto,
   esMontoDistintoDeCero,
@@ -47,73 +53,8 @@ const obtenerId = (valor) => {
   return valor;
 };
 
-// El input type="date" solo entiende fechas con formato YYYY-MM-DD.
-const fechaParaInput = (fecha) => {
-  if (!fecha) return "";
-  return fecha.slice(0, 10);
-};
-
-const mesesDelAnio = [
-  { valor: "01", nombre: "Enero" },
-  { valor: "02", nombre: "Febrero" },
-  { valor: "03", nombre: "Marzo" },
-  { valor: "04", nombre: "Abril" },
-  { valor: "05", nombre: "Mayo" },
-  { valor: "06", nombre: "Junio" },
-  { valor: "07", nombre: "Julio" },
-  { valor: "08", nombre: "Agosto" },
-  { valor: "09", nombre: "Setiembre" },
-  { valor: "10", nombre: "Octubre" },
-  { valor: "11", nombre: "Noviembre" },
-  { valor: "12", nombre: "Diciembre" },
-];
-
-const obtenerFechaActualParaFiltro = () => {
-  const hoy = new Date();
-
-  return {
-    mes: String(hoy.getMonth() + 1).padStart(2, "0"),
-    anio: String(hoy.getFullYear()),
-  };
-};
-
-const crearFiltrosIniciales = (esResumenTarjeta = false) => ({
-  detalle: "",
-  categoriaId: "",
-  subcategoriaId: "",
-  fechaModo: esResumenTarjeta ? "" : "mes",
-  fechaMes: "",
-  fechaAnio: esResumenTarjeta ? "" : obtenerFechaActualParaFiltro().anio,
-  fechaDesde: "",
-  fechaHasta: "",
-  montoBancarioModo: "",
-  montoBancario: "",
-  montoBancarioDesde: "",
-  montoBancarioHasta: "",
-  montoRealModo: "",
-  montoReal: "",
-  montoRealDesde: "",
-  montoRealHasta: "",
-});
-
-const cumpleFiltroMonto = (valor, modo, monto, desde, hasta) => {
-  // Si el usuario no eligio un modo, este filtro no limita la lista.
-  if (!modo) return true;
-
-  const numero = Number(valor ?? 0);
-
-  if (modo === "monto") {
-    if (monto === "") return true;
-    return numero === Number(monto);
-  }
-
-  if (modo === "rango") {
-    if (desde !== "" && numero < Number(desde)) return false;
-    if (hasta !== "" && numero > Number(hasta)) return false;
-  }
-
-  return true;
-};
+const crearFiltrosIniciales = (esResumenTarjeta = false) =>
+  crearFiltrosGastosIniciales({ sinFechaPredeterminada: esResumenTarjeta });
 
 const obtenerFechaActualParaInput = () => {
   const hoy = new Date();
@@ -358,57 +299,10 @@ function DesglocePage() {
   ].sort().reverse();
 
   // Paso 2: aplicamos filtros de pantalla sobre los gastos de la cuenta.
-  const gastosFiltrados = gastosDeLaCuenta.filter((gasto) => {
-    const detalle = (gasto.detalle || "").toLowerCase();
-    const textoBuscado = filtros.detalle.toLowerCase();
-    const fecha = fechaParaInput(gasto.fecha);
-
-    const coincideDetalle = detalle.includes(textoBuscado);
-    const coincideCategoria =
-      !filtros.categoriaId || obtenerId(gasto.categoriaId) === filtros.categoriaId;
-    const coincideSubcategoria =
-      !filtros.subcategoriaId ||
-      obtenerId(gasto.subcategoriaId) === filtros.subcategoriaId;
-
-    let coincideFecha = true;
-    if (filtros.fechaModo === "mes") {
-      const mes = fecha.slice(5, 7);
-      const anio = fecha.slice(0, 4);
-
-      coincideFecha =
-        (!filtros.fechaMes || mes === filtros.fechaMes) &&
-        (!filtros.fechaAnio || anio === filtros.fechaAnio);
-    }
-    if (filtros.fechaModo === "rango") {
-      coincideFecha =
-        (!filtros.fechaDesde || fecha >= filtros.fechaDesde) &&
-        (!filtros.fechaHasta || fecha <= filtros.fechaHasta);
-    }
-
-    const coincideMontoBancario = cumpleFiltroMonto(
-      gasto.montoBancario,
-      filtros.montoBancarioModo,
-      filtros.montoBancario,
-      filtros.montoBancarioDesde,
-      filtros.montoBancarioHasta,
-    );
-
-    const coincideMontoReal = cumpleFiltroMonto(
-      gasto.montoReal,
-      filtros.montoRealModo,
-      filtros.montoReal,
-      filtros.montoRealDesde,
-      filtros.montoRealHasta,
-    );
-
-    return (
-      coincideDetalle &&
-      coincideCategoria &&
-      coincideSubcategoria &&
-      coincideFecha &&
-      coincideMontoBancario &&
-      coincideMontoReal
-    );
+  const gastosFiltrados = filtrarGastos(gastosDeLaCuenta, filtros, {
+    obtenerCuenta: (gasto) =>
+      cuentas.find((cuenta) => cuenta._id === obtenerId(gasto.cuentaId))
+      || cuentaActual,
   });
 
   const gastosPendientes = gastosFiltrados.filter(
@@ -2225,217 +2119,15 @@ function DesglocePage() {
         </div>
       )}
 
-      <section
+      <ExpenseFiltersPanel
         id="filtros-gastos"
-        className="filters-panel page-scroll-section"
-      >
-        <h3>Filtros</h3>
-
-        <label>
-          Detalle
-          <input
-            type="text"
-            value={filtros.detalle}
-            onChange={(event) => cambiarFiltro("detalle", event.target.value)}
-            placeholder="Buscar detalle"
-          />
-        </label>
-
-        <label>
-          Categoria
-          <SearchableCategorySelect
-            categorias={categorias}
-            value={filtros.categoriaId}
-            placeholder="Todas"
-            ariaLabel="Buscar categoría para filtrar"
-            onChange={(categoriaId) =>
-              cambiarFiltro("categoriaId", categoriaId)
-            }
-          />
-        </label>
-
-        <label>
-          Subcategoria
-          <SearchableSubcategorySelect
-            subcategorias={subcategorias}
-            value={filtros.subcategoriaId}
-            placeholder="Todas"
-            ariaLabel="Buscar subcategoría para filtrar"
-            onChange={(subcategoriaId) =>
-              cambiarFiltro("subcategoriaId", subcategoriaId)
-            }
-          />
-        </label>
-<label>
-          Fecha
-          <select
-            value={filtros.fechaModo}
-            onChange={(event) => cambiarFiltro("fechaModo", event.target.value)}
-          >
-            <option value="">Sin filtro</option>
-            <option value="mes">Por mes</option>
-            <option value="rango">Por rango</option>
-          </select>
-        </label>
-
-        {filtros.fechaModo === "mes" && (
-          <>
-            <label>
-              Mes
-              <select
-                value={filtros.fechaMes}
-                onChange={(event) => cambiarFiltro("fechaMes", event.target.value)}
-              >
-                <option value="">Todos los meses</option>
-                {mesesDelAnio.map((mes) => (
-                  <option key={mes.valor} value={mes.valor}>
-                    {mes.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Año
-              <select
-                value={filtros.fechaAnio}
-                onChange={(event) => cambiarFiltro("fechaAnio", event.target.value)}
-              >
-                <option value="">Todos los años</option>
-                {aniosDisponibles.map((anio) => (
-                  <option key={anio} value={anio}>
-                    {anio}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        )}
-
-        {filtros.fechaModo === "rango" && (
-          <>
-            <label>
-              Desde
-              <input
-                type="date"
-                value={filtros.fechaDesde}
-                onChange={(event) => cambiarFiltro("fechaDesde", event.target.value)}
-              />
-            </label>
-
-            <label>
-              Hasta
-              <input
-                type="date"
-                value={filtros.fechaHasta}
-                onChange={(event) => cambiarFiltro("fechaHasta", event.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        <label>
-          Monto bancario
-          <select
-            value={filtros.montoBancarioModo}
-            onChange={(event) =>
-              cambiarFiltro("montoBancarioModo", event.target.value)
-            }
-          >
-            <option value="">Sin filtro</option>
-            <option value="monto">Monto exacto</option>
-            <option value="rango">Por rango</option>
-          </select>
-        </label>
-
-        {filtros.montoBancarioModo === "monto" && (
-          <label>
-            Monto bancario exacto
-            <input
-              type="number"
-              value={filtros.montoBancario}
-              onChange={(event) =>
-                cambiarFiltro("montoBancario", event.target.value)
-              }
-            />
-          </label>
-        )}
-
-        {filtros.montoBancarioModo === "rango" && (
-          <>
-            <label>
-              Bancario desde
-              <input
-                type="number"
-                value={filtros.montoBancarioDesde}
-                onChange={(event) =>
-                  cambiarFiltro("montoBancarioDesde", event.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Bancario hasta
-              <input
-                type="number"
-                value={filtros.montoBancarioHasta}
-                onChange={(event) =>
-                  cambiarFiltro("montoBancarioHasta", event.target.value)
-                }
-              />
-            </label>
-          </>
-        )}
-
-        {!esCuentaCredito && <label>
-          Monto real
-          <select
-            value={filtros.montoRealModo}
-            onChange={(event) => cambiarFiltro("montoRealModo", event.target.value)}
-          >
-            <option value="">Sin filtro</option>
-            <option value="monto">Monto exacto</option>
-            <option value="rango">Por rango</option>
-          </select>
-        </label>}
-
-        {!esCuentaCredito && filtros.montoRealModo === "monto" && (
-          <label>
-            Monto real exacto
-            <input
-              type="number"
-              value={filtros.montoReal}
-              onChange={(event) => cambiarFiltro("montoReal", event.target.value)}
-            />
-          </label>
-        )}
-
-        {!esCuentaCredito && filtros.montoRealModo === "rango" && (
-          <>
-            <label>
-              Real desde
-              <input
-                type="number"
-                value={filtros.montoRealDesde}
-                onChange={(event) =>
-                  cambiarFiltro("montoRealDesde", event.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Real hasta
-              <input
-                type="number"
-                value={filtros.montoRealHasta}
-                onChange={(event) =>
-                  cambiarFiltro("montoRealHasta", event.target.value)
-                }
-              />
-            </label>
-          </>
-        )}
-      </section>
+        filtros={filtros}
+        onChange={cambiarFiltro}
+        categorias={categorias}
+        subcategorias={subcategorias}
+        aniosDisponibles={aniosDisponibles}
+        mostrarMontoReal={!esCuentaCredito}
+      />
 
       <section className="bulk-panel">
         <strong>{seleccionados.length} seleccionados</strong>

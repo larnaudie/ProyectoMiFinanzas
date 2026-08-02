@@ -14,6 +14,7 @@ import CuentaGastosPage from "./pages/HomePage/DesglocePage/CuentaGastosPage.jsx
 import DetalleGastoPage from "./pages/HomePage/DesglocePage/DetalleGastoPage.jsx";
 import PrestamosPage from "./pages/HomePage/PrestamosPage/PrestamosPage.jsx";
 import ProfilePage from "./pages/HomePage/ProfilePage/ProfilePage.jsx";
+import MovimientosPage from "./pages/HomePage/MovimientosPage/MovimientosPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
                 element={<Navigate to="/home#dashboard-general" replace />}
               />
               <Route path="/manage" element={<ManagePage />} />
+              <Route path="/movimientos" element={<MovimientosPage />} />
               <Route path="/prestamos" element={<PrestamosPage />} />
               <Route path="/perfil" element={<ProfilePage />} />
               <Route path="cuentas/:cuentaId/dashboard" element={<DashboardPage />} />

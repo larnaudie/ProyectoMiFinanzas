@@ -3,9 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
 import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
 import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
-import SortableTableHeader, {
-  useSortableRows,
-} from "../../../components/SortableTableHeader.jsx";
+import SortableTableHeader from "../../../components/SortableTableHeader.jsx";
+import { useSortableRows } from "../../../hooks/useSortableRows.js";
 import { esMontoDistintoDeCero } from "../../../utils/montosGasto.js";
 
 const obtenerId = (valor) => (typeof valor === "object" ? valor?._id || "" : valor || "");

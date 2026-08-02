@@ -1,4 +1,6 @@
+import mongoose from "mongoose";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
+import Gasto from "../0.1-models/gasto.model.js";
 
 const limpiarCategoriaVacia = (data) => {
     const dataLimpia = { ...data };
@@ -11,8 +13,38 @@ const limpiarCategoriaVacia = (data) => {
 };
 
 export const obtenerSubcategoriasService = async (usuarioId) => {
-    const subcategorias = await Subcategoria.find({ usuarioId }).populate("categoria", "nombreCategoria");
-    return subcategorias;
+    const usuarioObjectId = new mongoose.Types.ObjectId(usuarioId);
+    const [subcategorias, conteosGastos] = await Promise.all([
+        Subcategoria.find({ usuarioId })
+            .populate("categoria", "nombreCategoria")
+            .lean(),
+        Gasto.aggregate([
+            {
+                $match: {
+                    usuarioId: usuarioObjectId,
+                    subcategoriaId: { $ne: null },
+                },
+            },
+            {
+                $group: {
+                    _id: "$subcategoriaId",
+                    cantidadGastos: { $sum: 1 },
+                },
+            },
+        ]),
+    ]);
+    const conteosPorSubcategoria = new Map(
+        conteosGastos.map((conteo) => [
+            String(conteo._id),
+            Number(conteo.cantidadGastos || 0),
+        ]),
+    );
+
+    return subcategorias.map((subcategoria) => ({
+        ...subcategoria,
+        cantidadGastos:
+            conteosPorSubcategoria.get(String(subcategoria._id)) || 0,
+    }));
 }
 
 export const actualizarSubcategoriaService = async (usuarioId, id, data) => {
