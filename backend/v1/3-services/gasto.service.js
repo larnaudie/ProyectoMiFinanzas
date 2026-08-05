@@ -18,6 +18,7 @@ import { aplicarPoliticaImpactoEconomico } from "../utils/politicaImpactoEconomi
 import {
   aplicarPoliticaCuentaCredito,
 } from "../utils/politicaCuentaCredito.js";
+import { reconciliarPrestamosUsuarioSeguro } from "./conciliacionPrestamo.service.js";
 
 const presentarGasto = (gasto) => {
   if (!gasto) return gasto;
@@ -170,6 +171,7 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
       populate: { path: "cuentaId", select: "nombreCuenta" },
     });
 
+  await reconciliarPrestamosUsuarioSeguro(usuarioId);
   return presentarGasto(gastoActualizado);
 };
 
@@ -228,6 +230,7 @@ export const crearGastoService = async (data, usuarioId) => {
     montoReal: calcularMontoRealGasto(gastoData),
   });
 
+  await reconciliarPrestamosUsuarioSeguro(usuarioId);
   return gasto;
 };
 
@@ -361,6 +364,7 @@ export const eliminarGastoService = async (usuarioId, id) => {
         { $set: { "origen.referenciaId": null } },
       ),
     ]);
+    await reconciliarPrestamosUsuarioSeguro(usuarioId);
   }
 
   return gastoEliminado;
@@ -377,6 +381,7 @@ export const eliminarTodosLosGastosService = async (usuarioId) => {
       { usuarioId, gastoId: { $in: gastoIds } },
       { estadoImportacion: "pendiente", gastoId: null }
     );
+    await reconciliarPrestamosUsuarioSeguro(usuarioId);
   }
 
   return gastosEliminados;
