@@ -1,5 +1,4 @@
 import { obtenerMonedaMovimiento } from "./monedas.js";
-import { calcularResultadoCuentaGasto } from "./resultadoEconomico.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -67,7 +66,12 @@ export const construirRegistroGastosPorSubcategoria = ({
 
     if (esSubcategoriaTransferencia(subcategoria)) return;
 
-    const resultado = calcularResultadoCuentaGasto(gasto);
+    // Este registro describe consumos por subcategoría, no el ahorro mensual.
+    // Si el movimiento no participa del monto real, conserva el egreso
+    // bancario para que el usuario igualmente pueda analizar en qué gastó.
+    const resultado = gasto.incluirMontoReal === true
+      ? numeroFinito(gasto.montoReal)
+      : numeroFinito(gasto.montoBancario);
     if (resultado >= 0) return;
 
     const moneda = obtenerMonedaMovimiento(cuenta, gasto.moneda);

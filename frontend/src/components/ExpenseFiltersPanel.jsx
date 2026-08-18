@@ -280,7 +280,7 @@ function ExpenseFiltersPanel({
 
       {mostrarIncluye && (
         <label>
-          Incluye en monto real
+          ¿Cuenta en Gasto Real?
           <select
             value={filtros.incluirMontoReal}
             onChange={(event) => onChange("incluirMontoReal", event.target.value)}

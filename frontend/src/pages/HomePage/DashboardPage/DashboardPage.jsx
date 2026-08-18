@@ -883,7 +883,7 @@ function DashboardPage({ embedded = false }) {
                 : "Todavía no hay un resumen dentro del período"
               : cuentaSeleccionada === "todas"
                 ? "Sumatoria de los resultados de todas las cuentas"
-                : "Monto real incluido más transferencias netas"}
+                : "Presupuesto mensual menos gasto real"}
           </small>
         </article>
         <article
@@ -1107,7 +1107,7 @@ function DashboardPage({ embedded = false }) {
                               }
                             >
                               {etiquetaResultado}: {formatearMonto(
-                                Math.abs(resultado),
+                                esCuentaCredito ? Math.abs(resultado) : resultado,
                                 moneda,
                               )}
                             </small>
@@ -1576,20 +1576,19 @@ function DashboardPage({ embedded = false }) {
             </p>
           ) : cuentaSeleccionada === "todas" ? (
             <p>
-              El dashboard general suma el resultado de cada cuenta usando la
-              regla correspondiente: monto real para consumos incluidos,
-              monto bancario para transferencias y cero impacto directo para
-              la tarjeta. El pago realizado desde la cuenta bancaria conserva
-              su impacto económico aunque esté vinculado. UYU, USD y UI
-              permanecen separados.
+              El dashboard general suma los movimientos positivos marcados
+              como ¿Suma en Presupuesto Mensual? y resta los gastos que
+              cuentan en Gasto Real.
+              Los ingresos y transferencias sin esa marca son neutrales. La
+              tarjeta no genera ahorro directo y UYU, USD y UI permanecen
+              separados.
             </p>
           ) : (
             <p>
-              En una cuenta individual, los movimientos con Incluye activado
-              aportan su monto real y las transferencias aportan su monto
-              bancario firmado. Una transferencia recibida suma y una enviada
-              resta. Así se conserva el flujo de la cuenta y también se
-              contemplan los gastos reales sin movimiento bancario.
+              El ahorro o déficit suma los ingresos y transferencias positivas
+              que marcaste como ¿Suma en Presupuesto Mensual? y resta los
+              gastos con ¿Cuenta en Gasto Real? activado usando su monto
+              real. Los demás movimientos no alteran este resultado.
             </p>
           )}
         </div>

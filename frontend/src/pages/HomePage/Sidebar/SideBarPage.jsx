@@ -3,6 +3,7 @@ import { NavLink, useParams } from "react-router-dom";
 const iconos = {
   home: <path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-9Z" />,
   movimientos: <path d="M4 6h16M4 12h16M4 18h10M7 3v6M17 9v6M11 15v6" />,
+  analisis: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2M17 4l2 2 3-3" />,
   manage: <path d="M4 5h10M18 5h2M4 12h3M11 12h9M4 19h10M18 19h2M14 3v4M7 10v4M14 17v4" />,
   prestamos: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6M9 12h6M9 16h4" />,
   dashboard: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
@@ -37,6 +38,10 @@ function Sidebar({ abierto, fijado, alEntrar, alSalir }) {
         <NavLink className={claseLink} to="/movimientos" title="Movimientos" aria-label="Movimientos">
           <NavIcon nombre="movimientos" />
           <span>Movimientos</span>
+        </NavLink>
+        <NavLink className={claseLink} to="/analisis" title="Análisis" aria-label="Análisis financiero">
+          <NavIcon nombre="analisis" />
+          <span>Análisis</span>
         </NavLink>
         <NavLink className={claseLink} to="/manage" title="Administrar" aria-label="Administrar">
           <NavIcon nombre="manage" />

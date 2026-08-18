@@ -111,10 +111,12 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
     datosCombinados,
     aplicarPoliticaCuentaCredito(datosCombinados, cuentaGasto),
   );
+  normalizarSumaAlPresupuesto(datosCombinados);
   if (datosCombinados.origen?.tipo === "tarjeta") {
     gastoData.montoBancario = datosCombinados.montoBancario;
   }
   gastoData.incluirMontoReal = datosCombinados.incluirMontoReal;
+  gastoData.sumaAlPresupuesto = datosCombinados.sumaAlPresupuesto;
   gastoData.porcentaje = datosCombinados.porcentaje;
 
   await validarReferenciaOrigen(
@@ -200,6 +202,7 @@ export const crearGastoService = async (data, usuarioId) => {
     gastoData,
     aplicarPoliticaCuentaCredito(gastoData, cuentaGasto),
   );
+  normalizarSumaAlPresupuesto(gastoData);
 
   await validarReferenciaOrigen(gastoData, usuarioId);
   await validarDuplicadoTarjeta(gastoData, usuarioId);
@@ -458,6 +461,18 @@ const gastoEstaCompleto = (gasto) => {
 const normalizarMontosGasto = (gastoData) => {
   gastoData.montoBancario = redondearMonto(gastoData.montoBancario);
   gastoData.montoReal = redondearMonto(gastoData.montoReal);
+};
+
+const normalizarSumaAlPresupuesto = (gastoData) => {
+  const montoBancario = Number(gastoData.montoBancario);
+  const montoReal = Number(gastoData.montoReal);
+  const tieneIngresoPositivo = (
+    (Number.isFinite(montoBancario) && montoBancario > 0)
+    || (Number.isFinite(montoReal) && montoReal > 0)
+  );
+
+  gastoData.sumaAlPresupuesto = tieneIngresoPositivo
+    && gastoData.sumaAlPresupuesto === true;
 };
 
 const aplicarPoliticaSubcategoria = async (gastoData, usuarioId) => {

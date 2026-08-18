@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { guardarCuentas } from "../features/slices/cuentasSlice.js";
 import { api } from "../services/api.js";
+import BackNavigationButton from "../components/BackNavigationButton.jsx";
 import Navbar from "./HomePage/Navbar/NavBarPage.jsx";
 import Sidebar from "./HomePage/Sidebar/SideBarPage.jsx";
 
@@ -108,6 +109,7 @@ function AppLayout() {
         />
         <main className="dashboard-contenedor">
           <section className="contenido-principal">
+            <BackNavigationButton />
             <Outlet
               context={{
                 menuAbierto,

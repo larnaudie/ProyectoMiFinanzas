@@ -29,6 +29,7 @@ export const gastosSchema = Joi.object({
   montoReal: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).default(0).allow("", null),
   incluirMontoReal: Joi.boolean().default(false),
+  sumaAlPresupuesto: Joi.boolean().default(false),
   moneda: Joi.string().valid(...MONEDAS_SOPORTADAS),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().allow("", null),
@@ -48,6 +49,7 @@ export const actualizarGastoSchema = Joi.object({
   montoReal: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).allow("", null),
   incluirMontoReal: Joi.boolean(),
+  sumaAlPresupuesto: Joi.boolean(),
   moneda: Joi.string().valid(...MONEDAS_SOPORTADAS),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().allow("", null),
@@ -76,6 +78,7 @@ export const crearGastoExcelPersonalSchema = Joi.object({
   montoReal: Joi.number().allow("", null),
   porcentaje: Joi.number().min(0).max(100).allow("", null),
   incluirMontoReal: Joi.boolean().required(),
+  sumaAlPresupuesto: Joi.boolean().default(false),
   categoriaId: Joi.string().allow("", null),
   subcategoriaId: Joi.string().required(),
 }).custom((value, helpers) => {

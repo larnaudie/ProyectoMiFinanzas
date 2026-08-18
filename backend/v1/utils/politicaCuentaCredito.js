@@ -12,5 +12,6 @@ export const aplicarPoliticaCuentaCredito = (gasto, cuenta) => {
     montoReal: 0,
     porcentaje: 0,
     incluirMontoReal: false,
+    sumaAlPresupuesto: false,
   };
 };

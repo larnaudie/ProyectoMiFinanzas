@@ -43,7 +43,12 @@ import {
   calcularMontoRealGasto,
   esMontoDistintoDeCero,
   esPorcentajeGastoValido,
+  resumirValoresMonetarios,
 } from "../../../utils/montosGasto.js";
+import {
+  puedeSumarAlPresupuesto,
+  resumirPresupuestoYGastoReal,
+} from "../../../utils/resultadoEconomico.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -72,6 +77,7 @@ const crearGastoInicial = () => ({
   montoReal: "",
   porcentaje: 100,
   incluirMontoReal: true,
+  sumaAlPresupuesto: false,
   categoriaId: "",
   subcategoriaId: "",
 });
@@ -180,6 +186,7 @@ function DesglocePage() {
     montoBancario: "",
     montoReal: "",
     incluirMontoReal: "",
+    sumaAlPresupuesto: "",
     cambiarEstado: false,
   });
 
@@ -607,6 +614,7 @@ function DesglocePage() {
       montoReal: Number(gasto.montoReal || 0),
       porcentaje: Number(gasto.porcentaje || 100),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
+      sumaAlPresupuesto: Boolean(gasto.sumaAlPresupuesto),
       categoriaId: obtenerId(gasto.categoriaId),
       subcategoriaId: obtenerId(gasto.subcategoriaId),
       cambiarEstado: false,
@@ -650,15 +658,19 @@ function DesglocePage() {
   };
 
 
-  const calcularTotal = (gastosVisibles, campo, moneda = null) => {
-    return gastosVisibles.reduce((total, gasto) => {
+  const calcularResumenTotal = (gastosVisibles, campo, moneda = null) => {
+    const valores = gastosVisibles.reduce((resultado, gasto) => {
       const monedaGasto = obtenerMonedaVisible(gasto);
-      if (moneda && monedaGasto !== moneda) return total;
+      if (moneda && monedaGasto !== moneda) return resultado;
       if (campo === "montoReal" && gasto.incluirMontoReal !== true) {
-        return total;
+        return resultado;
       }
-      return total + Number(gasto[campo] || 0);
-    }, 0);
+
+      resultado.push(gasto[campo]);
+      return resultado;
+    }, []);
+
+    return resumirValoresMonetarios(valores);
   };
 
   const formatearMonto = (monto) => {
@@ -1006,6 +1018,109 @@ function DesglocePage() {
     const mostrarColumnaCrear =
       Boolean(resumenId)
       || gastosVisibles.some((gasto) => gasto.estado !== "creado");
+    const resumenesPorMoneda = Object.fromEntries(
+      monedasTotales.map((moneda) => [
+        moneda,
+        {
+          bancario: calcularResumenTotal(
+            gastosVisibles,
+            "montoBancario",
+            moneda,
+          ),
+          economico: resumirPresupuestoYGastoReal(
+            gastosVisibles.filter(
+              (gasto) => obtenerMonedaVisible(gasto) === moneda,
+            ),
+          ),
+        },
+      ]),
+    );
+
+    const renderResultadoEconomico = (resumen, moneda) => {
+      const hayDeficit = resumen.resultado < 0;
+
+      return (
+        <article className="totals-breakdown-card" key={`economico-${moneda}`}>
+          <span className="totals-breakdown-title">
+            Resultado económico real {moneda}
+          </span>
+          <div className="totals-breakdown-grid">
+            <div className="totals-breakdown-item">
+              <span>
+                {filtros.fechaModo === "mes" && filtros.fechaMes
+                  ? "Presupuesto mensual"
+                  : "Presupuesto del período"}
+              </span>
+              <strong className="totals-value-positive">
+                {simboloMoneda(moneda)} {formatearMonto(resumen.presupuesto)}
+              </strong>
+            </div>
+            <div className="totals-breakdown-item">
+              <span>Gasto real</span>
+              <strong className="totals-value-negative">
+                {simboloMoneda(moneda)} {formatearMonto(resumen.gastoReal)}
+              </strong>
+            </div>
+            <div className="totals-breakdown-item">
+              <span>{hayDeficit ? "Déficit" : "Ahorro"}</span>
+              <strong
+                className={
+                  hayDeficit
+                    ? "totals-value-negative"
+                    : "totals-value-positive"
+                }
+              >
+                {simboloMoneda(moneda)} {formatearMonto(resumen.resultado)}
+              </strong>
+            </div>
+          </div>
+          {moneda === "UI" && (
+            <EquivalenciaMontoUi
+              monto={resumen.resultado}
+              cotizacion={cotizacionUi.cotizacion}
+            />
+          )}
+        </article>
+      );
+    };
+
+    const renderDesgloseTotal = (titulo, resumen, moneda, clave) => (
+      <article className="totals-breakdown-card" key={`${clave}-${moneda}`}>
+        <span className="totals-breakdown-title">{titulo} {moneda}</span>
+        <div className="totals-breakdown-grid">
+          <div className="totals-breakdown-item">
+            <span>Ingresos</span>
+            <strong className="totals-value-positive">
+              {simboloMoneda(moneda)} {formatearMonto(resumen.ingresos)}
+            </strong>
+          </div>
+          <div className="totals-breakdown-item">
+            <span>Egresos</span>
+            <strong className="totals-value-negative">
+              {simboloMoneda(moneda)} {formatearMonto(resumen.egresos)}
+            </strong>
+          </div>
+          <div className="totals-breakdown-item">
+            <span>Resultado neto</span>
+            <strong
+              className={
+                resumen.neto < 0
+                  ? "totals-value-negative"
+                  : "totals-value-positive"
+              }
+            >
+              {simboloMoneda(moneda)} {formatearMonto(resumen.neto)}
+            </strong>
+          </div>
+        </div>
+        {moneda === "UI" && (
+          <EquivalenciaMontoUi
+            monto={resumen.neto}
+            cotizacion={cotizacionUi.cotizacion}
+          />
+        )}
+      </article>
+    );
 
     return (
     <section className="page-section">
@@ -1022,44 +1137,17 @@ function DesglocePage() {
             <span>Cantidad</span>
             <strong>{gastosVisibles.length}</strong>
           </article>
-          {monedasTotales.map((moneda) => (
-            <article key={`bancario-${moneda}`}>
-              <span>Total monto bancario {moneda}</span>
-              <strong>
-                {simboloMoneda(moneda)}{" "}
-                {formatearMonto(
-                  calcularTotal(gastosVisibles, "montoBancario", moneda),
-                )}
-              </strong>
-              {moneda === "UI" && (
-                <EquivalenciaMontoUi
-                  monto={calcularTotal(
-                    gastosVisibles,
-                    "montoBancario",
-                    moneda,
-                  )}
-                  cotizacion={cotizacionUi.cotizacion}
-                />
-              )}
-            </article>
+          {monedasTotales.map((moneda) => renderDesgloseTotal(
+            "Movimiento bancario",
+            resumenesPorMoneda[moneda].bancario,
+            moneda,
+            "bancario",
           ))}
-          {!esCuentaCredito && monedasTotales.map((moneda) => (
-            <article key={`real-${moneda}`}>
-              <span>Total monto real {moneda}</span>
-              <strong>
-                {simboloMoneda(moneda)}{" "}
-                {formatearMonto(
-                  calcularTotal(gastosVisibles, "montoReal", moneda),
-                )}
-              </strong>
-              {moneda === "UI" && (
-                <EquivalenciaMontoUi
-                  monto={calcularTotal(gastosVisibles, "montoReal", moneda)}
-                  cotizacion={cotizacionUi.cotizacion}
-                />
-              )}
-            </article>
-          ))}
+          {!esCuentaCredito && monedasTotales.map((moneda) =>
+            renderResultadoEconomico(
+              resumenesPorMoneda[moneda].economico,
+              moneda,
+            ))}
         </div>
       )}
 
@@ -1150,7 +1238,8 @@ function DesglocePage() {
               )}
               <th>Categoria</th>
               <th>Subcategoria</th>
-              {!esCuentaCredito && <th>Incluye</th>}
+              {!esCuentaCredito && <th>¿Cuenta en Gasto Real?</th>}
+              {!esCuentaCredito && <th>¿Suma en Presupuesto Mensual?</th>}
               <th>{resumenId ? "Vincular gasto" : "Transferencia interna"}</th>
               {mostrarColumnaCrear && <th>Crear</th>}
             </tr>
@@ -1172,6 +1261,12 @@ function DesglocePage() {
               );
               const tieneMontoBancario =
                 esMontoBancarioValido(montoBancarioActual);
+              const montoRealActual = obtenerValorVisible(gasto, "montoReal");
+              const puedeAportarPresupuesto = puedeSumarAlPresupuesto({
+                ...gasto,
+                montoBancario: montoBancarioActual,
+                montoReal: montoRealActual,
+              });
               const referenciaDirectaId = obtenerId(gasto.origen?.referenciaId);
               const referenciaDirecta = referenciaDirectaId
                 ? gastos.find((item) => item._id === referenciaDirectaId)
@@ -1390,6 +1485,27 @@ function DesglocePage() {
                       }
                     />
                   </td>}
+                  {!esCuentaCredito && <td>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(
+                        obtenerValorVisible(gasto, "sumaAlPresupuesto"),
+                      )}
+                      disabled={!puedeAportarPresupuesto}
+                      title={
+                        puedeAportarPresupuesto
+                          ? "Este ingreso aumenta el dinero disponible para gastar en el mes"
+                          : "Sólo los movimientos positivos pueden sumar al Presupuesto Mensual"
+                      }
+                      onChange={(event) =>
+                        guardarCambioRapido(
+                          gasto,
+                          "sumaAlPresupuesto",
+                          event.target.checked,
+                        )
+                      }
+                    />
+                  </td>}
 
                   <td className="linked-expense-cell">
                       {referencia ? (
@@ -1527,6 +1643,9 @@ function DesglocePage() {
     ) {
       payload.incluirMontoReal = bulk.incluirMontoReal === "true";
     }
+    if (!esCuentaCredito && bulk.sumaAlPresupuesto !== "") {
+      payload.sumaAlPresupuesto = bulk.sumaAlPresupuesto === "true";
+    }
     if (bulk.cambiarEstado) payload.cambiarEstado = true;
 
     if (Object.keys(payload).length === 0) {
@@ -1565,6 +1684,7 @@ function DesglocePage() {
         montoBancario: "",
         montoReal: "",
         incluirMontoReal: "",
+        sumaAlPresupuesto: "",
         cambiarEstado: false,
       });
 
@@ -1766,7 +1886,23 @@ function DesglocePage() {
                   cambiarFormGasto("incluirMontoReal", event.target.checked)
                 }
               />
-              Incluir en monto real
+              ¿Cuenta en Gasto Real?
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={Boolean(formGasto.sumaAlPresupuesto)}
+                disabled={!puedeSumarAlPresupuesto(formGasto)}
+                onChange={(event) =>
+                  cambiarFormGasto("sumaAlPresupuesto", event.target.checked)
+                }
+              />
+              ¿Suma en Presupuesto Mensual?
+              <small>
+                Indica si este ingreso o transferencia aumenta el dinero
+                disponible para gastar durante el mes.
+              </small>
             </label>
 
             {errorModal && <p className="error-text">{errorModal}</p>}
@@ -2178,9 +2314,21 @@ function DesglocePage() {
             cambiarBulk("incluirMontoReal", event.target.value)
           }
         >
-          <option value="">Monto real sin cambios</option>
-          <option value="true">Incluir en monto real</option>
-          <option value="false">No incluir en monto real</option>
+          <option value="">Gasto real sin cambios</option>
+          <option value="true">Sí cuenta en Gasto Real</option>
+          <option value="false">No cuenta en Gasto Real</option>
+        </select>}
+
+        {!esCuentaCredito && <select
+          value={bulk.sumaAlPresupuesto}
+          aria-label="Cambiar si los seleccionados suman en el Presupuesto Mensual"
+          onChange={(event) =>
+            cambiarBulk("sumaAlPresupuesto", event.target.value)
+          }
+        >
+          <option value="">Presupuesto mensual sin cambios</option>
+          <option value="true">Sí suma al Presupuesto Mensual</option>
+          <option value="false">No suma al Presupuesto Mensual</option>
         </select>}
 
         <label className="checkbox-row">
