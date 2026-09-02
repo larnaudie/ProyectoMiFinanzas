@@ -10,7 +10,6 @@ import {
   calcularMontoRealGasto as calcularMontoReal,
   esMontoDistintoDeCero as montoDistintoDeCero,
 } from "../../../utils/montosGasto.js";
-import { puedeSumarAlPresupuesto } from "../../../utils/resultadoEconomico.js";
 
 const obtenerId = (valor) => {
   if (!valor) return "";
@@ -53,7 +52,6 @@ const gastoDesdeMovimiento = (movimiento) => {
     categoriaId: "",
     subcategoriaId: "",
     incluirMontoReal: true,
-    sumaAlPresupuesto: false,
     estado: movimiento.estadoImportacion || "pendiente",
     gastoId: obtenerId(movimiento.gastoId),
   };
@@ -80,7 +78,6 @@ const gastoDesdeImportacionPersonal = (item) => {
     subcategoriaId: obtenerId(gasto.subcategoriaId),
     nombreSubcategoria: item.nombreSubcategoria || gasto.subcategoriaId?.nombreSubcategoria || "",
     incluirMontoReal: Boolean(gasto.incluirMontoReal),
-    sumaAlPresupuesto: Boolean(gasto.sumaAlPresupuesto),
     estado: gastoId ? "creado" : gasto.estado || "previsualizado",
     gastoId,
     duplicado: Boolean(item.duplicado || gasto.duplicado),
@@ -90,6 +87,19 @@ const gastoDesdeImportacionPersonal = (item) => {
     ...fila,
     montoReal: calcularMontoReal(fila),
   };
+};
+
+const formatearSaldoBanco = (monto, moneda) => {
+  const simbolo = moneda === "USD" ? "US$" : moneda === "UI" ? "UI" : "$";
+  return `${simbolo} ${new Intl.NumberFormat("es-UY", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(monto) || 0)}`;
+};
+
+const formatearFechaSaldo = (fecha) => {
+  if (!fecha) return "";
+  return new Intl.DateTimeFormat("es-UY", { timeZone: "UTC" }).format(new Date(fecha));
 };
 
 const gastoCompletoParaCrear = (gasto) => {
@@ -109,25 +119,6 @@ const gastoCompletoParaCrear = (gasto) => {
   );
 };
 
-const gastoValidoParaPendienteImportado = (gasto) => {
-  const tieneMontoBancario = montoDistintoDeCero(gasto.montoBancario);
-  const tieneMontoReal = montoDistintoDeCero(gasto.montoReal);
-  const porcentaje = Number(gasto.porcentaje);
-
-  return (
-    gasto.detalle &&
-    gasto.fecha &&
-    (tieneMontoBancario || tieneMontoReal) &&
-    (
-      !tieneMontoBancario
-      || (
-        Number.isFinite(porcentaje)
-        && porcentaje >= 0
-        && porcentaje <= 100
-      )
-    )
-  );
-};
 const obtenerNombresSubcategoriasNuevas = (gastos, subcategorias) => {
   const existentes = new Set(
     subcategorias.map((subcategoria) => normalizarTexto(subcategoria.nombreSubcategoria)),
@@ -201,7 +192,6 @@ function ImportExcelPage() {
     montoReal: "",
     porcentaje: "",
     incluirMontoReal: "",
-    sumaAlPresupuesto: "",
   });
   const [aplicandoBulkBancario, setAplicandoBulkBancario] = useState(false);
   const [creandoSeleccionadosBancario, setCreandoSeleccionadosBancario] = useState(false);
@@ -223,7 +213,6 @@ function ImportExcelPage() {
     montoReal: "",
     porcentaje: "",
     incluirMontoReal: "",
-    sumaAlPresupuesto: "",
   });
   const [aplicandoBulkPersonal, setAplicandoBulkPersonal] = useState(false);
   const [creandoSeleccionadosPersonal, setCreandoSeleccionadosPersonal] = useState(false);
@@ -386,7 +375,6 @@ function ImportExcelPage() {
       montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
-      sumaAlPresupuesto: "",
     });
 
     try {
@@ -479,7 +467,6 @@ function ImportExcelPage() {
     montoReal: Number(gasto.montoReal),
     porcentaje: Number(gasto.porcentaje),
     incluirMontoReal: Boolean(gasto.incluirMontoReal),
-    sumaAlPresupuesto: Boolean(gasto.sumaAlPresupuesto),
     categoriaId: gasto.categoriaId || "",
     subcategoriaId: gasto.subcategoriaId,
   });
@@ -593,9 +580,6 @@ function ImportExcelPage() {
     ) {
       cambios.incluirMontoReal = bulkBancario.incluirMontoReal === "true";
     }
-    if (bulkBancario.sumaAlPresupuesto !== "") {
-      cambios.sumaAlPresupuesto = bulkBancario.sumaAlPresupuesto === "true";
-    }
 
     if (Object.keys(cambios).length === 0) {
       setMensajeBancario("Elige al menos un campo para aplicar a los seleccionados.");
@@ -628,7 +612,6 @@ function ImportExcelPage() {
       montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
-      sumaAlPresupuesto: "",
     });
     setGastosBancariosSeleccionados([]);
     setAplicandoBulkBancario(false);
@@ -680,8 +663,7 @@ function ImportExcelPage() {
       montoReal: Number(gasto.montoReal),
       porcentaje: Number(gasto.porcentaje),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
-      sumaAlPresupuesto: Boolean(gasto.sumaAlPresupuesto),
-      cambiarEstado: false,
+      cambiarEstado: true,
     };
 
     if (gasto.categoriaId) payload.categoriaId = gasto.categoriaId;
@@ -691,9 +673,9 @@ function ImportExcelPage() {
   };
 
   const crearGastoBancario = (gasto) => {
-    if (!gastoValidoParaPendienteImportado(gasto)) {
+    if (!gastoCompletoParaCrear(gasto)) {
       setMensajeBancario(
-        "Para crear el gasto pendiente completa detalle, fecha y monto bancario o real distinto de 0. Si hay monto bancario, el porcentaje debe estar entre 0 y 100.",
+        "Para crear el gasto completa detalle, fecha, monto bancario o real, porcentaje y subcategoría.",
       );
       return;
     }
@@ -709,7 +691,7 @@ function ImportExcelPage() {
               : item,
           ),
         );
-        setMensajeBancario("Gasto pendiente creado desde el movimiento bancario.");
+        setMensajeBancario("Gasto creado correctamente desde el movimiento bancario.");
         setGastosBancariosSeleccionados((actuales) => actuales.filter((id) => id !== gasto._id));
       })
       .catch((apiError) => {
@@ -730,12 +712,12 @@ function ImportExcelPage() {
     }
 
     const movimientosInvalidos = movimientosSeleccionados.filter(
-      (gasto) => !gastoValidoParaPendienteImportado(gasto),
+      (gasto) => !gastoCompletoParaCrear(gasto),
     );
 
     if (movimientosInvalidos.length > 0) {
       setMensajeBancario(
-        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario o real y porcentaje.`,
+        `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario o real, porcentaje y subcategoría.`,
       );
       return;
     }
@@ -801,7 +783,7 @@ function ImportExcelPage() {
 
       setMensajeBancario(
         errores.length === 0
-          ? `${creados.length} gasto${creados.length === 1 ? "" : "s"} pendiente${creados.length === 1 ? "" : "s"} creado${creados.length === 1 ? "" : "s"}.`
+          ? `${creados.length} gasto${creados.length === 1 ? "" : "s"} creado${creados.length === 1 ? "" : "s"} correctamente.`
           : `${creados.length} creado${creados.length === 1 ? "" : "s"}; ${errores.length} no se pudo${errores.length === 1 ? "" : "ieron"} crear. ${detalleErrores}`,
       );
     } catch (apiError) {
@@ -998,9 +980,6 @@ function ImportExcelPage() {
     ) {
       payload.incluirMontoReal = bulkPersonal.incluirMontoReal === "true";
     }
-    if (bulkPersonal.sumaAlPresupuesto !== "") {
-      payload.sumaAlPresupuesto = bulkPersonal.sumaAlPresupuesto === "true";
-    }
 
     if (Object.keys(payload).length === 0) {
       setMensajePersonal("Elige al menos un campo para aplicar a los seleccionados.");
@@ -1035,7 +1014,6 @@ function ImportExcelPage() {
       montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
-      sumaAlPresupuesto: "",
     });
     setGastosPersonalesSeleccionados([]);
     setAplicandoBulkPersonal(false);
@@ -1144,7 +1122,6 @@ function ImportExcelPage() {
       montoReal: "",
       porcentaje: "",
       incluirMontoReal: "",
-      sumaAlPresupuesto: "",
     });
   };
 
@@ -1304,7 +1281,7 @@ function ImportExcelPage() {
             <p>
               Formato oficial del banco o tabla con Fecha, Detalle y Monto. En
               la tabla simple, Monto se importa como monto real directo.
-              Detecta duplicados y deja movimientos para revisar.
+              Detecta duplicados, conserva el saldo del banco y deja movimientos para revisar.
             </p>
           </div>
           <label>
@@ -1366,7 +1343,7 @@ function ImportExcelPage() {
         </form>
       </section>
 
-      {resultado && gastosBancarios.length > 0 && (
+      {resultado && (
         <section className="table-shell import-result-panel">
           <h2>Resultado de la importacion bancaria</h2>
           <div className="import-result-grid">
@@ -1378,6 +1355,29 @@ function ImportExcelPage() {
               <span>Procesados</span>
               <strong>{resultado.totalProcesados}</strong>
             </article>
+            {resultado.saldosGuardados > 0 && (
+              <article>
+                <span>Saldos históricos guardados</span>
+                <strong>{resultado.saldosGuardados}</strong>
+              </article>
+            )}
+            {resultado.saldoDetectado && (
+              <article>
+                <span>Saldo bancario detectado</span>
+                <strong>
+                  {formatearSaldoBanco(
+                    resultado.saldoDetectado.monto,
+                    resultado.saldoDetectado.moneda,
+                  )}
+                </strong>
+                <small>
+                  Al {formatearFechaSaldo(resultado.saldoDetectado.fecha)}. {" "}
+                  {resultado.saldoDetectado.actualizado
+                    ? "Saldo de la cuenta actualizado."
+                    : "Se conservó un saldo más reciente de la cuenta."}
+                </small>
+              </article>
+            )}
           </div>
         </section>
       )}
@@ -1752,19 +1752,6 @@ function TablaGastosPersonales({
             </select>
           </label>
 
-          <label>
-            ¿Suma en Presupuesto Mensual?
-            <select
-              className="table-select"
-              value={bulk.sumaAlPresupuesto}
-              onChange={(event) => onBulkChange("sumaAlPresupuesto", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              <option value="true">Sí suma</option>
-              <option value="false">No suma</option>
-            </select>
-          </label>
-
           <button
             type="button"
             className="selection-action"
@@ -1836,7 +1823,6 @@ function TablaGastosPersonales({
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>¿Cuenta en Gasto Real?</th>
-              <th>¿Suma en Presupuesto Mensual?</th>
               <th>Accion</th>
             </tr>
           </thead>
@@ -1942,23 +1928,6 @@ function TablaGastosPersonales({
                     checked={Boolean(gasto.incluirMontoReal)}
                     disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(gasto.sumaAlPresupuesto)}
-                    disabled={Boolean(gasto.gastoId) || !puedeSumarAlPresupuesto(gasto)}
-                    title={
-                      puedeSumarAlPresupuesto(gasto)
-                        ? "Aumenta el dinero disponible para gastar en el mes"
-                        : "Sólo los movimientos positivos pueden sumar al Presupuesto Mensual"
-                    }
-                    onChange={(event) => onChange(
-                      gasto._id,
-                      "sumaAlPresupuesto",
-                      event.target.checked,
-                    )}
                   />
                 </td>
                 <td>
@@ -2098,19 +2067,6 @@ function TablaGastosBancarios({
             </select>
           </label>
 
-          <label>
-            ¿Suma en Presupuesto Mensual?
-            <select
-              className="table-select"
-              value={bulk.sumaAlPresupuesto}
-              onChange={(event) => onBulkChange("sumaAlPresupuesto", event.target.value)}
-            >
-              <option value="">Sin cambios</option>
-              <option value="true">Sí suma</option>
-              <option value="false">No suma</option>
-            </select>
-          </label>
-
           <button
             type="button"
             className="selection-action"
@@ -2180,7 +2136,6 @@ function TablaGastosBancarios({
               <th>Categoria</th>
               <th>Subcategoria</th>
               <th>¿Cuenta en Gasto Real?</th>
-              <th>¿Suma en Presupuesto Mensual?</th>
               <th>Accion</th>
             </tr>
           </thead>
@@ -2295,23 +2250,6 @@ function TablaGastosBancarios({
                     checked={Boolean(gasto.incluirMontoReal)}
                     disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(gasto.sumaAlPresupuesto)}
-                    disabled={Boolean(gasto.gastoId) || !puedeSumarAlPresupuesto(gasto)}
-                    title={
-                      puedeSumarAlPresupuesto(gasto)
-                        ? "Aumenta el dinero disponible para gastar en el mes"
-                        : "Sólo los movimientos positivos pueden sumar al Presupuesto Mensual"
-                    }
-                    onChange={(event) => onChange(
-                      gasto._id,
-                      "sumaAlPresupuesto",
-                      event.target.checked,
-                    )}
                   />
                 </td>
                 <td>

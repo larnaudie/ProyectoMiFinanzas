@@ -48,6 +48,26 @@ test("parsea el formato bancario por encabezados y conserva el monto", () => {
   assert.equal(movimientos[0].montoBancario, -8225.14);
 });
 
+test("conserva el saldo por movimiento y detecta el cierre más reciente", () => {
+  const buffer = crearBuffer([
+    ["Cuenta", "", "Moneda"],
+    ["Ca Total Convenio, 001203248993", "", "UYU"],
+    ["Fecha", "Referencia", "Tipo Movimiento", "Descripción", "Débito", "Crédito", "Saldo"],
+    ["31/07/2026", "2", "COMPRA DOS", "", -100, "", 900],
+    ["31/07/2026", "1", "COMPRA UNO", "", -50, "", 1000],
+    ["30/07/2026", "0", "DEPÓSITO", "", "", 500, 1050],
+  ]);
+
+  const { movimientos, saldoDetectado } = parsearExcelBancario(buffer);
+
+  assert.equal(movimientos[0].saldoBanco, 900);
+  assert.equal(movimientos[1].saldoBanco, 1000);
+  assert.equal(saldoDetectado.monto, 900);
+  assert.equal(saldoDetectado.fecha.toISOString().slice(0, 10), "2026-07-31");
+  assert.equal(saldoDetectado.moneda, "UYU");
+  assert.equal(saldoDetectado.cuentaBanco, "Ca Total Convenio, 001203248993");
+});
+
 test("conserva movimientos bancarios válidos aunque no tengan referencia", () => {
   const buffer = crearBuffer([
     ["Moneda"],

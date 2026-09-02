@@ -73,6 +73,9 @@ function SearchableSubcategorySelect({
   const opcionSeleccionada = opcionesOrdenadas.find(
     (opcion) => String(getOptionValue(opcion)) === String(value || ""),
   );
+  const etiquetaSeleccionada = opcionSeleccionada
+    ? getOptionLabel(opcionSeleccionada)
+    : placeholder;
 
   const actualizarPosicion = useCallback(() => {
     const trigger = triggerRef.current;
@@ -241,6 +244,7 @@ function SearchableSubcategorySelect({
         aria-haspopup="listbox"
         aria-controls={abierto ? menuId : undefined}
         aria-expanded={abierto}
+        title={etiquetaSeleccionada}
         onClick={alternarMenu}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && !abierto) {
@@ -249,7 +253,7 @@ function SearchableSubcategorySelect({
           }
         }}
       >
-        <span>{opcionSeleccionada ? getOptionLabel(opcionSeleccionada) : placeholder}</span>
+        <span>{etiquetaSeleccionada}</span>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m5 7.5 5 5 5-5" />
         </svg>

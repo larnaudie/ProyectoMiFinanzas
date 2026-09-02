@@ -1,7 +1,7 @@
 ﻿import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { loginStart, loginSuccess, loginError } from "../../features/slices/authSlice.js";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../services/api.js";
 
 function LoginPage() {
@@ -9,6 +9,8 @@ function LoginPage() {
   const { loading, error } = useSelector((state) => state.auth);
   const [form, setForm] = useState({ username: "", password: "" });
   const navigate = useNavigate();
+  const location = useLocation();
+  const registerSuccess = location.state?.registerSuccess;
 
   const handleChange = (event) => {
     setForm({ ...form, [event.target.name]: event.target.value });
@@ -65,6 +67,7 @@ function LoginPage() {
             autoComplete="current-password"
           />
         </label>
+        {registerSuccess && <p className="login-success" role="status">{registerSuccess}</p>}
         {error && <p className="error-text">{error}</p>}
         <button type="submit" disabled={loading}>
           {loading ? "Ingresando..." : "Ingresar"}

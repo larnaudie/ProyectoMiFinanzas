@@ -8,7 +8,8 @@ const bancoSchema = new mongoose.Schema({
     },
     nombreBanco: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     cuentas: [{
         type: mongoose.Schema.Types.ObjectId,

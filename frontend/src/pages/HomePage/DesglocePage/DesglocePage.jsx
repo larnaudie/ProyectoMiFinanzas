@@ -45,10 +45,7 @@ import {
   esPorcentajeGastoValido,
   resumirValoresMonetarios,
 } from "../../../utils/montosGasto.js";
-import {
-  puedeSumarAlPresupuesto,
-  resumirPresupuestoYGastoReal,
-} from "../../../utils/resultadoEconomico.js";
+import { resumirGastoReal } from "../../../utils/resultadoEconomico.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -77,7 +74,6 @@ const crearGastoInicial = () => ({
   montoReal: "",
   porcentaje: 100,
   incluirMontoReal: true,
-  sumaAlPresupuesto: false,
   categoriaId: "",
   subcategoriaId: "",
 });
@@ -186,7 +182,6 @@ function DesglocePage() {
     montoBancario: "",
     montoReal: "",
     incluirMontoReal: "",
-    sumaAlPresupuesto: "",
     cambiarEstado: false,
   });
 
@@ -614,7 +609,6 @@ function DesglocePage() {
       montoReal: Number(gasto.montoReal || 0),
       porcentaje: Number(gasto.porcentaje || 100),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
-      sumaAlPresupuesto: Boolean(gasto.sumaAlPresupuesto),
       categoriaId: obtenerId(gasto.categoriaId),
       subcategoriaId: obtenerId(gasto.subcategoriaId),
       cambiarEstado: false,
@@ -1027,7 +1021,7 @@ function DesglocePage() {
             "montoBancario",
             moneda,
           ),
-          economico: resumirPresupuestoYGastoReal(
+          economico: resumirGastoReal(
             gastosVisibles.filter(
               (gasto) => obtenerMonedaVisible(gasto) === moneda,
             ),
@@ -1036,53 +1030,27 @@ function DesglocePage() {
       ]),
     );
 
-    const renderResultadoEconomico = (resumen, moneda) => {
-      const hayDeficit = resumen.resultado < 0;
-
-      return (
+    const renderResultadoEconomico = (resumen, moneda) => (
         <article className="totals-breakdown-card" key={`economico-${moneda}`}>
           <span className="totals-breakdown-title">
-            Resultado económico real {moneda}
+            Gasto real incluido {moneda}
           </span>
           <div className="totals-breakdown-grid">
-            <div className="totals-breakdown-item">
-              <span>
-                {filtros.fechaModo === "mes" && filtros.fechaMes
-                  ? "Presupuesto mensual"
-                  : "Presupuesto del período"}
-              </span>
-              <strong className="totals-value-positive">
-                {simboloMoneda(moneda)} {formatearMonto(resumen.presupuesto)}
-              </strong>
-            </div>
             <div className="totals-breakdown-item">
               <span>Gasto real</span>
               <strong className="totals-value-negative">
                 {simboloMoneda(moneda)} {formatearMonto(resumen.gastoReal)}
               </strong>
             </div>
-            <div className="totals-breakdown-item">
-              <span>{hayDeficit ? "Déficit" : "Ahorro"}</span>
-              <strong
-                className={
-                  hayDeficit
-                    ? "totals-value-negative"
-                    : "totals-value-positive"
-                }
-              >
-                {simboloMoneda(moneda)} {formatearMonto(resumen.resultado)}
-              </strong>
-            </div>
           </div>
           {moneda === "UI" && (
             <EquivalenciaMontoUi
-              monto={resumen.resultado}
+              monto={resumen.gastoReal}
               cotizacion={cotizacionUi.cotizacion}
             />
           )}
         </article>
-      );
-    };
+    );
 
     const renderDesgloseTotal = (titulo, resumen, moneda, clave) => (
       <article className="totals-breakdown-card" key={`${clave}-${moneda}`}>
@@ -1193,10 +1161,33 @@ function DesglocePage() {
         <p className="empty-state">No hay gastos para mostrar.</p>
       ) : (
         <div className="table-shell expenses-table-shell">
-        <table>
+        <div className="mobile-expense-table-toolbar">
+          <label>
+            <input
+              type="checkbox"
+              checked={
+                gastosVisibles.length > 0 &&
+                gastosVisibles.every((gasto) =>
+                  seleccionados.includes(gasto._id),
+                )
+              }
+              onChange={() => cambiarSeleccionTodos(gastosVisibles)}
+            />
+            Seleccionar visibles
+          </label>
+          <span>{gastosVisibles.length} movimientos</span>
+        </div>
+        <table
+          className={[
+            "expense-card-table",
+            esCuentaCredito ? "is-credit-table" : "is-debit-table",
+            resumenId ? "has-summary-table" : "",
+            mostrarColumnaCrear ? "has-create-column" : "",
+          ].filter(Boolean).join(" ")}
+        >
           <thead>
             <tr>
-              <th>
+              <th className="expense-card-select-cell">
                 <input
                   type="checkbox"
                   checked={
@@ -1210,38 +1201,45 @@ function DesglocePage() {
               </th>
               <SortableTableHeader
                 label="Fecha"
+                className="expense-card-date-cell"
                 sortKey="fecha"
                 sortConfig={ordenTabla.sortConfig}
                 onSort={ordenTabla.requestSort}
               />
               <SortableTableHeader
                 label="Detalle"
+                className="expense-card-detail-cell"
                 sortKey="detalle"
                 sortConfig={ordenTabla.sortConfig}
                 onSort={ordenTabla.requestSort}
               />
-              {resumenId && <th>Tipo</th>}
+              {resumenId && <th className="expense-card-type-cell">Tipo</th>}
               <SortableTableHeader
                 label="Bancario"
+                className="expense-card-bank-cell"
                 sortKey="montoBancario"
                 sortConfig={ordenTabla.sortConfig}
                 onSort={ordenTabla.requestSort}
               />
-              {!esCuentaCredito && <th>%</th>}
+              {!esCuentaCredito && <th className="expense-card-percent-cell">%</th>}
               {!esCuentaCredito && (
                 <SortableTableHeader
                   label="Real"
+                  className="expense-card-real-cell"
                   sortKey="montoReal"
                   sortConfig={ordenTabla.sortConfig}
                   onSort={ordenTabla.requestSort}
                 />
               )}
-              <th>Categoria</th>
-              <th>Subcategoria</th>
-              {!esCuentaCredito && <th>¿Cuenta en Gasto Real?</th>}
-              {!esCuentaCredito && <th>¿Suma en Presupuesto Mensual?</th>}
-              <th>{resumenId ? "Vincular gasto" : "Transferencia interna"}</th>
-              {mostrarColumnaCrear && <th>Crear</th>}
+              <th className="expense-card-category-cell">Categoria</th>
+              <th className="expense-card-subcategory-cell">Subcategoria</th>
+              {!esCuentaCredito && (
+                <th className="expense-card-real-flag-cell">¿Cuenta en Gasto Real?</th>
+              )}
+              <th className="expense-card-link-cell">
+                {resumenId ? "Vincular gasto" : "Transferencia interna"}
+              </th>
+              {mostrarColumnaCrear && <th className="expense-card-create-cell">Crear</th>}
             </tr>
           </thead>
           <tbody>
@@ -1261,12 +1259,6 @@ function DesglocePage() {
               );
               const tieneMontoBancario =
                 esMontoBancarioValido(montoBancarioActual);
-              const montoRealActual = obtenerValorVisible(gasto, "montoReal");
-              const puedeAportarPresupuesto = puedeSumarAlPresupuesto({
-                ...gasto,
-                montoBancario: montoBancarioActual,
-                montoReal: montoRealActual,
-              });
               const referenciaDirectaId = obtenerId(gasto.origen?.referenciaId);
               const referenciaDirecta = referenciaDirectaId
                 ? gastos.find((item) => item._id === referenciaDirectaId)
@@ -1280,15 +1272,18 @@ function DesglocePage() {
               const referenciaCuentaId = obtenerId(referencia?.cuentaId);
 
               return (
-                <tr key={gasto._id}>
-                  <td>
+                <tr
+                  className={`expense-card-row${esCuentaCredito ? " is-credit" : ""}`}
+                  key={gasto._id}
+                >
+                  <td className="expense-card-select-cell">
                     <input
                       type="checkbox"
                       checked={estaSeleccionado(gasto._id)}
                       onChange={() => cambiarSeleccion(gasto._id)}
                     />
                   </td>
-                  <td>
+                  <td className="expense-card-date-cell" data-label="Fecha">
                     <input
                       className="table-input"
                       type="date"
@@ -1298,7 +1293,10 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td className="detail-name-cell">
+                  <td
+                    className="detail-name-cell expense-card-detail-cell"
+                    data-label="Detalle"
+                  >
                     <div className="detail-name-wrap">
                       <span
                         className="detail-name-tooltip"
@@ -1362,7 +1360,7 @@ function DesglocePage() {
                     </div>
                   </td>
                   {resumenId && (
-                    <td>
+                    <td className="expense-card-type-cell" data-label="Tipo">
                       <select
                         className="table-select"
                         value={tipoMovimientoActual || "compra"}
@@ -1383,7 +1381,7 @@ function DesglocePage() {
                       </select>
                     </td>
                   )}
-                  <td>
+                  <td className="expense-card-bank-cell" data-label="Bancario">
                     <input
                       className="table-input table-input-number"
                       type="number"
@@ -1399,7 +1397,7 @@ function DesglocePage() {
                     />
                   </td>
                   {!esCuentaCredito && (
-                    <td>
+                    <td className="expense-card-percent-cell" data-label="Porcentaje">
                       <input
                         className="table-input table-input-small"
                         type="number"
@@ -1418,7 +1416,7 @@ function DesglocePage() {
                     </td>
                   )}
                   {!esCuentaCredito && (
-                    <td>
+                    <td className="expense-card-real-cell" data-label="Real">
                       <input
                         className="table-input table-input-number"
                         type="number"
@@ -1440,7 +1438,7 @@ function DesglocePage() {
                       />
                     </td>
                   )}
-                  <td>
+                  <td className="expense-card-category-cell" data-label="Categoría">
                     <SearchableCategorySelect
                       categorias={categorias}
                       value={categoriaActual}
@@ -1455,7 +1453,7 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  <td>
+                  <td className="expense-card-subcategory-cell" data-label="Subcategoría">
                     <SearchableSubcategorySelect
                       subcategorias={subcategorias}
                       value={subcategoriaActual}
@@ -1470,7 +1468,10 @@ function DesglocePage() {
                       }
                     />
                   </td>
-                  {!esCuentaCredito && <td>
+                  {!esCuentaCredito && <td
+                    className="expense-card-flag-cell expense-card-real-flag-cell"
+                    data-label="¿Cuenta en gasto real?"
+                  >
                     <input
                       type="checkbox"
                       checked={Boolean(
@@ -1485,29 +1486,10 @@ function DesglocePage() {
                       }
                     />
                   </td>}
-                  {!esCuentaCredito && <td>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(
-                        obtenerValorVisible(gasto, "sumaAlPresupuesto"),
-                      )}
-                      disabled={!puedeAportarPresupuesto}
-                      title={
-                        puedeAportarPresupuesto
-                          ? "Este ingreso aumenta el dinero disponible para gastar en el mes"
-                          : "Sólo los movimientos positivos pueden sumar al Presupuesto Mensual"
-                      }
-                      onChange={(event) =>
-                        guardarCambioRapido(
-                          gasto,
-                          "sumaAlPresupuesto",
-                          event.target.checked,
-                        )
-                      }
-                    />
-                  </td>}
-
-                  <td className="linked-expense-cell">
+                  <td
+                    className="linked-expense-cell expense-card-link-cell"
+                    data-label={resumenId ? "Gasto vinculado" : "Transferencia interna"}
+                  >
                       {referencia ? (
                         <div className="linked-expense-content">
                           {referenciaCuentaId ? (
@@ -1570,7 +1552,7 @@ function DesglocePage() {
                     </td>
 
                   {mostrarColumnaCrear && (
-                    <td>
+                    <td className="expense-card-create-cell" data-label="Estado">
                       <button
                         type="button"
                         className="row-create-expense-button"
@@ -1643,9 +1625,6 @@ function DesglocePage() {
     ) {
       payload.incluirMontoReal = bulk.incluirMontoReal === "true";
     }
-    if (!esCuentaCredito && bulk.sumaAlPresupuesto !== "") {
-      payload.sumaAlPresupuesto = bulk.sumaAlPresupuesto === "true";
-    }
     if (bulk.cambiarEstado) payload.cambiarEstado = true;
 
     if (Object.keys(payload).length === 0) {
@@ -1684,7 +1663,6 @@ function DesglocePage() {
         montoBancario: "",
         montoReal: "",
         incluirMontoReal: "",
-        sumaAlPresupuesto: "",
         cambiarEstado: false,
       });
 
@@ -1887,22 +1865,6 @@ function DesglocePage() {
                 }
               />
               ¿Cuenta en Gasto Real?
-            </label>
-
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={Boolean(formGasto.sumaAlPresupuesto)}
-                disabled={!puedeSumarAlPresupuesto(formGasto)}
-                onChange={(event) =>
-                  cambiarFormGasto("sumaAlPresupuesto", event.target.checked)
-                }
-              />
-              ¿Suma en Presupuesto Mensual?
-              <small>
-                Indica si este ingreso o transferencia aumenta el dinero
-                disponible para gastar durante el mes.
-              </small>
             </label>
 
             {errorModal && <p className="error-text">{errorModal}</p>}
@@ -2317,18 +2279,6 @@ function DesglocePage() {
           <option value="">Gasto real sin cambios</option>
           <option value="true">Sí cuenta en Gasto Real</option>
           <option value="false">No cuenta en Gasto Real</option>
-        </select>}
-
-        {!esCuentaCredito && <select
-          value={bulk.sumaAlPresupuesto}
-          aria-label="Cambiar si los seleccionados suman en el Presupuesto Mensual"
-          onChange={(event) =>
-            cambiarBulk("sumaAlPresupuesto", event.target.value)
-          }
-        >
-          <option value="">Presupuesto mensual sin cambios</option>
-          <option value="true">Sí suma al Presupuesto Mensual</option>
-          <option value="false">No suma al Presupuesto Mensual</option>
         </select>}
 
         <label className="checkbox-row">

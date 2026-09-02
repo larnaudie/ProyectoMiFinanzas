@@ -2,9 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { agregarGasto, actualizarGasto } from "../../features/slices/gastosSlice.js";
-import { guardarCuentas, obtenerCuentas, seleccionarCuenta } from "../../features/slices/cuentasSlice.js";
+import {
+  actualizarCuenta,
+  guardarCuentas,
+  obtenerCuentas,
+  seleccionarCuenta,
+} from "../../features/slices/cuentasSlice.js";
 import { api } from "../../services/api.js";
-import DashboardPage from "./DashboardPage/DashboardPage.jsx";
+import { ResumenGeneralFinanciero } from "../../components/ResumenGeneralFinanciero.jsx";
+import { formatearMontoMoneda } from "../../utils/monedas.js";
 
 const fechaDeHoy = () => new Date().toISOString().slice(0, 10);
 
@@ -27,6 +33,7 @@ const obtenerRutaCuenta = (cuenta) => `/cuentas/${cuenta._id}/gastos`;
 
 function QuickExpensePanel({
   gastoRapido,
+  facturaRapida,
   cuentas,
   creandoRapido,
   errorRapido,
@@ -80,15 +87,23 @@ function QuickExpensePanel({
           />
         </label>
 
-        <label className="quick-file-field">
-          Factura
+        <div className="quick-file-field">
+          <label htmlFor="quick-expense-file">Factura</label>
+          <label className="quick-file-picker" htmlFor="quick-expense-file">
+            <span>Elegir archivo</span>
+            <small title={facturaRapida?.name || "Sin archivo seleccionado"}>
+              {facturaRapida?.name || "Sin archivo seleccionado"}
+            </small>
+          </label>
           <input
+            id="quick-expense-file"
+            className="quick-file-native"
             type="file"
             accept="image/*,.pdf"
             capture="environment"
             onChange={(event) => onFileChange(event.target.files?.[0] || null)}
           />
-        </label>
+        </div>
 
         {errorRapido && (
           <p className="error-text quick-expense-error">{errorRapido}</p>
@@ -308,6 +323,7 @@ function HomePage() {
 
       <QuickExpensePanel
         gastoRapido={gastoRapido}
+        facturaRapida={facturaRapida}
         cuentas={cuentasParaGastoRapido}
         creandoRapido={creandoRapido}
         errorRapido={errorRapido}
@@ -368,6 +384,16 @@ function HomePage() {
                       : "UYU + USD")
                     : cuenta.moneda || "UYU"}
                 </span>
+                {cuenta.tipoCuenta !== "credito" && (
+                  <span className="account-card-current-balance">
+                    <small>Saldo actual</small>
+                    <strong>
+                      {cuenta.saldoActual === null || cuenta.saldoActual === undefined
+                        ? "Sin informar"
+                        : formatearMontoMoneda(cuenta.saldoActual, cuenta.moneda)}
+                    </strong>
+                  </span>
+                )}
               </Link>
               <div className="account-card-actions">
                 <Link
@@ -398,8 +424,11 @@ function HomePage() {
         </button>
       </div>
 
-      <div id="dashboard-general" className="home-dashboard-section">
-        <DashboardPage embedded />
+      <div className="home-dashboard-section">
+        <ResumenGeneralFinanciero
+          cuentas={cuentas}
+          onCuentaActualizada={(cuenta) => dispatch(actualizarCuenta(cuenta))}
+        />
       </div>
 
     </section>

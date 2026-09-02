@@ -10,6 +10,7 @@
     "migrate:credit-impact": "node scripts/normalizarImpactoTarjetas.js",
     "migrate:economic-impact": "node scripts/normalizarImpactoEconomico.js",
     "audit:economic-result": "node scripts/auditarResultadoEconomico.js",
+    "migrate:excel-balances": "node scripts/actualizarSaldosDesdeExcels.js",
     "mongo": "mongod",
     "mongosh": "mongosh"
   },

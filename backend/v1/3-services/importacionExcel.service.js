@@ -1,4 +1,5 @@
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
+import SaldoCuenta from "../0.1-models/saldoCuenta.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
 import Cuenta from "../0.1-models/cuenta.model.js";
 import ResumenTarjeta from "../0.1-models/resumenTarjeta.model.js";
@@ -25,22 +26,76 @@ import {
   extraerPlanCuotasTarjeta,
 } from "../utils/planesCuotasTarjeta.js";
 
+export const actualizarSaldoCuentaDesdeExcel = async ({
+  cuenta,
+  saldoDetectado,
+  archivoNombre,
+}) => {
+  if (!saldoDetectado) return null;
+
+  const respuesta = {
+    ...saldoDetectado,
+    actualizado: false,
+    saldoActual: cuenta.saldoActual ?? null,
+    motivo: null,
+  };
+
+  if (cuenta.tipoCuenta !== "debito") {
+    return { ...respuesta, motivo: "cuenta_credito" };
+  }
+
+  const monedaSaldo = normalizarMoneda(saldoDetectado.moneda);
+  const monedaCuenta = normalizarMoneda(cuenta.moneda);
+  if (monedaSaldo !== monedaCuenta) {
+    return { ...respuesta, motivo: "moneda_no_coincide" };
+  }
+
+  const fechaSaldo = new Date(saldoDetectado.fecha);
+  const fechaReferenciaActual = cuenta.saldoInformadoAl
+    || (cuenta.saldoActual !== null && cuenta.saldoActual !== undefined
+      ? cuenta.saldoActualizadoEn
+      : null);
+
+  if (
+    fechaReferenciaActual
+    && fechaSaldo < new Date(fechaReferenciaActual)
+  ) {
+    return { ...respuesta, motivo: "saldo_mas_antiguo" };
+  }
+
+  cuenta.saldoActual = Number(saldoDetectado.monto);
+  cuenta.saldoActualizadoEn = new Date();
+  cuenta.saldoInformadoAl = fechaSaldo;
+  cuenta.saldoOrigen = "excel";
+  cuenta.saldoArchivoNombre = archivoNombre || null;
+  await cuenta.save();
+
+  return {
+    ...respuesta,
+    actualizado: true,
+    saldoActual: cuenta.saldoActual,
+  };
+};
+
 export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   if (!file) {
     throw new Error("No se recibio ningun archivo Excel");
   }
 
   const cuenta = await Cuenta.findOne({ _id: cuentaId, usuarioId })
-    .select("_id moneda tipoCuenta monedas");
+    .select(
+      "_id moneda tipoCuenta monedas saldoActual saldoActualizadoEn saldoInformadoAl saldoOrigen saldoArchivoNombre",
+    );
   if (!cuenta) {
     const error = new Error("Cuenta no encontrada");
     error.status = 404;
     throw error;
   }
 
-  const { movimientos } = parsearExcelBancario(file.buffer);
+  const { movimientos, saldoDetectado } = parsearExcelBancario(file.buffer);
 
   const movimientosProcesados = [];
+  const operacionesSaldos = [];
 
   for (const movimiento of movimientos) {
     const detalleNormalizado = normalizarTexto(movimiento.detalleOriginal);
@@ -54,6 +109,32 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       montoReal: movimiento.montoReal,
       detalleNormalizado,
     });
+
+    if (movimiento.saldoBanco !== null && movimiento.saldoBanco !== undefined) {
+      operacionesSaldos.push({
+        updateOne: {
+          filter: { usuarioId, cuentaId, hashBanco },
+          update: {
+            $set: {
+              fecha: movimiento.fechaBanco,
+              monto: movimiento.saldoBanco,
+              moneda: obtenerMonedaMovimiento(cuenta, movimiento.moneda),
+              referenciaBanco: movimiento.referenciaBanco || null,
+              detalleOriginal: movimiento.detalleOriginal,
+              filaExcel: movimiento.filaExcel || null,
+              archivoNombre: file.originalname,
+              cuentaBanco: saldoDetectado?.cuentaBanco || null,
+            },
+            $setOnInsert: {
+              usuarioId,
+              cuentaId,
+              hashBanco,
+            },
+          },
+          upsert: true,
+        },
+      });
+    }
 
     let movimientoExistente = await MovimientoImportado.findOne({
       usuarioId,
@@ -84,6 +165,7 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       ) {
         movimientoAnterior.montoBancario = 0;
         movimientoAnterior.montoReal = movimiento.montoReal;
+        movimientoAnterior.saldoBanco = movimiento.saldoBanco ?? null;
         movimientoAnterior.tipoMonto = "real";
         movimientoAnterior.hashBanco = hashBanco;
         movimientoAnterior.archivoNombre = file.originalname;
@@ -96,6 +178,9 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
 
     if (movimientoExistente) {
       await liberarMovimientoSiGastoFueEliminado(movimientoExistente);
+      movimientoExistente.saldoBanco = movimiento.saldoBanco ?? null;
+      movimientoExistente.archivoNombre = file.originalname;
+      await movimientoExistente.save();
     }
 
     const posiblesDuplicados = await buscarPosiblesDuplicados({
@@ -126,6 +211,7 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
       detalleNormalizado,
       montoBancario: movimiento.montoBancario,
       montoReal: movimiento.montoReal || 0,
+      saldoBanco: movimiento.saldoBanco ?? null,
       tipoMonto: movimiento.tipoMonto || "bancario",
       moneda: obtenerMonedaMovimiento(cuenta, movimiento.moneda),
       hashBanco,
@@ -139,10 +225,24 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
     });
   }
 
+  const resultadoSaldos = operacionesSaldos.length > 0
+    ? await SaldoCuenta.bulkWrite(operacionesSaldos, { ordered: false })
+    : { matchedCount: 0, upsertedCount: 0 };
+
+  const saldoCuenta = await actualizarSaldoCuentaDesdeExcel({
+    cuenta,
+    saldoDetectado,
+    archivoNombre: file.originalname,
+  });
+
   return {
     totalLeidos: movimientos.length,
     totalProcesados: movimientosProcesados.length,
     movimientos: movimientosProcesados,
+    saldoDetectado: saldoCuenta,
+    saldosGuardados:
+      (resultadoSaldos.matchedCount || 0)
+      + (resultadoSaldos.upsertedCount || 0),
   };
 };
 
@@ -710,7 +810,7 @@ const buscarPosiblesDuplicados = async ({
   });
 };
 
-const crearHashBanco = ({
+export const crearHashBanco = ({
   usuarioId,
   cuentaId,
   referenciaBanco,
@@ -919,7 +1019,9 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
         sumaAlPresupuesto: data.sumaAlPresupuesto,
         categoriaId: data.categoriaId,
         subcategoriaId: data.subcategoriaId,
-        cambiarEstado: data.cambiarEstado,
+        // Confirmar un movimiento importado siempre crea el gasto definitivo.
+        // El MovimientoImportado ya funciona como la etapa previa de revisión.
+        cambiarEstado: true,
         origen: {
           tipo: "excel",
           referenciaId: movimiento._id,

@@ -140,6 +140,52 @@ const valorDebajoDeEtiqueta = (filas, etiqueta) => {
   return null;
 };
 
+const obtenerSaldoDetectado = ({
+  filas,
+  filaEncabezadosIndex,
+  fechaIndex,
+  saldoIndex,
+  moneda,
+}) => {
+  if (saldoIndex < 0) return null;
+
+  const observaciones = filas
+    .slice(filaEncabezadosIndex + 1)
+    .map((fila, indice) => ({
+      fecha: parsearFechaFlexible(fila[fechaIndex]),
+      monto: parsearMontoFlexible(fila[saldoIndex]),
+      fila: filaEncabezadosIndex + indice + 2,
+    }))
+    .filter(
+      (observacion) =>
+        observacion.fecha
+        && observacion.monto !== null,
+    );
+
+  const masReciente = observaciones.reduce((seleccionada, observacion) => {
+    if (!seleccionada || observacion.fecha > seleccionada.fecha) {
+      return observacion;
+    }
+    if (
+      observacion.fecha.getTime() === seleccionada.fecha.getTime()
+      && observacion.fila < seleccionada.fila
+    ) {
+      return observacion;
+    }
+    return seleccionada;
+  }, null);
+
+  if (!masReciente) return null;
+
+  return {
+    monto: redondearMonto(masReciente.monto),
+    fecha: masReciente.fecha,
+    fila: masReciente.fila,
+    moneda: normalizarMoneda(moneda),
+    cuentaBanco: String(valorDebajoDeEtiqueta(filas, "cuenta") || "").trim(),
+  };
+};
+
 const extraerParMonedas = (filas, etiqueta) => {
   const filaIndex = filas.findIndex((fila) =>
     fila.some((celda) => normalizarTexto(celda) === etiqueta),
@@ -312,24 +358,32 @@ export const parsearExcelBancario = (buffer) => {
     const fechaIndex = buscarIndice(encabezados, ["fecha"]);
     const detalleIndex = buscarIndice(encabezados, ["detalle"]);
     const montoIndex = buscarIndice(encabezados, ["monto"]);
+    const saldoIndex = buscarIndice(encabezados, ["saldo"]);
     const moneda = String(
       valorDebajoDeEtiqueta(filas, "moneda") || "UYU",
     ).trim().toUpperCase();
 
     const movimientos = filas
       .slice(filaEncabezadosSimpleIndex + 1)
-      .map((fila) => {
+      .map((fila, indice) => {
         const montoParseado = parsearMontoFlexible(fila[montoIndex]);
         const montoReal = montoParseado === null
           ? null
           : redondearMonto(montoParseado);
 
         return {
+          filaExcel: filaEncabezadosSimpleIndex + indice + 2,
           fechaBanco: parsearFechaFlexible(fila[fechaIndex]),
           referenciaBanco: "",
           detalleOriginal: String(fila[detalleIndex] || "").trim(),
           montoBancario: 0,
           montoReal,
+          saldoBanco: saldoIndex >= 0
+            ? (() => {
+              const saldo = parsearMontoFlexible(fila[saldoIndex]);
+              return saldo === null ? null : redondearMonto(saldo);
+            })()
+            : null,
           tipoMonto: "real",
           moneda: normalizarMoneda(moneda),
         };
@@ -342,7 +396,15 @@ export const parsearExcelBancario = (buffer) => {
           movimiento.montoReal !== 0,
       );
 
-    return { nombreHoja, movimientos };
+    const saldoDetectado = obtenerSaldoDetectado({
+      filas,
+      filaEncabezadosIndex: filaEncabezadosSimpleIndex,
+      fechaIndex,
+      saldoIndex,
+      moneda,
+    });
+
+    return { nombreHoja, movimientos, saldoDetectado };
   }
 
   const filaEncabezadosIndex = filaEncabezadosOficialIndex;
@@ -353,11 +415,12 @@ export const parsearExcelBancario = (buffer) => {
   const descripcionIndex = buscarIndice(encabezados, ["descripcion"]);
   const debitoIndex = buscarIndice(encabezados, ["debito"]);
   const creditoIndex = buscarIndice(encabezados, ["credito"]);
+  const saldoIndex = buscarIndice(encabezados, ["saldo"]);
   const moneda = String(valorDebajoDeEtiqueta(filas, "moneda") || "UYU").trim().toUpperCase();
 
   const movimientos = filas
     .slice(filaEncabezadosIndex + 1)
-    .map((fila) => {
+    .map((fila, indice) => {
       const debito = redondearMonto(
         parsearMontoFlexible(fila[debitoIndex]) || 0,
       );
@@ -367,11 +430,18 @@ export const parsearExcelBancario = (buffer) => {
       const detalleTipo = String(fila[tipoIndex] || "").trim();
       const descripcion = descripcionIndex >= 0 ? String(fila[descripcionIndex] || "").trim() : "";
       return {
+        filaExcel: filaEncabezadosIndex + indice + 2,
         fechaBanco: parsearFechaFlexible(fila[fechaIndex]),
         referenciaBanco: String(fila[referenciaIndex] || "").trim(),
         detalleOriginal: descripcion || detalleTipo,
         montoBancario: debito !== 0 ? debito : credito,
         montoReal: 0,
+        saldoBanco: saldoIndex >= 0
+          ? (() => {
+            const saldo = parsearMontoFlexible(fila[saldoIndex]);
+            return saldo === null ? null : redondearMonto(saldo);
+          })()
+          : null,
         tipoMonto: "bancario",
         moneda: normalizarMoneda(moneda),
       };
@@ -383,7 +453,15 @@ export const parsearExcelBancario = (buffer) => {
         movimiento.montoBancario !== 0,
     );
 
-  return { nombreHoja, movimientos };
+  const saldoDetectado = obtenerSaldoDetectado({
+    filas,
+    filaEncabezadosIndex,
+    fechaIndex,
+    saldoIndex,
+    moneda,
+  });
+
+  return { nombreHoja, movimientos, saldoDetectado };
 };
 
 const encontrarBloquesPersonales = (filas) => {

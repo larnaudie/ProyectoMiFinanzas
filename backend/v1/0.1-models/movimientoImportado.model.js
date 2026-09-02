@@ -41,6 +41,10 @@ const movimientoImportadoSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  saldoBanco: {
+    type: Number,
+    default: null,
+  },
   tipoMonto: {
     type: String,
     enum: ["bancario", "real"],
@@ -54,7 +58,6 @@ const movimientoImportadoSchema = new mongoose.Schema({
   hashBanco: {
     type: String,
     required: true,
-    unique: true,
   },
   estadoImportacion: {
     type: String,
@@ -68,6 +71,10 @@ const movimientoImportadoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 movimientoImportadoSchema.index({ usuarioId: 1, cuentaId: 1, estadoImportacion: 1 });
+movimientoImportadoSchema.index(
+  { usuarioId: 1, cuentaId: 1, hashBanco: 1 },
+  { unique: true },
+);
 
 export default mongoose.model(
   "MovimientoImportado",

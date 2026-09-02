@@ -2,6 +2,10 @@ import app from "./app.js";
 
 const PORT = process.env.PORT || 2000;
 
-app.listen(PORT, () => {
-    console.log(`http://localhost:${PORT}`);
-})
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`http://localhost:${PORT}`);
+    });
+}
+
+export default app;

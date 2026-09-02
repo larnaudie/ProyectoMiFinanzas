@@ -310,7 +310,6 @@ function MovimientosPage() {
                   <th>Subcategoría</th>
                   <th>Estado</th>
                   <th>¿Cuenta en Gasto Real?</th>
-                  <th>¿Suma en Presupuesto Mensual?</th>
                 </tr>
               </thead>
               <tbody>
@@ -360,11 +359,6 @@ function MovimientosPage() {
                         {esCredito
                           ? <span className="muted-value">No aplica</span>
                           : gasto.incluirMontoReal === true ? "Sí" : "No"}
-                      </td>
-                      <td>
-                        {esCredito
-                          ? <span className="muted-value">No aplica</span>
-                          : gasto.sumaAlPresupuesto === true ? "Sí" : "No"}
                       </td>
                     </tr>
                   );

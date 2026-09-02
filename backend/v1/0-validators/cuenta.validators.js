@@ -15,6 +15,7 @@ const cuentasSchema = Joi.object({
         .unique()
         .min(1),
     bancoId: Joi.string().hex().length(24).allow("", null).default(null),
+    saldoActual: Joi.number().allow(null),
 });
 
 export const actualizarCuentaSchema = Joi.object({
@@ -26,6 +27,7 @@ export const actualizarCuentaSchema = Joi.object({
         .unique()
         .min(1),
     bancoId: Joi.string().hex().length(24).allow("", null),
+    saldoActual: Joi.number().allow(null),
 }).min(1);
 
 export default cuentasSchema;

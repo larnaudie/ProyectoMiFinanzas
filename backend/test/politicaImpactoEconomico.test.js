@@ -37,7 +37,7 @@ test("un ingreso con porcentaje cero se incluye al cien por ciento", () => {
   assert.equal(gasto.montoReal, 4000);
 });
 
-test("un gasto real sin movimiento bancario se conserva incluido", () => {
+test("un gasto real directo respeta la decision de excluirlo", () => {
   const gasto = aplicarPoliticaImpactoEconomico({
     montoBancario: 0,
     montoReal: -450,
@@ -45,16 +45,29 @@ test("un gasto real sin movimiento bancario se conserva incluido", () => {
     incluirMontoReal: false,
   }, "Supermercado");
 
-  assert.equal(gasto.incluirMontoReal, true);
+  assert.equal(gasto.incluirMontoReal, false);
   assert.equal(gasto.montoReal, -450);
 });
 
-test("conserva un porcentaje personal distinto de cero", () => {
+test("un gasto bancario respeta la decision de excluirlo", () => {
   const gasto = aplicarPoliticaImpactoEconomico({
     montoBancario: -1000,
     montoReal: -1000,
     porcentaje: 70,
     incluirMontoReal: false,
+  }, "Supermercado");
+
+  assert.equal(gasto.incluirMontoReal, false);
+  assert.equal(gasto.porcentaje, 70);
+  assert.equal(gasto.montoReal, 0);
+});
+
+test("conserva un porcentaje personal cuando el usuario incluye el gasto", () => {
+  const gasto = aplicarPoliticaImpactoEconomico({
+    montoBancario: -1000,
+    montoReal: -1000,
+    porcentaje: 70,
+    incluirMontoReal: true,
   }, "Supermercado");
 
   assert.equal(gasto.incluirMontoReal, true);

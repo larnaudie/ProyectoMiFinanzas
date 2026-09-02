@@ -7,6 +7,16 @@ import {
 
 const prepararDatosCuenta = (data, cuentaActual = null) => {
     const tipoCuenta = data.tipoCuenta || cuentaActual?.tipoCuenta || "debito";
+    const incluyeSaldo = Object.prototype.hasOwnProperty.call(data, "saldoActual");
+    const datosSaldo = incluyeSaldo
+        ? {
+            saldoActual: data.saldoActual === null ? null : Number(data.saldoActual),
+            saldoActualizadoEn: new Date(),
+            saldoInformadoAl: data.saldoActual === null ? null : new Date(),
+            saldoOrigen: data.saldoActual === null ? null : "manual",
+            saldoArchivoNombre: null,
+        }
+        : {};
 
     if (tipoCuenta === "credito") {
         const monedas = normalizarListaMonedas(
@@ -19,6 +29,7 @@ const prepararDatosCuenta = (data, cuentaActual = null) => {
 
         return {
             ...data,
+            ...datosSaldo,
             tipoCuenta,
             monedas,
             moneda: monedas.includes(monedaSolicitada)
@@ -29,6 +40,7 @@ const prepararDatosCuenta = (data, cuentaActual = null) => {
 
     return {
         ...data,
+        ...datosSaldo,
         tipoCuenta,
         moneda: normalizarMoneda(data.moneda ?? cuentaActual?.moneda),
         monedas: [],

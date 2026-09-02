@@ -11,53 +11,17 @@ export const calcularResultadoEconomicoGasto = (gasto) => (
     : 0
 );
 
-export const obtenerMontoQuePuedeSumarAlPresupuesto = (gasto) => {
-  const montoBancario = numeroFinito(gasto?.montoBancario);
-  const montoReal = numeroFinito(gasto?.montoReal);
-
-  if (montoBancario > 0) return montoBancario;
-  if (montoReal > 0) return montoReal;
-  return 0;
-};
-
-export const puedeSumarAlPresupuesto = (gasto) => (
-  obtenerMontoQuePuedeSumarAlPresupuesto(gasto) > 0
-);
-
-export const calcularResultadoCuentaGasto = (gasto) => {
-  const presupuesto = gasto?.sumaAlPresupuesto === true
-    ? obtenerMontoQuePuedeSumarAlPresupuesto(gasto)
-    : 0;
-  const montoReal = numeroFinito(gasto?.montoReal);
-  const egresoReal = gasto?.incluirMontoReal === true && montoReal < 0
-    ? montoReal
-    : 0;
-
-  return presupuesto + egresoReal;
-};
-
-export const resumirPresupuestoYGastoReal = (gastos = []) => {
+export const resumirGastoReal = (gastos = []) => {
   const resumen = gastos.reduce((acumulado, gasto) => {
-    if (gasto?.sumaAlPresupuesto === true) {
-      acumulado.presupuesto += obtenerMontoQuePuedeSumarAlPresupuesto(gasto);
-    }
-
     const montoReal = numeroFinito(gasto?.montoReal);
     if (gasto?.incluirMontoReal === true && montoReal < 0) {
       acumulado.gastoReal += Math.abs(montoReal);
     }
 
     return acumulado;
-  }, { presupuesto: 0, gastoReal: 0 });
+  }, { gastoReal: 0 });
 
-  const presupuesto = redondearMoneda(resumen.presupuesto);
-  const gastoReal = redondearMoneda(resumen.gastoReal);
-
-  return {
-    presupuesto,
-    gastoReal,
-    resultado: redondearMoneda(presupuesto - gastoReal),
-  };
+  return { gastoReal: redondearMoneda(resumen.gastoReal) };
 };
 
 export const esPagoTarjeta = (gasto) => (

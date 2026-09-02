@@ -19,10 +19,13 @@ import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx
 import { calcularDisponibleOperativoTarjeta } from "../../../utils/disponibleTarjeta.js";
 import { construirRegistroGastosPorSubcategoria } from "../../../utils/registroSubcategorias.js";
 import {
-  calcularResultadoCuentaGasto,
   calcularResultadoTarjetaGasto,
   esPagoTarjeta,
 } from "../../../utils/resultadoEconomico.js";
+import {
+  esSubcategoriaTransferencia,
+  resumirPresupuestoMensualPorTransferencias,
+} from "../../../utils/presupuestoMensual.js";
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -112,6 +115,7 @@ const crearAcumuladoMensual = (clave) => ({
   clave,
   montoBancario: 0,
   montoReal: 0,
+  presupuesto: 0,
   variacion: 0,
   pagosTarjeta: 0,
   saldoTarjeta: 0,
@@ -143,7 +147,6 @@ function DashboardPage({ embedded = false }) {
   const [panelResumenesContraido, setPanelResumenesContraido] = useState(false);
 
   useEffect(() => {
-    const gastosUrl = cuentaId ? `/gastos?cuentaId=${cuentaId}` : "/gastos";
     let activo = true;
 
     setLoading(true);
@@ -158,7 +161,7 @@ function DashboardPage({ embedded = false }) {
       try {
         const [cuentasResponse, gastosResponse] = await Promise.all([
           api.get("/cuentas"),
-          api.get(gastosUrl),
+          api.get("/gastos"),
         ]);
         const cuentasCargadas = cuentasResponse.data.cuentas || [];
         const cuentaCargada = cuentasCargadas.find(
@@ -387,9 +390,8 @@ function DashboardPage({ embedded = false }) {
       if (gasto.estado !== "creado") return;
 
       const esMovimientoInterno =
-        cuentaSeleccionada === "todas" &&
-        movimientosInternosVinculados.has(obtenerId(gasto._id));
-
+        movimientosInternosVinculados.has(obtenerId(gasto._id))
+        || esSubcategoriaTransferencia(gasto);
       if (!esMovimientoInterno) {
         acumulado.montoBancario += impactoConsumo(
           gasto,
@@ -403,9 +405,9 @@ function DashboardPage({ embedded = false }) {
         }
       }
 
-      acumulado.variacion += cuentaGasto?.tipoCuenta === "credito"
-        ? calcularResultadoTarjetaGasto(gasto)
-        : calcularResultadoCuentaGasto(gasto);
+      if (cuentaGasto?.tipoCuenta === "credito") {
+        acumulado.variacion += calcularResultadoTarjetaGasto(gasto);
+      }
       acumulado.cantidad += 1;
     });
 
@@ -418,12 +420,46 @@ function DashboardPage({ embedded = false }) {
       ]),
     );
   }, [
-    cuentaSeleccionada,
     cuentas,
     gastosDelDashboard,
     meses,
     monedasDashboard,
   ]);
+
+  const presupuestoPorMes = useMemo(
+    () => new Map(
+      meses.map((clave) => [
+        clave,
+        resumirPresupuestoMensualPorTransferencias({
+          gastos,
+          cuentas,
+          periodo: clave,
+        }),
+      ]),
+    ),
+    [cuentas, gastos, meses],
+  );
+
+  const presupuestoDelPeriodo = useMemo(() => {
+    const resumenesDisponibles = [...presupuestoPorMes.values()]
+      .filter((resumen) => resumen.disponible);
+
+    return {
+      disponible: resumenesDisponibles.length > 0,
+      presupuestoUsd: resumenesDisponibles.reduce(
+        (total, resumen) => total + resumen.presupuestoUsd,
+        0,
+      ),
+      transferidoUsd: resumenesDisponibles.reduce(
+        (total, resumen) => total + resumen.transferidoUsd,
+        0,
+      ),
+      resultadoUsd: resumenesDisponibles.reduce(
+        (total, resumen) => total + resumen.resultadoUsd,
+        0,
+      ),
+    };
+  }, [presupuestoPorMes]);
 
   const totalesPorMoneda = useMemo(
     () =>
@@ -435,6 +471,8 @@ function DashboardPage({ embedded = false }) {
               montoBancario:
                 resultado.montoBancario + mes.montoBancario,
               montoReal: resultado.montoReal + mes.montoReal,
+              presupuesto:
+                resultado.presupuesto + mes.presupuesto,
               variacion: resultado.variacion + mes.variacion,
               pagosTarjeta:
                 resultado.pagosTarjeta + mes.pagosTarjeta,
@@ -445,6 +483,7 @@ function DashboardPage({ embedded = false }) {
             {
               montoBancario: 0,
               montoReal: 0,
+              presupuesto: 0,
               variacion: 0,
               pagosTarjeta: 0,
               saldoTarjeta: 0,
@@ -840,18 +879,17 @@ function DashboardPage({ embedded = false }) {
           <span>
             {esCuentaCredito
               ? "Deuda al último cierre"
-              : "Ahorro total de los meses"}
+              : "Resultado del sueldo"}
           </span>
-          {monedasDashboard.map((moneda) => {
-            const totalCierre = ultimoResumenFiltrado?.totales?.[moneda];
-            const resultado = esCuentaCredito
-              ? numeroFinito(totalCierre?.deuda)
-              : totalesPorMoneda[moneda].variacion;
-            return (
+          {esCuentaCredito ? (
+            monedasDashboard.map((moneda) => {
+              const totalCierre = ultimoResumenFiltrado?.totales?.[moneda];
+              const resultado = numeroFinito(totalCierre?.deuda);
+              return (
               <div className="dashboard-kpi-value" key={moneda}>
                 <strong
                   className={
-                    esCuentaCredito && totalCierre?.excesoLimite > 0
+                    totalCierre?.excesoLimite > 0
                       ? "dashboard-value-negative"
                       : resultado < 0
                       ? "dashboard-value-negative"
@@ -866,7 +904,7 @@ function DashboardPage({ embedded = false }) {
                     cotizacion={cotizacionUi.cotizacion}
                   />
                 )}
-                {esCuentaCredito && totalCierre && (
+                {totalCierre && (
                   <span className="dashboard-kpi-context">
                     {totalCierre.excesoLimite > 0
                       ? `Excede el límite en ${formatearMonto(totalCierre.excesoLimite, moneda)}`
@@ -874,16 +912,49 @@ function DashboardPage({ embedded = false }) {
                   </span>
                 )}
               </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="dashboard-kpi-value">
+              <strong
+                className={
+                  presupuestoDelPeriodo.resultadoUsd < 0
+                    ? "dashboard-value-negative"
+                    : "dashboard-value-positive"
+                }
+              >
+                {presupuestoDelPeriodo.disponible
+                  ? `${presupuestoDelPeriodo.resultadoUsd < 0
+                    ? "Déficit"
+                    : presupuestoDelPeriodo.resultadoUsd > 0
+                      ? "Ahorro"
+                      : "Sin diferencia"}: ${formatearMonto(
+                    presupuestoDelPeriodo.resultadoUsd,
+                    "USD",
+                  )}`
+                  : "Sin datos del período"}
+              </strong>
+              {presupuestoDelPeriodo.disponible && (
+                <span className="dashboard-kpi-context">
+                  Presupuesto {formatearMonto(
+                    presupuestoDelPeriodo.presupuestoUsd,
+                    "USD",
+                  )}
+                  {" · "}
+                  Transferido {formatearMonto(
+                    presupuestoDelPeriodo.transferidoUsd,
+                    "USD",
+                  )}
+                </span>
+              )}
+            </div>
+          )}
           <small>
             {esCuentaCredito
               ? ultimoResumenFiltrado
                 ? `Cierre ${formatearFecha(ultimoResumenFiltrado.cierre)}; sin monto real`
                 : "Todavía no hay un resumen dentro del período"
-              : cuentaSeleccionada === "todas"
-                ? "Sumatoria de los resultados de todas las cuentas"
-                : "Presupuesto mensual menos gasto real"}
+              : "US$ 4.000 mensuales menos transferencias salientes desde CA USD"}
           </small>
         </article>
         <article
@@ -1059,12 +1130,37 @@ function DashboardPage({ embedded = false }) {
                   + (datosMensualesPorMoneda[moneda][indiceMes]?.cantidad || 0),
                 0,
               );
+              const presupuestoMes = presupuestoPorMes.get(claveMes);
+              const resultadoPresupuestoMes = numeroFinito(
+                presupuestoMes?.resultadoUsd,
+              );
+              const etiquetaPresupuestoMes = resultadoPresupuestoMes < 0
+                ? "Déficit"
+                : resultadoPresupuestoMes > 0
+                  ? "Ahorro"
+                  : "Sin diferencia";
 
               return (
                 <article className="monthly-period-group" key={claveMes}>
                   <header className="monthly-period-header">
                     <strong>{formatearMes(claveMes)}</strong>
-                    <span>{cantidadMovimientos} movimientos</span>
+                    <div className="monthly-period-meta">
+                      <span>{cantidadMovimientos} movimientos</span>
+                      {!esCuentaCredito && presupuestoMes?.disponible && (
+                        <small
+                          className={
+                            resultadoPresupuestoMes < 0
+                              ? "monthly-saving-negative"
+                              : "monthly-saving-positive"
+                          }
+                        >
+                          {etiquetaPresupuestoMes}: {formatearMonto(
+                            resultadoPresupuestoMes,
+                            "USD",
+                          )}
+                        </small>
+                      )}
+                    </div>
                   </header>
 
                   <div className="monthly-period-currencies">
@@ -1073,22 +1169,14 @@ function DashboardPage({ embedded = false }) {
                       const segundoMonto = esCuentaCredito
                         ? mes.pagosTarjeta
                         : mes.montoReal;
-                      const resultado = esCuentaCredito
-                        ? mes.saldoTarjeta
-                        : mes.variacion;
-                      const resultadoPositivo = esCuentaCredito
-                        ? resultado < 0
-                        : resultado > 0;
-                      const sinVariacion = resultado === 0;
-                      const etiquetaResultado = sinVariacion
+                      const resultadoTarjeta = mes.saldoTarjeta;
+                      const resultadoTarjetaPositivo = resultadoTarjeta < 0;
+                      const tarjetaSinVariacion = resultadoTarjeta === 0;
+                      const etiquetaResultadoTarjeta = tarjetaSinVariacion
                         ? "Sin variación"
-                        : esCuentaCredito
-                          ? resultadoPositivo
-                            ? "Redujo deuda"
-                            : "Aumentó deuda"
-                          : resultadoPositivo
-                            ? "Ahorro"
-                            : "Déficit";
+                        : resultadoTarjetaPositivo
+                          ? "Redujo deuda"
+                          : "Aumentó deuda";
                       const maximoBarras = maximosComparacionPorMoneda[moneda];
 
                       return (
@@ -1099,18 +1187,24 @@ function DashboardPage({ embedded = false }) {
                           <div className="monthly-currency-summary">
                             <strong>{moneda}</strong>
                             <span>{mes.cantidad} movimientos</span>
-                            <small
-                              className={
-                                resultadoPositivo || sinVariacion
-                                  ? "monthly-saving-positive"
-                                  : "monthly-saving-negative"
-                              }
-                            >
-                              {etiquetaResultado}: {formatearMonto(
-                                esCuentaCredito ? Math.abs(resultado) : resultado,
-                                moneda,
-                              )}
-                            </small>
+                            {esCuentaCredito ? (
+                              <small
+                                className={
+                                  resultadoTarjetaPositivo || tarjetaSinVariacion
+                                    ? "monthly-saving-positive"
+                                    : "monthly-saving-negative"
+                                }
+                              >
+                                {etiquetaResultadoTarjeta}: {formatearMonto(
+                                  Math.abs(resultadoTarjeta),
+                                  moneda,
+                                )}
+                              </small>
+                            ) : (
+                              <small className="monthly-budget-context">
+                                Gasto real {formatearMonto(mes.montoReal, moneda)}
+                              </small>
+                            )}
                           </div>
 
                           <div className="monthly-bars">
@@ -1574,21 +1668,13 @@ function DashboardPage({ embedded = false }) {
               cuotas futuras reducen el límite operativo hasta que cada plan
               llega a su última cuota.
             </p>
-          ) : cuentaSeleccionada === "todas" ? (
-            <p>
-              El dashboard general suma los movimientos positivos marcados
-              como ¿Suma en Presupuesto Mensual? y resta los gastos que
-              cuentan en Gasto Real.
-              Los ingresos y transferencias sin esa marca son neutrales. La
-              tarjeta no genera ahorro directo y UYU, USD y UI permanecen
-              separados.
-            </p>
           ) : (
             <p>
-              El ahorro o déficit suma los ingresos y transferencias positivas
-              que marcaste como ¿Suma en Presupuesto Mensual? y resta los
-              gastos con ¿Cuenta en Gasto Real? activado usando su monto
-              real. Los demás movimientos no alteran este resultado.
+              Cada mes parte de un presupuesto fijo de US$ 4.000. Las salidas
+              desde Caja Ahorro USD con subcategoría Transf. consumen ese monto:
+              si lo superan hay déficit y, si queda disponible, hay ahorro. Las
+              transferencias siguen siendo neutrales para el movimiento bancario
+              y el Gasto Real se muestra por separado.
             </p>
           )}
         </div>

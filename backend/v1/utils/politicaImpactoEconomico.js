@@ -33,9 +33,9 @@ export const aplicarPoliticaImpactoEconomico = (
     };
   }
 
-  normalizado.incluirMontoReal = true;
-
   if (
+    normalizado.incluirMontoReal === true
+    &&
     esMontoDistintoDeCero(normalizado.montoBancario)
     && (
       !esPorcentajeGastoValido(normalizado.porcentaje)

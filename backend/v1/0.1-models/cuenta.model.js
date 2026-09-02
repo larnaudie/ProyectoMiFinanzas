@@ -9,7 +9,8 @@ const cuentaSchema = new mongoose.Schema({
     },
     nombreCuenta: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     bancoId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -33,6 +34,27 @@ const cuentaSchema = new mongoose.Schema({
     orden: {
         type: Number,
         default: 0
+    },
+    saldoActual: {
+        type: Number,
+        default: null
+    },
+    saldoActualizadoEn: {
+        type: Date,
+        default: null
+    },
+    saldoInformadoAl: {
+        type: Date,
+        default: null
+    },
+    saldoOrigen: {
+        type: String,
+        enum: ["manual", "excel"],
+        default: null
+    },
+    saldoArchivoNombre: {
+        type: String,
+        default: null
     },
     gastos: [{
         type: mongoose.Schema.Types.ObjectId,

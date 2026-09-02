@@ -27,6 +27,7 @@ import {
 } from "../../features/slices/subcategoriasSlice";
 import SearchableCategorySelect from "../../components/SearchableCategorySelect.jsx";
 import {
+  formatearMontoMoneda,
   obtenerMonedasCuenta,
   OPCIONES_MONEDA,
 } from "../../utils/monedas.js";
@@ -122,10 +123,22 @@ function ManagePage() {
           defaultValue: "UYU",
           options: OPCIONES_MONEDA,
         },
+        {
+          name: "saldoActual",
+          label: "Saldo actual (opcional)",
+          type: "number",
+          step: "0.01",
+          required: false,
+        },
       ],
       agregar: agregarCuenta,
       actualizar: actualizarCuenta,
       eliminar: eliminarCuenta,
+      extra: (item) => (
+        item.saldoActual === null || item.saldoActual === undefined
+          ? "Saldo sin informar"
+          : formatearMontoMoneda(item.saldoActual, item.moneda)
+      ),
     },
     categorias: {
       titulo: "Categorias",
@@ -258,7 +271,14 @@ function ManagePage() {
       return;
     }
 
-    const payload = { ...form, ...entidad.valoresFijos };
+    const payloadFormulario = Object.fromEntries(
+      entidad.campos.map((campo) => {
+        const valor = form[campo.name];
+        if (campo.type !== "number") return [campo.name, valor];
+        return [campo.name, valor === "" || valor === null ? null : Number(valor)];
+      }),
+    );
+    const payload = { ...payloadFormulario, ...entidad.valoresFijos };
     const request = modal.tipo === "crear"
       ? api.post(entidad.endpoint, payload)
       : api.patch(`${entidad.endpoint}/${modal.item._id}`, payload);
@@ -489,8 +509,9 @@ function ManagePage() {
                       )
                     ) : (
                       <input
-                        type="text"
-                        value={form[campo.name] || ""}
+                        type={campo.type || "text"}
+                        step={campo.step}
+                        value={form[campo.name] ?? ""}
                         onChange={(event) =>
                           cambiarCampo(campo.name, event.target.value)
                         }

@@ -9,7 +9,7 @@ const subcategoriaSchema = new mongoose.Schema({
     nombreSubcategoria: {
         type: String,
         required: true,
-        unique: true
+        trim: true
     },
     categoria: {
         type: mongoose.Schema.Types.ObjectId,
@@ -17,5 +17,10 @@ const subcategoriaSchema = new mongoose.Schema({
     },
 
 });
+
+subcategoriaSchema.index(
+    { usuarioId: 1, nombreSubcategoria: 1 },
+    { unique: true },
+);
 
 export default mongoose.model("Subcategoria", subcategoriaSchema, "subcategorias");

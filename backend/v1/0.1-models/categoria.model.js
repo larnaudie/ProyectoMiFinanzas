@@ -9,9 +9,14 @@ const categoriaSchema = new mongoose.Schema({
     nombreCategoria: {
         type: String,
         required: true,
-        unique: true
+        trim: true
     }
 
 });
+
+categoriaSchema.index(
+    { usuarioId: 1, nombreCategoria: 1 },
+    { unique: true },
+);
 
 export default mongoose.model("Categoria", categoriaSchema, "categorias");

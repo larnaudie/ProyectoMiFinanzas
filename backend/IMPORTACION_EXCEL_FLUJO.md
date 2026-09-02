@@ -676,8 +676,7 @@ Body posible:
   "porcentaje": 100,
   "incluirMontoReal": true,
   "categoriaId": "ID_CATEGORIA",
-  "subcategoriaId": "ID_SUBCATEGORIA",
-  "cambiarEstado": true
+  "subcategoriaId": "ID_SUBCATEGORIA"
 }
 ```
 
@@ -702,8 +701,9 @@ Flujo:
    - incluirMontoReal
    - categoriaId
    - subcategoriaId
-   - cambiarEstado
-6. Guarda en el gasto:
+6. El gasto se crea directamente con estado `creado`; el movimiento importado
+   ya fue la etapa previa de revision.
+7. Guarda en el gasto:
 
 ```js
 origen: {
@@ -712,7 +712,7 @@ origen: {
 }
 ```
 
-7. Marca el movimiento como vinculado.
+8. Marca el movimiento como vinculado.
 
 ---
 
@@ -937,12 +937,6 @@ Body:
 POST {{baseUrl}}/importaciones/movimientos/{{movimientoId}}/crear-gasto
 ```
 
-Body minimo:
-
-```json
-{}
-```
-
 Body completo:
 
 ```json
@@ -950,7 +944,9 @@ Body completo:
   "porcentaje": 100,
   "incluirMontoReal": true,
   "categoriaId": "{{categoriaId}}",
-  "subcategoriaId": "{{subcategoriaId}}",
-  "cambiarEstado": true
+  "subcategoriaId": "{{subcategoriaId}}"
 }
 ```
+
+La subcategoria es obligatoria porque esta accion crea el gasto definitivo,
+no un segundo registro pendiente.

@@ -16,7 +16,6 @@ import {
   esMontoDistintoDeCero,
   esPorcentajeGastoValido,
 } from "../../../utils/montosGasto.js";
-import { puedeSumarAlPresupuesto } from "../../../utils/resultadoEconomico.js";
 
 const obtenerId = (valor) => valor?._id || valor || "";
 
@@ -302,7 +301,6 @@ const DetalleGastoPage = () => {
   const facturaUrl = form.factura?.url;
   const estaCreado = form.estado === "creado";
   const tieneMontoBancario = esMontoBancarioValido(form.montoBancario);
-  const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
 
   return (
     <section className="page-section detail-page">
@@ -431,23 +429,6 @@ const DetalleGastoPage = () => {
             ¿Cuenta en Gasto Real?
           </label>
 
-          {!esCuentaCredito && (
-            <label className="checkbox-row detail-checkbox">
-              <input
-                type="checkbox"
-                checked={Boolean(form.sumaAlPresupuesto)}
-                disabled={!puedeSumarAlPresupuesto(form)}
-                onChange={(event) =>
-                  handleChange("sumaAlPresupuesto", event.target.checked)
-                }
-              />
-              ¿Suma en Presupuesto Mensual?
-              <small>
-                Indica si este ingreso o transferencia aumenta el dinero
-                disponible para gastar durante el mes.
-              </small>
-            </label>
-          )}
         </form>
 
         <aside className="detail-card detail-summary">
