@@ -4851,6 +4851,261 @@ td {
   scroll-margin-top: 96px;
 }
 
+.home-payment-checklist {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid #cbded9;
+  border-left: 5px solid #2b806e;
+  border-radius: 13px;
+  background: linear-gradient(115deg, #f0f8f6, #ffffff 78%);
+  box-shadow: 0 10px 28px rgba(25, 72, 62, 0.06);
+}
+
+.home-payment-checklist.is-alert {
+  border-left-color: #c55a4f;
+  background: linear-gradient(115deg, #fff7f5, #ffffff 78%);
+}
+
+.home-payment-checklist.is-complete {
+  border-left-color: #2d8a72;
+}
+
+.home-payment-checklist > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.home-payment-checklist > header h2 {
+  margin: 2px 0 4px;
+  color: #123b32;
+  font-size: 21px;
+}
+
+.home-payment-checklist > header p {
+  margin: 0;
+  color: #566e68;
+  line-height: 1.45;
+}
+
+.home-payment-checklist > header > a {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: #176a59;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.home-payment-checklist > header > a:hover {
+  background: #105648;
+}
+
+.home-payment-checklist-kicker {
+  color: #55736b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.home-payment-checklist-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #214a41;
+  font-size: 12px;
+}
+
+.home-payment-checklist-progress-copy span {
+  color: #637a74;
+  font-weight: 800;
+}
+
+.home-payment-checklist-progress {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: #dfeae7;
+}
+
+.home-payment-checklist-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #217662, #58ad96);
+  transition: width 220ms ease;
+}
+
+.home-payment-checklist-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-payment-checklist-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #d7e4e0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.home-payment-checklist-item.status-no_encontrado {
+  border-color: #ecd5d1;
+  background: #fffafa;
+}
+
+.home-payment-checklist-item.status-pendiente {
+  border-color: #eadfbd;
+  background: #fffdf5;
+}
+
+.home-payment-checklist-item > span:last-child {
+  min-width: 0;
+}
+
+.home-payment-checklist-item strong,
+.home-payment-checklist-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-payment-checklist-item strong {
+  color: #163f36;
+  font-size: 12px;
+}
+
+.home-payment-checklist-item small {
+  margin-top: 2px;
+  color: #72827e;
+  font-size: 10px;
+}
+
+.monthly-payment-checkbox {
+  display: inline-grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 2px solid #aebfba;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.monthly-payment-checkbox.is-checked {
+  border-color: #23745f;
+  background: #23745f;
+}
+
+.home-payment-checklist-help {
+  color: #6a7d77;
+  line-height: 1.4;
+}
+
+.home-payment-checklist.is-loading,
+.home-payment-checklist.is-error {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.home-payment-checklist.is-loading strong,
+.home-payment-checklist.is-loading small,
+.home-payment-checklist.is-error strong,
+.home-payment-checklist.is-error small {
+  display: block;
+}
+
+.home-payment-checklist.is-loading small,
+.home-payment-checklist.is-error small {
+  margin-top: 3px;
+  color: #657973;
+}
+
+.home-payment-checklist.is-error > a {
+  color: #176a59;
+  font-weight: 800;
+}
+
+.home-payment-checklist-loading-mark {
+  width: 26px;
+  height: 26px;
+  border: 3px solid #c9dfd9;
+  border-top-color: #287966;
+  border-radius: 50%;
+  animation: payment-checklist-spin 700ms linear infinite;
+}
+
+.payment-analysis-check-status {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+@keyframes payment-checklist-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .home-payment-checklist-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .home-payment-checklist {
+    padding: 16px;
+  }
+
+  .home-payment-checklist > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-payment-checklist > header > a {
+    text-align: center;
+  }
+
+  .home-payment-checklist-items {
+    grid-template-columns: 1fr;
+  }
+
+  .home-payment-checklist.is-loading,
+  .home-payment-checklist.is-error {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .home-payment-checklist.is-error > a {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-payment-checklist-loading-mark {
+    animation: none;
+  }
+
+  .home-payment-checklist-progress > span {
+    transition: none;
+  }
+}
+
 .dashboard-page-embedded {
   margin-top: 8px;
 }

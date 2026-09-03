@@ -39,9 +39,9 @@ function Sidebar({ abierto, fijado, alEntrar, alSalir }) {
           <NavIcon nombre="movimientos" />
           <span>Movimientos</span>
         </NavLink>
-        <NavLink className={claseLink} to="/analisis" title="Análisis" aria-label="Análisis financiero">
+        <NavLink className={claseLink} to="/analisis" title="Checklist mensual" aria-label="Checklist de pagos mensuales">
           <NavIcon nombre="analisis" />
-          <span>Análisis</span>
+          <span>Checklist</span>
         </NavLink>
         <NavLink className={claseLink} to="/manage" title="Administrar" aria-label="Administrar">
           <NavIcon nombre="manage" />

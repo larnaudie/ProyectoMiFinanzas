@@ -208,7 +208,7 @@ function AnalisisPage() {
       >
         <NavegacionSecciones
           secciones={[
-            { id: "analisis-control", etiqueta: "Control del mes" },
+            { id: "analisis-control", etiqueta: "Checklist del mes" },
             { id: "analisis-configuracion", etiqueta: "Configurar pagos" },
           ]}
         />
@@ -216,14 +216,13 @@ function AnalisisPage() {
 
       <header className="page-header analysis-header">
         <div>
-          <span className="page-eyebrow">Consulta mensual</span>
-          <h1>Análisis</h1>
+          <span className="page-eyebrow">Recordatorio mensual</span>
+          <h1>Checklist de pagos</h1>
           <p>
-            Revisá si tus pagos habituales aparecen en alguna de tus cuentas,
-            de forma simple y sin modificar tus gastos.
+            Revisá qué servicios ya pagaste y cuáles siguen sin aparecer en tus cuentas.
           </p>
         </div>
-        <span className="payment-analysis-readonly-badge">Solo consulta</span>
+        <span className="payment-analysis-readonly-badge">Detección automática</span>
       </header>
 
       <section className="analysis-period-panel payment-analysis-period">
@@ -253,8 +252,8 @@ function AnalisisPage() {
         <strong>¿Cómo funciona?</strong>
         <p>
           Elegís una subcategoría para cada pago mensual. La aplicación busca
-          movimientos de esa subcategoría durante el mes en todas tus cuentas.
-          Esta pantalla no cambia montos, estados ni clasificaciones.
+          movimientos de esa subcategoría durante el mes en todas tus cuentas y
+          marca el check automáticamente. Esta pantalla no modifica tus gastos.
         </p>
       </aside>
 
@@ -270,7 +269,7 @@ function AnalisisPage() {
             aria-label="Resumen del control mensual"
           >
             <article>
-              <small>Pagos controlados</small>
+              <small>Items del checklist</small>
               <strong>{resumen.total}</strong>
             </article>
             <article className="is-success">
@@ -291,8 +290,8 @@ function AnalisisPage() {
             <header className="analysis-panel-header">
               <div>
                 <span className="page-eyebrow">{MESES[mes - 1]} de {anio}</span>
-                <h2>Mis pagos mensuales</h2>
-                <p>“No encontrado” significa que conviene revisarlo; no confirma una deuda.</p>
+                <h2>Pagos del mes</h2>
+                <p>Un check se completa cuando encontramos un gasto creado con esa subcategoría.</p>
               </div>
               <button type="button" onClick={() => setMostrarFormulario(true)}>
                 Agregar pago mensual
@@ -362,9 +361,20 @@ function AnalisisPage() {
                         </form>
                       ) : (
                         <div className="payment-analysis-item-main">
-                          <span className={`analysis-status-chip status-${control.estado}`}>
-                            {estado.etiqueta}
-                          </span>
+                          <div className="payment-analysis-check-status">
+                            <span
+                              className={`monthly-payment-checkbox ${control.estado === "pagado" ? "is-checked" : ""}`}
+                              role="checkbox"
+                              aria-checked={control.estado === "pagado"}
+                              aria-readonly="true"
+                              aria-label={`${control.nombre}: ${estado.etiqueta}`}
+                            >
+                              {control.estado === "pagado" ? "✓" : ""}
+                            </span>
+                            <span className={`analysis-status-chip status-${control.estado}`}>
+                              {estado.etiqueta}
+                            </span>
+                          </div>
                           <div>
                             <h3>{control.nombre}</h3>
                             <p>

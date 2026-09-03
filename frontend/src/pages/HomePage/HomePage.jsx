@@ -10,6 +10,7 @@ import {
 } from "../../features/slices/cuentasSlice.js";
 import { api } from "../../services/api.js";
 import { ResumenGeneralFinanciero } from "../../components/ResumenGeneralFinanciero.jsx";
+import { MonthlyPaymentChecklist } from "../../components/MonthlyPaymentChecklist.jsx";
 import { formatearMontoMoneda } from "../../utils/monedas.js";
 
 const fechaDeHoy = () => new Date().toISOString().slice(0, 10);
@@ -404,6 +405,8 @@ function HomePage() {
         onFileChange={setFacturaRapida}
         onSubmit={crearGastoRapido}
       />
+
+      <MonthlyPaymentChecklist />
 
       {loading && <p>Cargando cuentas...</p>}
       {error && <p className="error-text">{error}</p>}
