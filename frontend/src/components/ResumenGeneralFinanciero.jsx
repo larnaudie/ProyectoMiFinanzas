@@ -1,48 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../services/api.js";
 import { useCotizacionUi } from "../hooks/useCotizacionUi.js";
 import {
   formatearMontoMoneda,
   MONEDAS_SOPORTADAS,
-  normalizarMoneda,
 } from "../utils/monedas.js";
 import {
-  resumirMovimientosMensuales,
   resumirSaldosCuentas,
-  totalizarCampoEnUyu,
   totalizarSaldosEnUyu,
 } from "../utils/resumenFinanciero.js";
 import { EquivalenciaMontoUi } from "./UiExchangeReference.jsx";
-import { DashboardLoadingState } from "./DashboardLoadingState.jsx";
-
-const MESES = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Setiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
-
-const periodoActual = () => {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
-};
 
 const numeroFinito = (valor) => {
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : 0;
-};
-
-const etiquetaPeriodo = (periodo) => {
-  const [anio, mes] = periodo.split("-");
-  return `${MESES[Number(mes) - 1] || "Mes"} de ${anio}`;
 };
 
 const formatearReferencia = (monto) => (
@@ -51,92 +22,16 @@ const formatearReferencia = (monto) => (
     : formatearMontoMoneda(monto, "UYU")
 );
 
-function FilaMoneda({ moneda, resumen }) {
-  return (
-    <div className="general-month-currency-row">
-      <strong>{moneda}</strong>
-      <span>
-        Bancario {formatearMontoMoneda(resumen.resultadoBancario, moneda)}
-      </span>
-      <span>
-        Gasto real {formatearMontoMoneda(resumen.gastoReal, moneda)}
-      </span>
-    </div>
-  );
-}
-
 export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) {
-  const [gastos, setGastos] = useState([]);
-  const [periodo, setPeriodo] = useState(periodoActual);
-  const [cuentaMensualId, setCuentaMensualId] = useState("");
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState("");
   const [edicionSaldo, setEdicionSaldo] = useState(null);
   const [guardandoSaldo, setGuardandoSaldo] = useState("");
   const [errorSaldo, setErrorSaldo] = useState("");
   const cotizacion = useCotizacionUi(true);
 
-  useEffect(() => {
-    let activo = true;
-
-    api.get("/gastos", { params: { vista: "dashboard" } })
-      .then((response) => {
-        if (activo) setGastos(response.data.gastos || []);
-      })
-      .catch((apiError) => {
-        if (!activo) return;
-        console.error("Error al cargar el resumen general:", apiError);
-        setError(
-          apiError.response?.data?.message
-          || "No se pudo cargar el resumen del mes.",
-        );
-      })
-      .finally(() => {
-        if (activo) setCargando(false);
-      });
-
-    return () => {
-      activo = false;
-    };
-  }, []);
-
-  const aniosDisponibles = useMemo(() => {
-    const actual = String(new Date().getFullYear());
-    return [...new Set([
-      actual,
-      ...gastos
-        .map((gasto) => String(gasto?.fecha || "").slice(0, 4))
-        .filter((anio) => /^\d{4}$/.test(anio)),
-    ])].sort((a, b) => b.localeCompare(a));
-  }, [gastos]);
-
   const saldos = useMemo(() => resumirSaldosCuentas(cuentas), [cuentas]);
   const cuentasBancarias = cuentas.filter((cuenta) => cuenta.tipoCuenta !== "credito");
-  const cuentaMensual = cuentas.find((cuenta) => cuenta._id === cuentaMensualId) || null;
-  const resumenMensual = useMemo(
-    () => resumirMovimientosMensuales({
-      gastos,
-      cuentas,
-      periodo,
-      cuentaId: cuentaMensualId,
-    }),
-    [cuentaMensualId, cuentas, gastos, periodo],
-  );
   const monedasConCuentas = MONEDAS_SOPORTADAS.filter(
     (moneda) => saldos[moneda].cuentas.length > 0,
-  );
-  const monedasDelMes = MONEDAS_SOPORTADAS.filter((moneda) => (
-    cuentaMensual
-      ? resumenMensual[moneda].cantidad > 0
-        || (
-          cuentaMensual.tipoCuenta !== "credito"
-          && moneda === normalizarMoneda(cuentaMensual.moneda)
-        )
-      : resumenMensual[moneda].cantidad > 0 || saldos[moneda].cuentas.length > 0
-  ));
-  const duplicadosIgnorados = MONEDAS_SOPORTADAS.reduce(
-    (total, moneda) => total + resumenMensual[moneda].duplicadosIgnorados,
-    0,
   );
   const haySaldoInformado = cuentasBancarias.some((cuenta) => (
     cuenta.saldoActual !== null
@@ -151,54 +46,6 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
   const saldoTotalUsd = saldoTotalUyu !== null && uyuPorDolar > 0
     ? saldoTotalUyu / uyuPorDolar
     : null;
-  const entradasConsolidadasUyu = cuentaMensual
-    ? null
-    : totalizarCampoEnUyu(
-      resumenMensual,
-      "ingresosBancarios",
-      cotizacion.cotizacion,
-    );
-  const salidasConsolidadasUyu = cuentaMensual
-    ? null
-    : totalizarCampoEnUyu(
-      resumenMensual,
-      "egresosBancarios",
-      cotizacion.cotizacion,
-    );
-  const resultadoConsolidadoUyu = cuentaMensual
-    ? null
-    : totalizarCampoEnUyu(
-      resumenMensual,
-      "resultadoBancario",
-      cotizacion.cotizacion,
-    );
-  const resultadoConsolidadoUsd = resultadoConsolidadoUyu !== null && uyuPorDolar > 0
-    ? resultadoConsolidadoUyu / uyuPorDolar
-    : null;
-  const estadoResultadoConsolidado = resultadoConsolidadoUyu === null
-    ? "is-pending"
-    : resultadoConsolidadoUyu < 0
-      ? "is-negative"
-      : resultadoConsolidadoUyu > 0
-        ? "is-positive"
-        : "is-neutral";
-  const etiquetaResultadoConsolidado = resultadoConsolidadoUyu === null
-    ? "Cotización pendiente"
-    : resultadoConsolidadoUyu < 0
-      ? "Déficit consolidado"
-      : resultadoConsolidadoUyu > 0
-        ? "Ahorro consolidado"
-        : "Resultado equilibrado";
-
-  const cambiarMes = (mes) => {
-    const [anio] = periodo.split("-");
-    setPeriodo(`${anio}-${mes}`);
-  };
-
-  const cambiarAnio = (anio) => {
-    const [, mes] = periodo.split("-");
-    setPeriodo(`${anio}-${mes}`);
-  };
 
   const empezarEdicionSaldo = (cuenta) => {
     setEdicionSaldo({
@@ -241,7 +88,7 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
         <div>
           <p className="eyebrow">Vista general</p>
           <h2>Tu situación financiera</h2>
-          <p>Saldos actuales y resultado mensual, sin mezclar monedas directamente.</p>
+          <p>Saldos actuales por cuenta y moneda.</p>
         </div>
         <div className="general-rate-reference" aria-live="polite">
           {cotizacion.cotizacion ? (
@@ -353,213 +200,6 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
         {errorSaldo && <p className="inline-error">{errorSaldo}</p>}
       </section>
 
-      <section className="general-month-overview" aria-labelledby="general-month-title">
-        <header>
-          <div>
-            <span className="section-kicker">Cómo cerró el mes</span>
-            <h3 id="general-month-title">Resultado de {etiquetaPeriodo(periodo)}</h3>
-          </div>
-          <div className="general-period-filters">
-            <label className="general-account-filter">
-              Cuenta del detalle
-              <select
-                value={cuentaMensualId}
-                onChange={(event) => setCuentaMensualId(event.target.value)}
-              >
-                <option value="">Todas las cuentas</option>
-                {cuentasBancarias.map((cuenta) => (
-                  <option key={cuenta._id} value={cuenta._id}>
-                    {cuenta.nombreCuenta} · {cuenta.tipoCuenta === "credito" ? "Crédito" : normalizarMoneda(cuenta.moneda)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Mes
-              <select value={periodo.slice(5, 7)} onChange={(event) => cambiarMes(event.target.value)}>
-                {MESES.map((mes, index) => {
-                  const valor = String(index + 1).padStart(2, "0");
-                  return <option key={valor} value={valor}>{mes}</option>;
-                })}
-              </select>
-            </label>
-            <label>
-              Año
-              <select value={periodo.slice(0, 4)} onChange={(event) => cambiarAnio(event.target.value)}>
-                {aniosDisponibles.map((anio) => <option key={anio}>{anio}</option>)}
-              </select>
-            </label>
-          </div>
-        </header>
-
-        {cargando && <DashboardLoadingState compacto />}
-        {error && <p className="inline-error">{error}</p>}
-
-        {!cargando && !error && (
-          <>
-            {!cuentaMensual && (
-              <section
-                className={`general-consolidated-result ${estadoResultadoConsolidado}`}
-                aria-label="Resultado consolidado del mes"
-              >
-                <div className="general-consolidated-heading">
-                  <span>Resultado comparable entre monedas</span>
-                  <strong>
-                    {resultadoConsolidadoUyu === null
-                      ? etiquetaResultadoConsolidado
-                      : `${etiquetaResultadoConsolidado}: ${formatearMontoMoneda(
-                        Math.abs(resultadoConsolidadoUyu),
-                        "UYU",
-                      )}`}
-                  </strong>
-                  {resultadoConsolidadoUsd !== null && (
-                    <small>
-                      ≈ {formatearMontoMoneda(Math.abs(resultadoConsolidadoUsd), "USD")}
-                      {" · "}US$ 1 = {formatearMontoMoneda(uyuPorDolar, "UYU")}
-                    </small>
-                  )}
-                </div>
-
-                <dl className="general-consolidated-totals">
-                  <div>
-                    <dt>Entradas equivalentes</dt>
-                    <dd>
-                      {entradasConsolidadasUyu === null
-                        ? "Cotización pendiente"
-                        : formatearMontoMoneda(entradasConsolidadasUyu, "UYU")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Salidas equivalentes</dt>
-                    <dd>
-                      {salidasConsolidadasUyu === null
-                        ? "Cotización pendiente"
-                        : formatearMontoMoneda(salidasConsolidadasUyu, "UYU")}
-                    </dd>
-                  </div>
-                </dl>
-
-                <p>
-                  Convierte cada moneda con la referencia BCU para compararlas.
-                  Las transferencias entre tus cuentas permanecen neutrales.
-                </p>
-              </section>
-            )}
-
-            <div className="general-month-kpis">
-              <article>
-                <span>Entradas bancarias</span>
-                <dl>
-                  {monedasDelMes.map((moneda) => (
-                    <div key={moneda}>
-                      <dt>{moneda}</dt>
-                      <dd className="is-positive">
-                        {formatearMontoMoneda(
-                          resumenMensual[moneda].ingresosBancarios,
-                          moneda,
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <small>
-                  {cuentaMensual
-                    ? "Incluye transferencias recibidas por esta cuenta."
-                    : "Ingresos externos; no duplica transferencias propias."}
-                </small>
-              </article>
-
-              <article>
-                <span>Salidas bancarias</span>
-                <dl>
-                  {monedasDelMes.map((moneda) => (
-                    <div key={moneda}>
-                      <dt>{moneda}</dt>
-                      <dd className="is-negative">
-                        {formatearMontoMoneda(
-                          resumenMensual[moneda].egresosBancarios,
-                          moneda,
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <small>
-                  {cuentaMensual
-                    ? "Incluye gastos y transferencias enviadas por esta cuenta."
-                    : "Egresos externos; no duplica transferencias propias."}
-                </small>
-              </article>
-
-              <article className="economic-result-card">
-                <span>{cuentaMensual ? "Resultado de la cuenta" : "Resultado por moneda"}</span>
-                <dl>
-                  {monedasDelMes.map((moneda) => {
-                    const resumen = resumenMensual[moneda];
-                    const resultado = numeroFinito(resumen.resultadoBancario);
-                    const etiqueta = resultado < 0
-                      ? "Déficit"
-                      : resultado > 0
-                        ? "Ahorro"
-                        : "Sin diferencia";
-                    return (
-                      <div key={moneda}>
-                        <dt>{moneda}</dt>
-                        <dd className={resultado < 0 ? "is-negative" : "is-positive"}>
-                          {resumen.cantidad > 0
-                            ? `${etiqueta}: ${formatearMontoMoneda(Math.abs(resultado), moneda)}`
-                            : "Sin movimientos"}
-                        </dd>
-                      </div>
-                    );
-                  })}
-                </dl>
-                <small>
-                  {cuentaMensual
-                    ? "Entradas menos salidas bancarias de la cuenta."
-                    : "Desglose sin mezclar monedas; el consolidado comparable aparece arriba."}
-                </small>
-              </article>
-            </div>
-
-            <div className="general-month-currencies">
-              <header>
-                <strong>Detalle por moneda</strong>
-                <span>
-                  {cuentaMensual
-                    ? `Filtrado por ${cuentaMensual.nombreCuenta}.`
-                    : "Todas las cuentas."}
-                  {" "}{cuentaMensual
-                    ? "Las transferencias modifican el resultado de esta cuenta."
-                    : "Las transferencias propias son neutrales en el consolidado."}
-                </span>
-              </header>
-              {monedasDelMes.map((moneda) => (
-                <FilaMoneda
-                  key={moneda}
-                  moneda={moneda}
-                  resumen={resumenMensual[moneda]}
-                />
-              ))}
-              {duplicadosIgnorados > 0 && (
-                <p className="general-overview-note">
-                  Se ignoraron {duplicadosIgnorados} duplicados bancarios exactos
-                  encontrados en más de una cuenta.
-                </p>
-              )}
-              {monedasDelMes.length === 0 && (
-                <p className="general-empty-state">No hay movimientos en este período.</p>
-              )}
-            </div>
-          </>
-        )}
-      </section>
-
-      <p className="general-overview-note">
-        El resumen consolida cuentas bancarias. Las tarjetas conservan su propio
-        dashboard para mostrar consumos, pagos y deuda. El ahorro mensual se
-        calcula con entradas menos salidas y no toma saldos anteriores como ingresos.
-      </p>
     </section>
   );
 }

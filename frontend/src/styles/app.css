@@ -8696,8 +8696,7 @@ td {
 }
 
 .general-overview-header,
-.balance-overview > header,
-.general-month-overview > header {
+.balance-overview > header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -8705,8 +8704,7 @@ td {
 }
 
 .general-overview-header h2,
-.balance-overview h3,
-.general-month-overview h3 {
+.balance-overview h3 {
   margin: 3px 0 5px;
   color: #0b2830;
 }
@@ -8759,8 +8757,7 @@ td {
   color: #174f43;
 }
 
-.balance-overview,
-.general-month-overview {
+.balance-overview {
   display: grid;
   gap: 16px;
   min-width: 0;
@@ -8898,237 +8895,10 @@ td {
   gap: 5px;
 }
 
-.general-period-filters {
-  display: flex;
-  gap: 10px;
-}
-
-.general-period-filters label {
-  min-width: 130px;
-  color: #425e57;
-  font-size: 11px;
-}
-
-.general-period-filters .general-account-filter {
-  min-width: 230px;
-}
-
-.general-period-filters select {
-  min-height: 38px;
-}
-
-.general-consolidated-result {
-  display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(300px, 0.8fr);
-  gap: 12px 24px;
-  padding: 17px;
-  border: 1px solid #bcded5;
-  border-left: 5px solid #2f7f70;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f5fbf9 0%, #eaf6f2 100%);
-}
-
-.general-consolidated-result.is-negative {
-  border-color: #ebc7c2;
-  border-left-color: #b73529;
-  background: linear-gradient(135deg, #fffafa 0%, #fbeeed 100%);
-}
-
-.general-consolidated-result.is-pending {
-  border-left-color: #80918d;
-}
-
-.general-consolidated-result.is-neutral .general-consolidated-heading > strong,
-.general-consolidated-result.is-pending .general-consolidated-heading > strong {
-  color: #526762;
-}
-
-.general-consolidated-heading {
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  min-width: 0;
-}
-
-.general-consolidated-heading > span {
-  color: #536b65;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.general-consolidated-heading > strong {
-  overflow-wrap: anywhere;
-  color: #126b5a;
-  font-size: clamp(21px, 3vw, 30px);
-}
-
-.general-consolidated-result.is-negative .general-consolidated-heading > strong {
-  color: #b73529;
-}
-
-.general-consolidated-heading > small,
-.general-consolidated-result > p {
-  color: #60736f;
-  font-size: 10px;
-}
-
-.general-consolidated-totals {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-
-.general-consolidated-totals > div {
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  min-width: 0;
-  padding: 10px 11px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.general-consolidated-totals dt {
-  color: #6a7e79;
-  font-size: 10px;
-}
-
-.general-consolidated-totals dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: #193d35;
-  font-size: 14px;
-  font-weight: 850;
-}
-
-.general-consolidated-result > p {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
-.general-month-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.general-month-kpis article {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  padding: 17px;
-  border: 1px solid #d6e2df;
-  border-top: 4px solid #2f7f70;
-  border-radius: 10px;
-  background: #fbfdfc;
-}
-
-.general-month-kpis .economic-result-card {
-  border-top-color: #75b7a8;
-}
-
-.general-month-kpis article > span {
-  color: #536b65;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.general-month-kpis article > strong {
-  color: #123f36;
-  font-size: clamp(20px, 3vw, 27px);
-}
-
-.general-month-kpis .is-negative,
-.general-month-currency-row .is-negative {
-  color: #b73529;
-}
-
-.general-month-kpis .is-positive,
-.general-month-currency-row .is-positive {
-  color: #13705c;
-}
-
-.general-month-kpis dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-
-.general-month-kpis dl div {
-  display: grid;
-  gap: 2px;
-  padding: 9px 10px;
-  border-radius: 7px;
-  background: #f0f5f3;
-}
-
-.general-month-kpis dt,
-.general-month-kpis article > small {
-  color: #6a7e79;
-  font-size: 10px;
-}
-
-.general-month-kpis dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: #193d35;
-  font-size: 14px;
-  font-weight: 850;
-}
-
-.general-month-currencies {
-  display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid #d8e4e1;
-  border-radius: 9px;
-}
-
-.general-month-currencies > header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background: #edf5f2;
-  color: #506762;
-  font-size: 11px;
-}
-
-.general-month-currency-row {
-  display: grid;
-  grid-template-columns: 52px repeat(2, minmax(0, 1fr));
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border-top: 1px solid #e2eae8;
-  font-size: 11px;
-}
-
-.general-month-currency-row > strong {
-  color: #126b5a;
-}
-
-.general-month-currency-row > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: #415b55;
-}
-
-.general-empty-state,
-.general-overview-note {
+.general-empty-state {
   margin: 0;
   color: #677b76;
   font-size: 12px;
-}
-
-.general-overview-note {
-  padding-inline: 4px;
 }
 
 .monthly-budget-context {
@@ -9155,14 +8925,12 @@ td {
 
 @media (max-width: 760px) {
   .general-overview-header,
-  .balance-overview > header,
-  .general-month-overview > header {
+  .balance-overview > header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .balance-overview,
-  .general-month-overview {
+  .balance-overview {
     padding: 14px;
   }
 
@@ -9170,56 +8938,12 @@ td {
     min-width: 0;
   }
 
-  .balance-currency-grid,
-  .general-month-kpis {
+  .balance-currency-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .general-consolidated-result {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .general-period-filters {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .general-period-filters label {
-    min-width: 0;
-  }
-
-  .general-period-filters .general-account-filter {
-    grid-column: 1 / -1;
-    min-width: 0;
-  }
-
-  .general-month-currencies > header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .general-month-currency-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .general-month-currency-row > strong {
-    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 480px) {
-  .general-period-filters {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .general-period-filters .general-account-filter {
-    grid-column: 1;
-  }
-
-  .general-consolidated-totals {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .general-rate-reference {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -9246,14 +8970,5 @@ td {
   .balance-account-row form > div,
   .balance-account-row form button {
     width: 100%;
-  }
-
-  .general-month-kpis dl,
-  .general-month-currency-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .general-month-currency-row > strong {
-    grid-column: 1;
   }
 }
