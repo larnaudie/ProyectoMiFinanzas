@@ -143,6 +143,7 @@ export const resumirMovimientosMensuales = ({
   const gastosDelAlcance = cuentaFiltradaId
     ? gastos.filter((gasto) => obtenerId(gasto?.cuentaId) === cuentaFiltradaId)
     : gastos;
+  const esResumenDeUnaCuenta = Boolean(cuentaFiltradaId);
 
   // Las vinculaciones se resuelven con todos los movimientos para que una
   // transferencia siga siendo interna aunque se esté consultando una sola cuenta.
@@ -175,12 +176,17 @@ export const resumirMovimientosMensuales = ({
       acumulado.duplicadosIgnorados += 1;
       return;
     }
+    if (esArrastre) return;
 
     acumulado.cantidad += 1;
 
-    // Una transferencia propia no es ingreso ni egreso general. El pago de una
-    // tarjeta sí permanece como salida bancaria de la cuenta que lo realiza.
-    if (!esCuentaCredito && !esInterno && !esAhorro && !esArrastre) {
+    // Una transferencia propia es neutral únicamente al consolidar todas las
+    // cuentas. Dentro de una cuenta sí cambia su caja: resta en el origen y
+    // suma en el destino. Los movimientos históricos marcados como "Ahorro"
+    // siguen la misma regla cuando se consulta esa cuenta en particular.
+    const esNeutralEnFlujoBancario = !esResumenDeUnaCuenta
+      && (esInterno || esAhorro);
+    if (!esCuentaCredito && !esNeutralEnFlujoBancario) {
       if (montoBancario > 0) acumulado.ingresosBancarios += montoBancario;
       if (montoBancario < 0) acumulado.egresosBancarios += Math.abs(montoBancario);
     }

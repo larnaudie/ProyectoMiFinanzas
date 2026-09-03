@@ -11,9 +11,6 @@ import {
   resumirSaldosCuentas,
   totalizarSaldosEnUyu,
 } from "../utils/resumenFinanciero.js";
-import {
-  resumirPresupuestoMensualPorTransferencias,
-} from "../utils/presupuestoMensual.js";
 import { EquivalenciaMontoUi } from "./UiExchangeReference.jsx";
 import { DashboardLoadingState } from "./DashboardLoadingState.jsx";
 
@@ -124,14 +121,6 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
     }),
     [cuentaMensualId, cuentas, gastos, periodo],
   );
-  const resumenPresupuesto = useMemo(
-    () => resumirPresupuestoMensualPorTransferencias({
-      gastos,
-      cuentas,
-      periodo,
-    }),
-    [cuentas, gastos, periodo],
-  );
   const monedasConCuentas = MONEDAS_SOPORTADAS.filter(
     (moneda) => saldos[moneda].cuentas.length > 0,
   );
@@ -206,21 +195,6 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
       setGuardandoSaldo("");
     }
   };
-
-  const resultadoDisponible = resumenPresupuesto.disponible;
-  const resultadoEsDeficit = resultadoDisponible
-    && resumenPresupuesto.resultadoUsd < 0;
-  const resultadoEsCero = resultadoDisponible
-    && resumenPresupuesto.resultadoUsd === 0;
-  const etiquetaResultado = !resumenPresupuesto.cuentaFuenteEncontrada
-    ? "Sin cuenta fuente"
-    : !resumenPresupuesto.hayMovimientosPeriodo
-      ? "Sin movimientos"
-    : resultadoEsCero
-      ? "Sin diferencia"
-      : resultadoEsDeficit
-        ? "Déficit"
-        : "Ahorro";
 
   return (
     <section id="dashboard-general" className="general-finance-overview">
@@ -354,7 +328,7 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
                 onChange={(event) => setCuentaMensualId(event.target.value)}
               >
                 <option value="">Todas las cuentas</option>
-                {cuentas.map((cuenta) => (
+                {cuentasBancarias.map((cuenta) => (
                   <option key={cuenta._id} value={cuenta._id}>
                     {cuenta.nombreCuenta} · {cuenta.tipoCuenta === "credito" ? "Crédito" : normalizarMoneda(cuenta.moneda)}
                   </option>
@@ -386,39 +360,74 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
           <>
             <div className="general-month-kpis">
               <article>
-                <span>Presupuesto mensual fijo</span>
-                <strong className="is-positive">
-                  {formatearMontoMoneda(resumenPresupuesto.presupuestoUsd, "USD")}
-                </strong>
+                <span>Entradas bancarias</span>
+                <dl>
+                  {monedasDelMes.map((moneda) => (
+                    <div key={moneda}>
+                      <dt>{moneda}</dt>
+                      <dd className="is-positive">
+                        {formatearMontoMoneda(
+                          resumenMensual[moneda].ingresosBancarios,
+                          moneda,
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
                 <small>
-                  Corresponde al sueldo mensual disponible.
+                  {cuentaMensual
+                    ? "Incluye transferencias recibidas por esta cuenta."
+                    : "Ingresos externos; no duplica transferencias propias."}
                 </small>
               </article>
 
               <article>
-                <span>Transferido desde CA USD</span>
-                <strong className="is-negative">
-                  {resultadoDisponible
-                    ? formatearMontoMoneda(resumenPresupuesto.transferidoUsd, "USD")
-                    : resumenPresupuesto.cuentaFuenteEncontrada
-                      ? "Sin movimientos"
-                      : "Cuenta no encontrada"}
-                </strong>
+                <span>Salidas bancarias</span>
+                <dl>
+                  {monedasDelMes.map((moneda) => (
+                    <div key={moneda}>
+                      <dt>{moneda}</dt>
+                      <dd className="is-negative">
+                        {formatearMontoMoneda(
+                          resumenMensual[moneda].egresosBancarios,
+                          moneda,
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
                 <small>
-                  Suma las salidas con subcategoría Transf. durante el mes.
+                  {cuentaMensual
+                    ? "Incluye gastos y transferencias enviadas por esta cuenta."
+                    : "Egresos externos; no duplica transferencias propias."}
                 </small>
               </article>
 
               <article className="economic-result-card">
                 <span>Resultado del mes</span>
-                <strong className={resultadoEsDeficit ? "is-negative" : resultadoDisponible ? "is-positive" : ""}>
-                  {etiquetaResultado}{resultadoDisponible ? ": " : ""}
-                  {resultadoDisponible
-                    ? formatearMontoMoneda(resumenPresupuesto.resultadoUsd, "USD")
-                    : ""}
-                </strong>
+                <dl>
+                  {monedasDelMes.map((moneda) => {
+                    const resumen = resumenMensual[moneda];
+                    const resultado = numeroFinito(resumen.resultadoBancario);
+                    const etiqueta = resultado < 0
+                      ? "Déficit"
+                      : resultado > 0
+                        ? "Ahorro"
+                        : "Sin diferencia";
+                    return (
+                      <div key={moneda}>
+                        <dt>{moneda}</dt>
+                        <dd className={resultado < 0 ? "is-negative" : "is-positive"}>
+                          {resumen.cantidad > 0
+                            ? `${etiqueta}: ${formatearMontoMoneda(Math.abs(resultado), moneda)}`
+                            : "Sin movimientos"}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
                 <small>
-                  US$ 4.000 menos lo transferido desde Caja Ahorro USD.
+                  Entradas menos salidas bancarias del período.
                 </small>
               </article>
             </div>
@@ -430,7 +439,9 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
                   {cuentaMensual
                     ? `Filtrado por ${cuentaMensual.nombreCuenta}.`
                     : "Todas las cuentas."}
-                  {" "}El resultado del sueldo siempre se calcula desde CA USD.
+                  {" "}{cuentaMensual
+                    ? "Las transferencias modifican el resultado de esta cuenta."
+                    : "Las transferencias propias son neutrales en el consolidado."}
                 </span>
               </header>
               {monedasDelMes.map((moneda) => (
@@ -456,8 +467,8 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
 
       <p className="general-overview-note">
         El resumen consolida cuentas bancarias. Las tarjetas conservan su propio
-        dashboard para mostrar consumos, pagos y deuda. El resultado mensual usa
-        el cupo fijo de US$ 4.000 y las transferencias salientes desde CA USD.
+        dashboard para mostrar consumos, pagos y deuda. El ahorro mensual se
+        calcula con entradas menos salidas y no toma saldos anteriores como ingresos.
       </p>
     </section>
   );

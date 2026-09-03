@@ -6,7 +6,7 @@ import {
 } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   actualizarGasto,
   agregarGasto,
@@ -21,6 +21,7 @@ import SortableTableHeader from "../../../components/SortableTableHeader.jsx";
 import { useSortableRows } from "../../../hooks/useSortableRows.js";
 import {
   MONEDAS_SOPORTADAS,
+  normalizarMoneda,
   obtenerMonedaMovimiento,
   obtenerMonedasCuenta,
   simboloMoneda,
@@ -46,9 +47,7 @@ import {
   resumirValoresMonetarios,
 } from "../../../utils/montosGasto.js";
 import { resumirGastoReal } from "../../../utils/resultadoEconomico.js";
-import {
-  resumirPresupuestoMensualPorTransferencias,
-} from "../../../utils/presupuestoMensual.js";
+import { resumirMovimientosMensuales } from "../../../utils/resumenFinanciero.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -309,15 +308,19 @@ function DesglocePage() {
     (gasto) => gasto.estado === "creado",
   );
 
-  const resumenAhorrosFiltrado = useMemo(() => {
+  const resumenAhorrosFiltrado = (() => {
     if (esCuentaCredito || filtros.fechaModo !== "mes") {
       return { modoDisponible: false, disponible: false };
     }
 
+    const moneda = normalizarMoneda(cuentaActual?.moneda);
     const clavesEncontradas = [
       ...new Set(
         gastos
-          .filter((gasto) => gasto.estado === "creado")
+          .filter((gasto) => (
+            gasto.estado === "creado"
+            && obtenerId(gasto.cuentaId) === cuentaId
+          ))
           .map((gasto) => fechaParaInput(gasto.fecha).slice(0, 7))
           .filter((clave) => /^\d{4}-\d{2}$/.test(clave))
           .filter((clave) => (
@@ -330,21 +333,23 @@ function DesglocePage() {
       ? [`${filtros.fechaAnio}-${filtros.fechaMes}`]
       : clavesEncontradas;
     const resumenes = claves
-      .map((periodo) => resumirPresupuestoMensualPorTransferencias({
+      .map((periodo) => resumirMovimientosMensuales({
         gastos,
         cuentas,
         periodo,
+        cuentaId,
       }))
-      .filter((resumen) => resumen.disponible);
-    const presupuestoUsd = resumenes.reduce(
-      (total, resumen) => total + resumen.presupuestoUsd,
+      .map((resumen) => resumen[moneda])
+      .filter((resumen) => Number(resumen?.cantidad) > 0);
+    const ingresosBancarios = resumenes.reduce(
+      (total, resumen) => total + Number(resumen.ingresosBancarios || 0),
       0,
     );
-    const transferidoUsd = resumenes.reduce(
-      (total, resumen) => total + resumen.transferidoUsd,
+    const egresosBancarios = resumenes.reduce(
+      (total, resumen) => total + Number(resumen.egresosBancarios || 0),
       0,
     );
-    const resultadoUsd = Number((presupuestoUsd - transferidoUsd).toFixed(2));
+    const resultado = Number((ingresosBancarios - egresosBancarios).toFixed(2));
     const nombreMes = MESES_DEL_ANIO.find(
       (mes) => mes.valor === filtros.fechaMes,
     )?.nombre;
@@ -360,24 +365,18 @@ function DesglocePage() {
       modoDisponible: true,
       disponible: resumenes.length > 0,
       mesesIncluidos: resumenes.length,
-      presupuestoUsd: Number(presupuestoUsd.toFixed(2)),
-      transferidoUsd: Number(transferidoUsd.toFixed(2)),
-      resultadoUsd,
-      estado: resultadoUsd < 0
+      moneda,
+      ingresosBancarios: Number(ingresosBancarios.toFixed(2)),
+      egresosBancarios: Number(egresosBancarios.toFixed(2)),
+      resultado,
+      estado: resultado < 0
         ? "deficit"
-        : resultadoUsd > 0
+        : resultado > 0
           ? "ahorro"
           : "equilibrio",
       etiquetaPeriodo,
     };
-  }, [
-    cuentas,
-    esCuentaCredito,
-    filtros.fechaAnio,
-    filtros.fechaMes,
-    filtros.fechaModo,
-    gastos,
-  ]);
+  })();
 
   const ordenPendientes = useSortableRows(
     gastosPendientes,
@@ -1210,7 +1209,9 @@ function DesglocePage() {
                   : resumenAhorrosFiltrado.estado === "ahorro"
                     ? "Ahorro"
                     : "Sin diferencia"}
-                : US$ {formatearMonto(resumenAhorrosFiltrado.resultadoUsd)}
+                : {" "}{simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                  Math.abs(resumenAhorrosFiltrado.resultado),
+                )}
               </strong>
             )}
           </header>
@@ -1226,9 +1227,11 @@ function DesglocePage() {
           ) : (
             <div className="movements-savings-values">
               <div>
-                <span>Presupuesto base</span>
+                <span>Entradas bancarias</span>
                 <strong>
-                  US$ {formatearMonto(resumenAhorrosFiltrado.presupuestoUsd)}
+                  {simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                    resumenAhorrosFiltrado.ingresosBancarios,
+                  )}
                 </strong>
                 <small>
                   {resumenAhorrosFiltrado.mesesIncluidos} mes
@@ -1236,17 +1239,20 @@ function DesglocePage() {
                 </small>
               </div>
               <div>
-                <span>Transferido desde Caja Ahorro USD</span>
+                <span>Salidas bancarias</span>
                 <strong>
-                  US$ {formatearMonto(resumenAhorrosFiltrado.transferidoUsd)}
+                  {simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                    resumenAhorrosFiltrado.egresosBancarios,
+                  )}
                 </strong>
-                <small>Movimientos con subcategoría Transf.</small>
+                <small>Incluye gastos y transferencias enviadas.</small>
               </div>
             </div>
           )}
           <p className="movements-savings-help">
             El mes y el año de los filtros actualizan este resultado. Las
-            transferencias continúan siendo neutrales dentro del gasto real.
+            transferencias recibidas suman en esta cuenta y las enviadas restan;
+            los saldos anteriores del Excel no se consideran ingresos.
           </p>
         </section>
       )}

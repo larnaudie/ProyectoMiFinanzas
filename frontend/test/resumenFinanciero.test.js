@@ -77,7 +77,7 @@ test("una transferencia propia vinculada es neutral para el flujo general", () =
   assert.equal(resumen.UYU.gastoReal, 0);
 });
 
-test("filtra el resultado mensual por cuenta sin perder las transferencias vinculadas", () => {
+test("una transferencia vinculada modifica el ahorro de cada cuenta", () => {
   const resumen = resumirMovimientosMensuales({
     cuentas,
     periodo: "2026-08",
@@ -120,9 +120,144 @@ test("filtra el resultado mensual por cuenta sin perder las transferencias vincu
 
   assert.equal(resumen.USD.cantidad, 2);
   assert.equal(resumen.USD.ingresosBancarios, 4000);
-  assert.equal(resumen.USD.egresosBancarios, 0);
+  assert.equal(resumen.USD.egresosBancarios, 1000);
+  assert.equal(resumen.USD.resultadoBancario, 3000);
   assert.equal(resumen.UYU.cantidad, 0);
   assert.equal(resumen.UYU.gastoReal, 0);
+});
+
+test("el ahorro de una cuenta incluye gastos directos además de transferencias", () => {
+  const resumen = resumirMovimientosMensuales({
+    cuentas,
+    periodo: "2026-05",
+    cuentaId: "usd",
+    gastos: [
+      {
+        _id: "ingreso",
+        cuentaId: "usd",
+        fecha: "2026-05-04",
+        estado: "creado",
+        montoBancario: 4000,
+      },
+      {
+        _id: "transferencia",
+        cuentaId: "usd",
+        fecha: "2026-05-04",
+        estado: "creado",
+        montoBancario: -2405.58,
+        subcategoriaId: { nombreSubcategoria: "Transf. CA-UYU" },
+      },
+      {
+        _id: "auto",
+        cuentaId: "usd",
+        fecha: "2026-05-10",
+        estado: "creado",
+        montoBancario: -10000,
+        montoReal: -10000,
+        incluirMontoReal: true,
+        subcategoriaId: { nombreSubcategoria: "Auto Gastos" },
+      },
+      {
+        _id: "otros",
+        cuentaId: "usd",
+        fecha: "2026-05-20",
+        estado: "creado",
+        montoBancario: -1053.38,
+        montoReal: -1053.38,
+        incluirMontoReal: true,
+      },
+    ],
+  });
+
+  assert.equal(resumen.USD.ingresosBancarios, 4000);
+  assert.equal(resumen.USD.egresosBancarios, 13458.96);
+  assert.equal(resumen.USD.resultadoBancario, -9458.96);
+});
+
+test("cada cuenta conserva su ahorro y el consolidado neutraliza los traslados", () => {
+  const cuentasFlujo = [
+    { _id: "cc-usd", tipoCuenta: "debito", moneda: "USD" },
+    { _id: "ca-usd", tipoCuenta: "debito", moneda: "USD" },
+    { _id: "ca-uyu", tipoCuenta: "debito", moneda: "UYU" },
+  ];
+  const gastos = [
+    {
+      _id: "sueldo",
+      cuentaId: "cc-usd",
+      fecha: "2026-05-01",
+      estado: "creado",
+      montoBancario: 4000,
+    },
+    {
+      _id: "cc-a-ca",
+      cuentaId: "cc-usd",
+      fecha: "2026-05-02",
+      estado: "creado",
+      montoBancario: -4000,
+      subcategoriaId: { nombreSubcategoria: "Transf. CC-USD" },
+    },
+    {
+      _id: "ca-recibe",
+      cuentaId: "ca-usd",
+      fecha: "2026-05-02",
+      estado: "creado",
+      montoBancario: 4000,
+      subcategoriaId: { nombreSubcategoria: "Transf. CC-USD" },
+    },
+    {
+      _id: "ca-envia",
+      cuentaId: "ca-usd",
+      fecha: "2026-05-03",
+      estado: "creado",
+      montoBancario: -3000,
+      subcategoriaId: { nombreSubcategoria: "Transf. CA-UYU" },
+    },
+    {
+      _id: "uyu-recibe",
+      cuentaId: "ca-uyu",
+      fecha: "2026-05-03",
+      estado: "creado",
+      montoBancario: 120000,
+      subcategoriaId: { nombreSubcategoria: "Transf. CA-USD" },
+    },
+    {
+      _id: "gasto-uyu",
+      cuentaId: "ca-uyu",
+      fecha: "2026-05-04",
+      estado: "creado",
+      montoBancario: -40000,
+    },
+  ];
+
+  const cc = resumirMovimientosMensuales({
+    cuentas: cuentasFlujo,
+    gastos,
+    periodo: "2026-05",
+    cuentaId: "cc-usd",
+  });
+  const caUsd = resumirMovimientosMensuales({
+    cuentas: cuentasFlujo,
+    gastos,
+    periodo: "2026-05",
+    cuentaId: "ca-usd",
+  });
+  const caUyu = resumirMovimientosMensuales({
+    cuentas: cuentasFlujo,
+    gastos,
+    periodo: "2026-05",
+    cuentaId: "ca-uyu",
+  });
+  const consolidado = resumirMovimientosMensuales({
+    cuentas: cuentasFlujo,
+    gastos,
+    periodo: "2026-05",
+  });
+
+  assert.equal(cc.USD.resultadoBancario, 0);
+  assert.equal(caUsd.USD.resultadoBancario, 1000);
+  assert.equal(caUyu.UYU.resultadoBancario, 80000);
+  assert.equal(consolidado.USD.resultadoBancario, 4000);
+  assert.equal(consolidado.UYU.resultadoBancario, -40000);
 });
 
 test("un traslado interno no altera el flujo general", () => {
@@ -268,6 +403,7 @@ test("un saldo anterior no se convierte en ingreso ni gasto real del mes", () =>
 
   assert.equal(resumen.USD.ingresosBancarios, 0);
   assert.equal(resumen.USD.gastoReal, 0);
+  assert.equal(resumen.USD.cantidad, 0);
 });
 
 test("un pago bancario importado conserva la decisión de gasto real", () => {

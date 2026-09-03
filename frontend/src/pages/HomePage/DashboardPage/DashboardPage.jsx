@@ -25,10 +25,10 @@ import {
   esPagoTarjeta,
 } from "../../../utils/resultadoEconomico.js";
 import {
-  esCuentaFuentePresupuesto,
-  esSubcategoriaTransferencia,
-  resumirPresupuestoMensualPorTransferencias,
-} from "../../../utils/presupuestoMensual.js";
+  esSaldoInicial,
+  esTransferenciaInternaPorSubcategoria as esSubcategoriaTransferencia,
+  resumirMovimientosMensuales,
+} from "../../../utils/resumenFinanciero.js";
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -155,16 +155,7 @@ function DashboardPage({ embedded = false }) {
     ? cuentaActualLayout
     : cuentas.find((cuenta) => cuenta._id === cuentaSeleccionada);
   const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
-  const esCuentaFuentePresupuestoActual = esCuentaFuentePresupuesto(cuentaActual);
-  const idsCuentasDashboard = useMemo(() => {
-    if (!cuentaId) return "";
-
-    const ids = new Set([cuentaId]);
-    cuentas
-      .filter(esCuentaFuentePresupuesto)
-      .forEach((cuenta) => ids.add(cuenta._id));
-    return [...ids].join(",");
-  }, [cuentaId, cuentas]);
+  const idsCuentasDashboard = cuentaId || "";
 
   useEffect(() => {
     if (cuentaId && (cargandoCuentaActual || !cuentaActual)) {
@@ -419,6 +410,7 @@ function DashboardPage({ embedded = false }) {
         return;
       }
       if (gasto.estado !== "creado") return;
+      if (esSaldoInicial(gasto)) return;
 
       const esMovimientoInterno =
         movimientosInternosVinculados.has(obtenerId(gasto._id))
@@ -457,40 +449,43 @@ function DashboardPage({ embedded = false }) {
     monedasDashboard,
   ]);
 
-  const presupuestoPorMes = useMemo(
+  const ahorroPorMes = useMemo(
     () => new Map(
       meses.map((clave) => [
         clave,
-        resumirPresupuestoMensualPorTransferencias({
+        resumirMovimientosMensuales({
           gastos,
           cuentas,
           periodo: clave,
+          cuentaId: cuentaActual?._id || "",
         }),
       ]),
     ),
-    [cuentas, gastos, meses],
+    [cuentaActual?._id, cuentas, gastos, meses],
   );
 
-  const presupuestoDelPeriodo = useMemo(() => {
-    const resumenesDisponibles = [...presupuestoPorMes.values()]
-      .filter((resumen) => resumen.disponible);
+  const ahorroDelPeriodoPorMoneda = useMemo(
+    () => Object.fromEntries(
+      monedasDashboard.map((moneda) => {
+        const total = [...ahorroPorMes.values()].reduce(
+          (acumulado, resumen) => {
+            const datos = resumen[moneda];
+            acumulado.cantidad += numeroFinito(datos?.cantidad);
+            acumulado.ingresosBancarios += numeroFinito(datos?.ingresosBancarios);
+            acumulado.egresosBancarios += numeroFinito(datos?.egresosBancarios);
+            return acumulado;
+          },
+          { cantidad: 0, ingresosBancarios: 0, egresosBancarios: 0 },
+        );
 
-    return {
-      disponible: resumenesDisponibles.length > 0,
-      presupuestoUsd: resumenesDisponibles.reduce(
-        (total, resumen) => total + resumen.presupuestoUsd,
-        0,
-      ),
-      transferidoUsd: resumenesDisponibles.reduce(
-        (total, resumen) => total + resumen.transferidoUsd,
-        0,
-      ),
-      resultadoUsd: resumenesDisponibles.reduce(
-        (total, resumen) => total + resumen.resultadoUsd,
-        0,
-      ),
-    };
-  }, [presupuestoPorMes]);
+        total.resultadoBancario = Number((
+          total.ingresosBancarios - total.egresosBancarios
+        ).toFixed(2));
+        return [moneda, total];
+      }),
+    ),
+    [ahorroPorMes, monedasDashboard],
+  );
 
   const totalesPorMoneda = useMemo(
     () =>
@@ -533,21 +528,13 @@ function DashboardPage({ embedded = false }) {
         Math.max(
           1,
           ...datosMensualesPorMoneda[moneda].flatMap((mes) => {
-            const presupuestoMes = presupuestoPorMes.get(mes.clave);
-            if (
-              esCuentaFuentePresupuestoActual
-              && moneda === "USD"
-              && presupuestoMes?.disponible
-            ) {
-              return [
-                presupuestoMes.transferidoUsd,
-                presupuestoMes.presupuestoUsd,
-              ];
+            if (esCuentaCredito) {
+              return [mes.montoBancario, mes.pagosTarjeta];
             }
-
+            const ahorroMes = ahorroPorMes.get(mes.clave)?.[moneda];
             return [
-              mes.montoBancario,
-              esCuentaCredito ? mes.pagosTarjeta : mes.montoReal,
+              numeroFinito(ahorroMes?.ingresosBancarios),
+              numeroFinito(ahorroMes?.egresosBancarios),
             ];
           }),
         ),
@@ -555,10 +542,9 @@ function DashboardPage({ embedded = false }) {
     ),
     [
       datosMensualesPorMoneda,
+      ahorroPorMes,
       esCuentaCredito,
-      esCuentaFuentePresupuestoActual,
       monedasDashboard,
-      presupuestoPorMes,
     ],
   );
 
@@ -873,18 +859,24 @@ function DashboardPage({ embedded = false }) {
 
       <section className="dashboard-kpis">
         <article>
-          <span>{esCuentaCredito ? "Consumos de tarjeta" : "Monto bancario"}</span>
+          <span>{esCuentaCredito ? "Consumos de tarjeta" : "Salidas bancarias"}</span>
           {monedasDashboard.map((moneda) => (
             <div className="dashboard-kpi-value" key={moneda}>
               <strong>
                 {formatearMonto(
-                  totalesPorMoneda[moneda].montoBancario,
+                  esCuentaCredito
+                    ? totalesPorMoneda[moneda].montoBancario
+                    : ahorroDelPeriodoPorMoneda[moneda].egresosBancarios,
                   moneda,
                 )}
               </strong>
               {moneda === "UI" && (
                 <EquivalenciaMontoUi
-                  monto={totalesPorMoneda[moneda].montoBancario}
+                  monto={
+                    esCuentaCredito
+                      ? totalesPorMoneda[moneda].montoBancario
+                      : ahorroDelPeriodoPorMoneda[moneda].egresosBancarios
+                  }
                   cotizacion={cotizacionUi.cotizacion}
                 />
               )}
@@ -893,7 +885,9 @@ function DashboardPage({ embedded = false }) {
           <small>
             {esCuentaCredito
               ? "Compras y cuotas de los meses filtrados"
-              : "Consumo acumulado de los meses filtrados"}
+              : cuentaActual
+                ? "Incluye gastos y transferencias salientes de esta cuenta"
+                : "Excluye transferencias propias en el consolidado"}
           </small>
         </article>
         <article>
@@ -930,7 +924,7 @@ function DashboardPage({ embedded = false }) {
           <span>
             {esCuentaCredito
               ? "Deuda al último cierre"
-              : "Resultado del sueldo"}
+              : "Ahorro real del período"}
           </span>
           {esCuentaCredito ? (
             monedasDashboard.map((moneda) => {
@@ -965,47 +959,47 @@ function DashboardPage({ embedded = false }) {
               </div>
               );
             })
-          ) : (
-            <div className="dashboard-kpi-value">
-              <strong
-                className={
-                  presupuestoDelPeriodo.resultadoUsd < 0
-                    ? "dashboard-value-negative"
-                    : "dashboard-value-positive"
-                }
-              >
-                {presupuestoDelPeriodo.disponible
-                  ? `${presupuestoDelPeriodo.resultadoUsd < 0
-                    ? "Déficit"
-                    : presupuestoDelPeriodo.resultadoUsd > 0
-                      ? "Ahorro"
-                      : "Sin diferencia"}: ${formatearMonto(
-                    presupuestoDelPeriodo.resultadoUsd,
-                    "USD",
-                  )}`
-                  : "Sin datos del período"}
-              </strong>
-              {presupuestoDelPeriodo.disponible && (
-                <span className="dashboard-kpi-context">
-                  Presupuesto {formatearMonto(
-                    presupuestoDelPeriodo.presupuestoUsd,
-                    "USD",
-                  )}
-                  {" · "}
-                  Transferido {formatearMonto(
-                    presupuestoDelPeriodo.transferidoUsd,
-                    "USD",
-                  )}
-                </span>
-              )}
-            </div>
-          )}
+          ) : monedasDashboard.map((moneda) => {
+            const resumen = ahorroDelPeriodoPorMoneda[moneda];
+            const resultado = numeroFinito(resumen?.resultadoBancario);
+            const disponible = numeroFinito(resumen?.cantidad) > 0;
+            const etiqueta = resultado < 0
+              ? "Déficit"
+              : resultado > 0
+                ? "Ahorro"
+                : "Sin diferencia";
+
+            return (
+              <div className="dashboard-kpi-value" key={moneda}>
+                <strong
+                  className={
+                    resultado < 0
+                      ? "dashboard-value-negative"
+                      : "dashboard-value-positive"
+                  }
+                >
+                  {disponible
+                    ? `${etiqueta}: ${formatearMonto(Math.abs(resultado), moneda)}`
+                    : `Sin datos en ${moneda}`}
+                </strong>
+                {disponible && (
+                  <span className="dashboard-kpi-context">
+                    Entradas {formatearMonto(resumen.ingresosBancarios, moneda)}
+                    {" · "}
+                    Salidas {formatearMonto(resumen.egresosBancarios, moneda)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
           <small>
             {esCuentaCredito
               ? ultimoResumenFiltrado
                 ? `Cierre ${formatearFecha(ultimoResumenFiltrado.cierre)}; sin monto real`
                 : "Todavía no hay un resumen dentro del período"
-              : "US$ 4.000 mensuales menos transferencias salientes desde CA USD"}
+              : cuentaActual
+                ? "Entradas menos todas las salidas bancarias de esta cuenta"
+                : "Resultado consolidado; las transferencias propias son neutrales"}
           </small>
         </article>
         <article
@@ -1166,17 +1160,13 @@ function DashboardPage({ embedded = false }) {
                 <i className="banking-dot" />
                 {esCuentaCredito
                   ? "Consumos"
-                  : esCuentaFuentePresupuestoActual
-                    ? "Transferido desde CA USD"
-                    : "Monto bancario"}
+                  : "Entradas bancarias"}
               </span>
               <span>
                 <i className="real-dot" />
                 {esCuentaCredito
                   ? "Pagos y reintegros"
-                  : esCuentaFuentePresupuestoActual
-                    ? "Presupuesto mensual"
-                    : "Monto real"}
+                  : "Salidas bancarias"}
               </span>
             </div>
           </div>
@@ -1189,15 +1179,12 @@ function DashboardPage({ embedded = false }) {
                   + (datosMensualesPorMoneda[moneda][indiceMes]?.cantidad || 0),
                 0,
               );
-              const presupuestoMes = presupuestoPorMes.get(claveMes);
-              const resultadoPresupuestoMes = numeroFinito(
-                presupuestoMes?.resultadoUsd,
-              );
-              const etiquetaPresupuestoMes = resultadoPresupuestoMes < 0
-                ? "Déficit"
-                : resultadoPresupuestoMes > 0
-                  ? "Ahorro"
-                  : "Sin diferencia";
+              const ahorrosMes = monedasDashboard
+                .map((moneda) => ({
+                  moneda,
+                  resumen: ahorroPorMes.get(claveMes)?.[moneda],
+                }))
+                .filter(({ resumen }) => numeroFinito(resumen?.cantidad) > 0);
 
               return (
                 <article className="monthly-period-group" key={claveMes}>
@@ -1205,39 +1192,39 @@ function DashboardPage({ embedded = false }) {
                     <strong>{formatearMes(claveMes)}</strong>
                     <div className="monthly-period-meta">
                       <span>{cantidadMovimientos} movimientos</span>
-                      {!esCuentaCredito && presupuestoMes?.disponible && (
-                        <small
-                          className={
-                            resultadoPresupuestoMes < 0
-                              ? "monthly-saving-negative"
-                              : "monthly-saving-positive"
-                          }
-                        >
-                          {etiquetaPresupuestoMes}: {formatearMonto(
-                            resultadoPresupuestoMes,
-                            "USD",
-                          )}
-                        </small>
-                      )}
+                      {!esCuentaCredito && ahorrosMes.map(({ moneda, resumen }) => {
+                        const resultado = numeroFinito(resumen.resultadoBancario);
+                        const etiqueta = resultado < 0
+                          ? "Déficit"
+                          : resultado > 0
+                            ? "Ahorro"
+                            : "Sin diferencia";
+                        return (
+                          <small
+                            key={moneda}
+                            className={
+                              resultado < 0
+                                ? "monthly-saving-negative"
+                                : "monthly-saving-positive"
+                            }
+                          >
+                            {etiqueta}: {formatearMonto(Math.abs(resultado), moneda)}
+                          </small>
+                        );
+                      })}
                     </div>
                   </header>
 
                   <div className="monthly-period-currencies">
                     {monedasDashboard.map((moneda) => {
                       const mes = datosMensualesPorMoneda[moneda][indiceMes];
-                      const muestraPresupuestoTransferencias = (
-                        esCuentaFuentePresupuestoActual
-                        && moneda === "USD"
-                        && presupuestoMes?.disponible
-                      );
-                      const primerMonto = muestraPresupuestoTransferencias
-                        ? presupuestoMes.transferidoUsd
-                        : mes.montoBancario;
-                      const segundoMonto = muestraPresupuestoTransferencias
-                        ? presupuestoMes.presupuestoUsd
-                        : esCuentaCredito
-                          ? mes.pagosTarjeta
-                          : mes.montoReal;
+                      const ahorroMes = ahorroPorMes.get(claveMes)?.[moneda];
+                      const primerMonto = esCuentaCredito
+                        ? mes.montoBancario
+                        : numeroFinito(ahorroMes?.ingresosBancarios);
+                      const segundoMonto = esCuentaCredito
+                        ? mes.pagosTarjeta
+                        : numeroFinito(ahorroMes?.egresosBancarios);
                       const resultadoTarjeta = mes.saldoTarjeta;
                       const resultadoTarjetaPositivo = resultadoTarjeta < 0;
                       const tarjetaSinVariacion = resultadoTarjeta === 0;
@@ -1271,9 +1258,7 @@ function DashboardPage({ embedded = false }) {
                               </small>
                             ) : (
                               <small className="monthly-budget-context">
-                                {muestraPresupuestoTransferencias
-                                  ? `Presupuesto ${formatearMonto(segundoMonto, moneda)}`
-                                  : `Gasto real ${formatearMonto(mes.montoReal, moneda)}`}
+                                Gasto real {formatearMonto(mes.montoReal, moneda)}
                               </small>
                             )}
                           </div>
@@ -1281,11 +1266,7 @@ function DashboardPage({ embedded = false }) {
                           <div className="monthly-bars">
                             <div className="monthly-bar-line">
                               <span className="monthly-bar-name">
-                                {muestraPresupuestoTransferencias
-                                  ? "Transferido"
-                                  : esCuentaCredito
-                                    ? "Consumos"
-                                    : "Bancario"}
+                                {esCuentaCredito ? "Consumos" : "Entradas"}
                               </span>
                               <span className="monthly-bar-amount">
                                 <strong>
@@ -1313,11 +1294,7 @@ function DashboardPage({ embedded = false }) {
 
                             <div className="monthly-bar-line">
                               <span className="monthly-bar-name">
-                                {muestraPresupuestoTransferencias
-                                  ? "Presupuesto"
-                                  : esCuentaCredito
-                                    ? "Pagos"
-                                    : "Real"}
+                                {esCuentaCredito ? "Pagos" : "Salidas"}
                               </span>
                               <span className="monthly-bar-amount">
                                 <strong>
@@ -1749,11 +1726,12 @@ function DashboardPage({ embedded = false }) {
             </p>
           ) : (
             <p>
-              Cada mes parte de un presupuesto fijo de US$ 4.000. Las salidas
-              desde Caja Ahorro USD con subcategoría Transf. consumen ese monto:
-              si lo superan hay déficit y, si queda disponible, hay ahorro. Las
-              transferencias siguen siendo neutrales para el movimiento bancario
-              y el Gasto Real se muestra por separado.
+              El ahorro de cada cuenta es la suma de sus entradas menos todas
+              sus salidas bancarias del período. Por eso una transferencia
+              recibida aumenta esa cuenta y una transferencia enviada la reduce.
+              Al consolidar todas las cuentas, los movimientos propios son
+              neutrales para evitar contar dos veces el mismo dinero. Los saldos
+              anteriores del Excel no se consideran ingresos del mes.
             </p>
           )}
         </div>
