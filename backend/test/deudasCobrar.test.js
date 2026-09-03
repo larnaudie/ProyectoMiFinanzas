@@ -4,6 +4,7 @@ import {
   calcularResumenDeuda,
   convertirCobroDeuda,
 } from "../v1/utils/deudasCobrar.js";
+import { actualizarEstadoDeudaSchema } from "../v1/0-validators/deudaCobrar.validators.js";
 
 test("aplica un cobro sin convertir cuando usa la moneda de la deuda", () => {
   assert.equal(convertirCobroDeuda({
@@ -67,4 +68,17 @@ test("rechaza una conversión sin cotización suficiente", () => {
     monedaOrigen: "UYU",
     monedaDestino: "USD",
   }), /cotización BCU válida/);
+});
+
+test("acepta el cierre manual explícito de una deuda", () => {
+  const { value, error } = actualizarEstadoDeudaSchema.validate({
+    estado: "saldada",
+    forzar: true,
+  });
+  assert.equal(error, undefined);
+  assert.equal(value.forzar, true);
+
+  const reapertura = actualizarEstadoDeudaSchema.validate({ estado: "activa" });
+  assert.equal(reapertura.error, undefined);
+  assert.equal(reapertura.value.forzar, false);
 });

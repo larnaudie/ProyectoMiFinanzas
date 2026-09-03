@@ -47,6 +47,9 @@ const deudaCobrarSchema = new mongoose.Schema({
     default: "activa",
     index: true,
   },
+  saldadaEn: { type: Date, default: null },
+  saldadaManualmente: { type: Boolean, default: false },
+  saldoPendienteAlSaldar: { type: Number, min: 0, default: 0 },
   notas: { type: String, trim: true, default: "" },
   cobros: [cobroSchema],
 }, { timestamps: true });

@@ -22,4 +22,5 @@ export const vincularCobroDeudaSchema = Joi.object({
 
 export const actualizarEstadoDeudaSchema = Joi.object({
   estado: Joi.string().valid("activa", "saldada").required(),
+  forzar: Joi.boolean().default(false),
 });

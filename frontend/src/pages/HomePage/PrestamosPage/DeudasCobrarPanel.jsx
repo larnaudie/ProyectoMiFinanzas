@@ -259,12 +259,18 @@ function DeudaCard({ deuda, abierto, procesando, onToggle, onOpenLink, onUnlink,
       {abierto && (
         <div className="loan-card-detail">
           {deuda.notas && <p className="receivable-notes">{deuda.notas}</p>}
+          {deuda.estado === "saldada" && deuda.saldadaManualmente && (
+            <p className="receivable-manual-settlement">
+              <strong>Saldada manualmente el {fechaCorta(deuda.saldadaEn)}.</strong>
+              <span>Al cerrarla quedaban {formatearPrestamo(deuda.saldoPendienteAlSaldar, deuda.monedaCapital)} sin vincular.</span>
+            </p>
+          )}
           {resumen.excedente > 0 && <p className="receivable-overpayment">Hay un excedente vinculado de {formatearPrestamo(resumen.excedente, deuda.monedaCapital)}.</p>}
           <div className="loan-detail-actions">
             {deuda.estado === "activa" ? (
               <>
                 <button type="button" disabled={procesando} onClick={onOpenLink}>Vincular cobro</button>
-                <button type="button" className="secondary-button" disabled={!resumen.completa || procesando} title={!resumen.completa ? "Disponible cuando el cobro llegue al 100%" : ""} onClick={() => onState("saldada")}>Marcar como saldada</button>
+                <button type="button" className={resumen.completa ? "secondary-button" : "receivable-force-button"} disabled={procesando} onClick={() => onState("saldada")}>{resumen.completa ? "Marcar como saldada" : "Saldar igualmente"}</button>
               </>
             ) : <button type="button" className="secondary-button" disabled={procesando} onClick={() => onState("activa")}>Reabrir deuda</button>}
             <button type="button" className="danger-button" disabled={procesando} onClick={onDelete}>Eliminar deuda</button>
@@ -364,11 +370,18 @@ export default function DeudasCobrarPanel({ cotizacion, cuentas = [], subcategor
       reemplazar(response.data.deuda); setMensaje("Cobro desvinculado; el movimiento bancario se conservó.");
     } catch (apiError) { setError(mensajeError(apiError)); } finally { setProcesandoId(""); }
   };
-  const cambiarEstado = async (deudaId, estado) => {
-    setProcesandoId(deudaId); setError("");
+  const cambiarEstado = async (deuda, estado) => {
+    const forzar = estado === "saldada" && !deuda.resumen.completa;
+    if (forzar && !window.confirm(
+      `Todavía faltan ${formatearPrestamo(deuda.resumen.pendiente, deuda.monedaCapital)} por cobrar. ¿Querés saldarla igualmente bajo tu responsabilidad?`,
+    )) return;
+    setProcesandoId(deuda._id); setError("");
     try {
-      const response = await api.patch(`/deudas/${deudaId}/estado`, { estado });
-      reemplazar(response.data.deuda); setMensaje(estado === "saldada" ? "Deuda marcada como saldada." : "Deuda reabierta.");
+      const response = await api.patch(`/deudas/${deuda._id}/estado`, { estado, forzar });
+      reemplazar(response.data.deuda);
+      setMensaje(estado === "saldada"
+        ? forzar ? "Deuda saldada manualmente con saldo pendiente." : "Deuda marcada como saldada."
+        : "Deuda reabierta.");
     } catch (apiError) { setError(mensajeError(apiError)); } finally { setProcesandoId(""); }
   };
   const eliminar = async (deudaId) => {
@@ -389,7 +402,7 @@ export default function DeudasCobrarPanel({ cotizacion, cuentas = [], subcategor
       {error && <p className="inline-error receivable-feedback">{error}</p>}
       {mensaje && <p className="loans-success receivable-feedback">{mensaje}</p>}
       <div className="receivable-bcu-note"><strong>Conversión BCU congelada por cobro</strong><span>{cotizacion?.usd?.uyuPorDolar ? `Referencia actual: US$ 1 = $ ${Number(cotizacion.usd.uyuPorDolar).toLocaleString("es-UY")}` : "La API consultará la referencia del BCU al vincular monedas diferentes."}</span></div>
-      <div className="loan-list">{cargando && !deudas.length ? <p className="empty-state">Cargando deudas...</p> : deudas.length ? deudas.map((deuda) => <DeudaCard key={deuda._id} deuda={deuda} abierto={Boolean(abiertas[deuda._id])} procesando={procesandoId === deuda._id} onToggle={() => setAbiertas((actual) => ({ ...actual, [deuda._id]: !actual[deuda._id] }))} onOpenLink={() => abrirCobros(deuda)} onUnlink={(gastoId) => desvincular(deuda._id, gastoId)} onState={(estado) => cambiarEstado(deuda._id, estado)} onDelete={() => eliminar(deuda._id)} />) : <div className="loan-empty-state"><strong>No tenés deudas a cobrar registradas.</strong><span>Creá una con el capital acordado y vinculá cada transferencia que recibas.</span></div>}</div>
+      <div className="loan-list">{cargando && !deudas.length ? <p className="empty-state">Cargando deudas...</p> : deudas.length ? deudas.map((deuda) => <DeudaCard key={deuda._id} deuda={deuda} abierto={Boolean(abiertas[deuda._id])} procesando={procesandoId === deuda._id} onToggle={() => setAbiertas((actual) => ({ ...actual, [deuda._id]: !actual[deuda._id] }))} onOpenLink={() => abrirCobros(deuda)} onUnlink={(gastoId) => desvincular(deuda._id, gastoId)} onState={(estado) => cambiarEstado(deuda, estado)} onDelete={() => eliminar(deuda._id)} />) : <div className="loan-empty-state"><strong>No tenés deudas a cobrar registradas.</strong><span>Creá una con el capital acordado y vinculá cada transferencia que recibas.</span></div>}</div>
       {formAbierto && <DeudaFormModal guardando={guardando} onClose={() => setFormAbierto(false)} onCreate={crear} />}
       {deudaCobro && <CobroModal deuda={deudaCobro} movimientos={movimientos} cuentas={cuentas} subcategorias={subcategorias} paginacion={paginacion} cotizacion={cotizacion} cargando={cargandoMovimientos} vinculando={procesandoId === deudaCobro._id} onClose={() => setDeudaCobro(null)} onLink={vincular} onSearch={buscarMovimientos} />}
     </section>

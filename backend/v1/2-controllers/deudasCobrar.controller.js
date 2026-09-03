@@ -60,7 +60,7 @@ export const actualizarEstadoDeuda = async (req, res, next) => {
     const deuda = await actualizarEstadoDeudaService(
       req.user.id,
       req.params.id,
-      req.body.estado,
+      req.body,
     );
     res.status(200).json({ message: "Estado actualizado", deuda });
   } catch (error) { next(error); }

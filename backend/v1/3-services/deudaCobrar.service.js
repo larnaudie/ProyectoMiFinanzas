@@ -272,7 +272,12 @@ export const desvincularCobroDeudaService = async (usuarioId, id, gastoId) => {
   if (deuda.cobros.length === cantidadAnterior) {
     throw errorHttp("El cobro no está vinculado a esta deuda", 404);
   }
-  if (!calcularResumenDeuda(deuda).completa) deuda.estado = "activa";
+  if (!calcularResumenDeuda(deuda).completa) {
+    deuda.estado = "activa";
+    deuda.saldadaEn = null;
+    deuda.saldadaManualmente = false;
+    deuda.saldoPendienteAlSaldar = 0;
+  }
   await deuda.save();
   await Gasto.updateOne(
     { _id: gastoId, usuarioId, deudaCobrarId: deuda._id },
@@ -281,13 +286,27 @@ export const desvincularCobroDeudaService = async (usuarioId, id, gastoId) => {
   return obtenerDeudaCobrarPorIdService(usuarioId, deuda._id);
 };
 
-export const actualizarEstadoDeudaService = async (usuarioId, id, estado) => {
+export const actualizarEstadoDeudaService = async (
+  usuarioId,
+  id,
+  { estado, forzar = false },
+) => {
   const deuda = await DeudaCobrar.findOne({ _id: id, usuarioId });
   if (!deuda) throw errorHttp("Deuda por cobrar no encontrada", 404);
-  if (estado === "saldada" && !calcularResumenDeuda(deuda).completa) {
+  const resumen = calcularResumenDeuda(deuda);
+  if (estado === "saldada" && !resumen.completa && !forzar) {
     throw errorHttp("La deuda todavía tiene saldo pendiente", 409);
   }
   deuda.estado = estado;
+  if (estado === "saldada") {
+    deuda.saldadaEn = new Date();
+    deuda.saldadaManualmente = !resumen.completa;
+    deuda.saldoPendienteAlSaldar = resumen.pendiente;
+  } else {
+    deuda.saldadaEn = null;
+    deuda.saldadaManualmente = false;
+    deuda.saldoPendienteAlSaldar = 0;
+  }
   await deuda.save();
   return obtenerDeudaCobrarPorIdService(usuarioId, deuda._id);
 };

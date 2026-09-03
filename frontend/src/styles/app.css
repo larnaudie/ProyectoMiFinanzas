@@ -7045,7 +7045,8 @@ td {
 }
 
 .receivable-notes,
-.receivable-overpayment {
+.receivable-overpayment,
+.receivable-manual-settlement {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid #dae7e4;
@@ -7060,6 +7061,29 @@ td {
   background: #fffaf0;
   color: #745414;
   font-weight: 750;
+}
+
+.receivable-manual-settlement {
+  display: grid;
+  gap: 3px;
+  border-color: #efd39b;
+  background: #fff9ec;
+  color: #725113;
+}
+
+.receivable-manual-settlement strong {
+  color: #815b12;
+}
+
+.receivable-force-button {
+  border: 1px solid #e4bd70;
+  background: #fff8e8;
+  color: #78530a;
+}
+
+.receivable-force-button:hover:not(:disabled) {
+  border-color: #ce9c3a;
+  background: #fff1ce;
 }
 
 .receivable-payments-table {

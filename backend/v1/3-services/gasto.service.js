@@ -430,7 +430,15 @@ export const eliminarGastoService = async (usuarioId, id) => {
       ),
       DeudaCobrar.updateMany(
         { usuarioId, "cobros.gastoId": id },
-        { $pull: { cobros: { gastoId: id } }, $set: { estado: "activa" } },
+        {
+          $pull: { cobros: { gastoId: id } },
+          $set: {
+            estado: "activa",
+            saldadaEn: null,
+            saldadaManualmente: false,
+            saldoPendienteAlSaldar: 0,
+          },
+        },
       ),
     ]);
     await reconciliarPrestamosUsuarioSeguro(usuarioId);
@@ -453,7 +461,15 @@ export const eliminarTodosLosGastosService = async (usuarioId) => {
       ),
       DeudaCobrar.updateMany(
         { usuarioId, "cobros.gastoId": { $in: gastoIds } },
-        { $pull: { cobros: { gastoId: { $in: gastoIds } } }, $set: { estado: "activa" } },
+        {
+          $pull: { cobros: { gastoId: { $in: gastoIds } } },
+          $set: {
+            estado: "activa",
+            saldadaEn: null,
+            saldadaManualmente: false,
+            saldoPendienteAlSaldar: 0,
+          },
+        },
       ),
     ]);
     await reconciliarPrestamosUsuarioSeguro(usuarioId);
