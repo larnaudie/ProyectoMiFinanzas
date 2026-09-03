@@ -85,6 +85,7 @@ export const obtenerGastosService = async (usuarioId, filtros = {}) => {
       .select(CAMPOS_DASHBOARD)
       .populate("subcategoriaId", "nombreSubcategoria")
       .populate("categoriaId", "nombreCategoria")
+      .populate("origen.referenciaId", "_id tipoMovimiento origen.tipo")
       .lean();
   }
 

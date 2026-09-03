@@ -52,6 +52,10 @@ test("la vista de dashboard consulta solo las cuentas necesarias y usa una respu
   assert.deepEqual(poblaciones, [
     { path: "subcategoriaId", campos: "nombreSubcategoria" },
     { path: "categoriaId", campos: "nombreCategoria" },
+    {
+      path: "origen.referenciaId",
+      campos: "_id tipoMovimiento origen.tipo",
+    },
   ]);
   assert.strictEqual(resultado, documentos);
 });

@@ -379,10 +379,13 @@ function DashboardPage({ embedded = false }) {
     const movimientosInternosVinculados = new Set();
 
     gastosDelDashboard.forEach((gasto) => {
-      const referenciaId = obtenerId(gasto.origen?.referenciaId);
+      const referenciaPoblada = gasto.origen?.referenciaId;
+      if (!referenciaPoblada || typeof referenciaPoblada !== "object") return;
+
+      const referenciaId = obtenerId(referenciaPoblada);
       if (!referenciaId) return;
       const gastoId = obtenerId(gasto._id);
-      const referencia = gastosPorId.get(referenciaId);
+      const referencia = gastosPorId.get(referenciaId) || referenciaPoblada;
       if (esPagoTarjeta(gasto) || esPagoTarjeta(referencia)) return;
       movimientosInternosVinculados.add(gastoId);
       movimientosInternosVinculados.add(referenciaId);

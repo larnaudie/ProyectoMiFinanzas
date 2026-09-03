@@ -71,10 +71,13 @@ const idsTransferenciasInternas = (gastos) => {
 
   gastos.forEach((gasto) => {
     const gastoId = obtenerId(gasto?._id);
-    const referenciaId = obtenerId(gasto?.origen?.referenciaId);
+    const referenciaPoblada = gasto?.origen?.referenciaId;
+    if (!referenciaPoblada || typeof referenciaPoblada !== "object") return;
+
+    const referenciaId = obtenerId(referenciaPoblada);
     if (!gastoId || !referenciaId) return;
 
-    const referencia = gastosPorId.get(referenciaId);
+    const referencia = gastosPorId.get(referenciaId) || referenciaPoblada;
     if (esPagoTarjeta(gasto) || esPagoTarjeta(referencia)) return;
 
     ids.add(gastoId);

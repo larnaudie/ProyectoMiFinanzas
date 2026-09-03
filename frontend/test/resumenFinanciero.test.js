@@ -58,7 +58,7 @@ test("una transferencia propia vinculada es neutral para el flujo general", () =
         fecha: "2026-08-01",
         estado: "creado",
         montoBancario: -1000,
-        origen: { referenciaId: "entra-uyu" },
+        origen: { referenciaId: { _id: "entra-uyu" } },
       },
       {
         _id: "entra-uyu",
@@ -66,7 +66,7 @@ test("una transferencia propia vinculada es neutral para el flujo general", () =
         fecha: "2026-08-01",
         estado: "creado",
         montoBancario: 40000,
-        origen: { referenciaId: "sale-usd" },
+        origen: { referenciaId: { _id: "sale-usd" } },
       },
     ],
   });
@@ -96,7 +96,7 @@ test("filtra el resultado mensual por cuenta sin perder las transferencias vincu
         fecha: "2026-08-02",
         estado: "creado",
         montoBancario: -1000,
-        origen: { referenciaId: "entra-uyu" },
+        origen: { referenciaId: { _id: "entra-uyu" } },
       },
       {
         _id: "entra-uyu",
@@ -104,7 +104,7 @@ test("filtra el resultado mensual por cuenta sin perder las transferencias vincu
         fecha: "2026-08-02",
         estado: "creado",
         montoBancario: 40000,
-        origen: { referenciaId: "sale-usd" },
+        origen: { referenciaId: { _id: "sale-usd" } },
       },
       {
         _id: "gasto-uyu",
@@ -143,7 +143,7 @@ test("un traslado interno no altera el flujo general", () => {
         fecha: "2026-08-02",
         estado: "creado",
         montoBancario: -1000,
-        origen: { referenciaId: "entra-uyu" },
+        origen: { referenciaId: { _id: "entra-uyu" } },
       },
       {
         _id: "entra-uyu",
@@ -151,7 +151,7 @@ test("un traslado interno no altera el flujo general", () => {
         fecha: "2026-08-02",
         estado: "creado",
         montoBancario: 40000,
-        origen: { referenciaId: "sale-usd" },
+        origen: { referenciaId: { _id: "sale-usd" } },
       },
     ],
   });
@@ -187,6 +187,31 @@ test("reconoce una transferencia histórica importada aunque no esté vinculada"
 
   assert.equal(resumen.USD.ingresosBancarios, 4000);
   assert.equal(resumen.UYU.ingresosBancarios, 0);
+});
+
+test("una referencia técnica del Excel no se confunde con una transferencia interna", () => {
+  const resumen = resumirMovimientosMensuales({
+    cuentas,
+    periodo: "2026-08",
+    gastos: [
+      {
+        _id: "gasto-importado",
+        cuentaId: "uyu",
+        fecha: "2026-08-10",
+        estado: "creado",
+        montoBancario: -1250,
+        montoReal: -1000,
+        incluirMontoReal: true,
+        origen: {
+          tipo: "excel",
+          referenciaId: "movimiento-importado",
+        },
+      },
+    ],
+  });
+
+  assert.equal(resumen.UYU.egresosBancarios, 1250);
+  assert.equal(resumen.UYU.gastoReal, 1000);
 });
 
 test("los ahorros y movimientos de pago dentro de la tarjeta son neutrales", () => {
