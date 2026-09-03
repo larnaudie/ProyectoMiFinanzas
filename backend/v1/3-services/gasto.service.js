@@ -1,5 +1,6 @@
 ﻿import Gasto from "../0.1-models/gasto.model.js";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
+import mongoose from "mongoose";
 import Cuenta from "../0.1-models/cuenta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 import cloudinary from "../config/cloudinary.config.js";
@@ -36,12 +37,56 @@ const presentarGasto = (gasto) => {
   return aplicarPoliticaCuentaCredito(presentado, cuenta);
 };
 
+const CAMPOS_DASHBOARD = [
+  "detalle",
+  "cuentaId",
+  "fecha",
+  "montoBancario",
+  "montoReal",
+  "incluirMontoReal",
+  "moneda",
+  "estado",
+  "categoriaId",
+  "subcategoriaId",
+  "tipoMovimiento",
+  "origen.referenciaId",
+  "resumenTarjetaId",
+].join(" ");
+
+const normalizarIdsFiltro = (valor) => {
+  const ids = (Array.isArray(valor) ? valor : [valor])
+    .flatMap((item) => String(item || "").split(","))
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (ids.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+    const error = new Error("El filtro de cuentas contiene un identificador inválido");
+    error.status = 400;
+    throw error;
+  }
+
+  return [...new Set(ids)];
+};
+
 export const obtenerGastosService = async (usuarioId, filtros = {}) => {
   const consulta = { usuarioId };
-  if (filtros.cuentaId) consulta.cuentaId = filtros.cuentaId;
+  if (filtros.cuentaId) {
+    consulta.cuentaId = filtros.cuentaId;
+  } else if (filtros.cuentaIds) {
+    const cuentaIds = normalizarIdsFiltro(filtros.cuentaIds);
+    if (cuentaIds.length > 0) consulta.cuentaId = { $in: cuentaIds };
+  }
   if (filtros.estado) consulta.estado = filtros.estado;
   if (filtros.tarjetaId) consulta.tarjetaId = filtros.tarjetaId;
   if (filtros.resumenTarjetaId) consulta.resumenTarjetaId = filtros.resumenTarjetaId;
+
+  if (filtros.vista === "dashboard") {
+    return Gasto.find(consulta)
+      .select(CAMPOS_DASHBOARD)
+      .populate("subcategoriaId", "nombreSubcategoria")
+      .populate("categoriaId", "nombreCategoria")
+      .lean();
+  }
 
   const gastos = await Gasto.find(consulta)
     .populate("subcategoriaId", "nombreSubcategoria")

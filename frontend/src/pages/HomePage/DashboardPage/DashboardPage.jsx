@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
+import { DashboardLoadingState } from "../../../components/DashboardLoadingState.jsx";
 import {
   formatearMontoMoneda,
   MONEDAS_SOPORTADAS,
@@ -23,6 +25,7 @@ import {
   esPagoTarjeta,
 } from "../../../utils/resultadoEconomico.js";
 import {
+  esCuentaFuentePresupuesto,
   esSubcategoriaTransferencia,
   resumirPresupuestoMensualPorTransferencias,
 } from "../../../utils/presupuestoMensual.js";
@@ -130,10 +133,13 @@ function DashboardPage({ embedded = false }) {
     menuAbierto,
     alEntrarMenu: mantenerMenuAbierto,
     alSalirMenu: permitirCerrarMenu,
+    cuentaActual: cuentaActualLayout,
+    cargandoCuentaActual,
+    errorCuentaActual,
   } = contextoLayout;
   const cuentaSeleccionada = cuentaId || "todas";
   const anioActual = String(new Date().getFullYear());
-  const [cuentas, setCuentas] = useState([]);
+  const cuentas = useSelector((state) => state.cuentas.cuentas);
   const [gastos, setGastos] = useState([]);
   const [resumenesTarjeta, setResumenesTarjeta] = useState([]);
   const [fechaModo, setFechaModo] = useState("mes");
@@ -145,8 +151,29 @@ function DashboardPage({ embedded = false }) {
   const [resumenesContraidos, setResumenesContraidos] = useState({});
   const [panelCategoriasContraido, setPanelCategoriasContraido] = useState(false);
   const [panelResumenesContraido, setPanelResumenesContraido] = useState(false);
+  const cuentaActual = cuentaActualLayout?._id === cuentaId
+    ? cuentaActualLayout
+    : cuentas.find((cuenta) => cuenta._id === cuentaSeleccionada);
+  const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
+  const idsCuentasDashboard = useMemo(() => {
+    if (!cuentaId) return "";
+
+    const ids = new Set([cuentaId]);
+    cuentas
+      .filter(esCuentaFuentePresupuesto)
+      .forEach((cuenta) => ids.add(cuenta._id));
+    return [...ids].join(",");
+  }, [cuentaId, cuentas]);
 
   useEffect(() => {
+    if (cuentaId && (cargandoCuentaActual || !cuentaActual)) {
+      if (errorCuentaActual || (!cargandoCuentaActual && cuentas.length > 0)) {
+        setError(errorCuentaActual || "No se encontró la cuenta solicitada.");
+        setLoading(false);
+      }
+      return undefined;
+    }
+
     let activo = true;
 
     setLoading(true);
@@ -159,27 +186,24 @@ function DashboardPage({ embedded = false }) {
 
     const cargarDashboard = async () => {
       try {
-        const [cuentasResponse, gastosResponse] = await Promise.all([
-          api.get("/cuentas"),
-          api.get("/gastos"),
-        ]);
-        const cuentasCargadas = cuentasResponse.data.cuentas || [];
-        const cuentaCargada = cuentasCargadas.find(
-          (cuenta) => cuenta._id === cuentaId,
-        );
-        let resumenesCargados = [];
-
-        if (cuentaCargada?.tipoCuenta === "credito") {
-          const resumenesResponse = await api.get(
+        const resumenesRequest = esCuentaCredito
+          ? api.get(
             `/importaciones/cuentas/${cuentaId}/resumenes-tarjeta`,
-          );
-          resumenesCargados = resumenesResponse.data.resumenes || [];
-        }
+          )
+          : Promise.resolve({ data: { resumenes: [] } });
+        const [gastosResponse, resumenesResponse] = await Promise.all([
+          api.get("/gastos", {
+            params: {
+              vista: "dashboard",
+              ...(idsCuentasDashboard ? { cuentaIds: idsCuentasDashboard } : {}),
+            },
+          }),
+          resumenesRequest,
+        ]);
 
         if (!activo) return;
-        setCuentas(cuentasCargadas);
         setGastos(gastosResponse.data.gastos || []);
-        setResumenesTarjeta(resumenesCargados);
+        setResumenesTarjeta(resumenesResponse.data.resumenes || []);
       } catch (apiError) {
         if (!activo) return;
         console.error("Error al cargar el dashboard:", apiError);
@@ -197,12 +221,15 @@ function DashboardPage({ embedded = false }) {
     return () => {
       activo = false;
     };
-  }, [cuentaId]);
-
-  const cuentaActual = cuentas.find(
-    (cuenta) => cuenta._id === cuentaSeleccionada,
-  );
-  const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
+  }, [
+    cuentaActual,
+    cargandoCuentaActual,
+    cuentaId,
+    cuentas.length,
+    errorCuentaActual,
+    esCuentaCredito,
+    idsCuentasDashboard,
+  ]);
 
   const gastosDelDashboard = useMemo(
     () =>
@@ -672,7 +699,7 @@ function DashboardPage({ embedded = false }) {
       <section
         className={embedded ? "dashboard-page dashboard-page-embedded" : "page-section"}
       >
-        <p>Cargando dashboard...</p>
+        <DashboardLoadingState nombreCuenta={cuentaActual?.nombreCuenta} />
       </section>
     );
   }

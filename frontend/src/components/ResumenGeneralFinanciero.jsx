@@ -15,6 +15,7 @@ import {
   resumirPresupuestoMensualPorTransferencias,
 } from "../utils/presupuestoMensual.js";
 import { EquivalenciaMontoUi } from "./UiExchangeReference.jsx";
+import { DashboardLoadingState } from "./DashboardLoadingState.jsx";
 
 const MESES = [
   "Enero",
@@ -80,7 +81,7 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
   useEffect(() => {
     let activo = true;
 
-    api.get("/gastos")
+    api.get("/gastos", { params: { vista: "dashboard" } })
       .then((response) => {
         if (activo) setGastos(response.data.gastos || []);
       })
@@ -378,7 +379,7 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
           </div>
         </header>
 
-        {cargando && <p>Cargando resultado...</p>}
+        {cargando && <DashboardLoadingState compacto />}
         {error && <p className="inline-error">{error}</p>}
 
         {!cargando && !error && (
