@@ -70,6 +70,12 @@ const gastoSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    deudaCobrarId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeudaCobrar",
+      default: null,
+      index: true,
+    },
     cuotaPrestamoNumero: { type: Number, default: null },
     hashImportacion: { type: String, default: null },
     montoOriginalTarjeta: { type: Number, default: null },

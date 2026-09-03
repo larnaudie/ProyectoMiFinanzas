@@ -47,9 +47,9 @@ function Sidebar({ abierto, fijado, alEntrar, alSalir }) {
           <NavIcon nombre="manage" />
           <span>Administrar</span>
         </NavLink>
-        <NavLink className={claseLink} to="/prestamos" title="Préstamos" aria-label="Préstamos">
+        <NavLink className={claseLink} to="/prestamos" title="Deudas y préstamos" aria-label="Deudas y préstamos">
           <NavIcon nombre="prestamos" />
-          <span>Préstamos</span>
+          <span>Deudas</span>
         </NavLink>
 
         {cuentaId && (

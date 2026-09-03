@@ -1,5 +1,6 @@
 ﻿import Gasto from "../0.1-models/gasto.model.js";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
+import DeudaCobrar from "../0.1-models/deudaCobrar.model.js";
 import mongoose from "mongoose";
 import Cuenta from "../0.1-models/cuenta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
@@ -427,6 +428,10 @@ export const eliminarGastoService = async (usuarioId, id) => {
         { usuarioId, "origen.referenciaId": id },
         { $set: { "origen.referenciaId": null } },
       ),
+      DeudaCobrar.updateMany(
+        { usuarioId, "cobros.gastoId": id },
+        { $pull: { cobros: { gastoId: id } }, $set: { estado: "activa" } },
+      ),
     ]);
     await reconciliarPrestamosUsuarioSeguro(usuarioId);
   }
@@ -441,10 +446,16 @@ export const eliminarTodosLosGastosService = async (usuarioId) => {
   const gastosEliminados = await Gasto.deleteMany({ usuarioId });
 
   if (gastoIds.length > 0) {
-    await MovimientoImportado.updateMany(
-      { usuarioId, gastoId: { $in: gastoIds } },
-      { estadoImportacion: "pendiente", gastoId: null }
-    );
+    await Promise.all([
+      MovimientoImportado.updateMany(
+        { usuarioId, gastoId: { $in: gastoIds } },
+        { estadoImportacion: "pendiente", gastoId: null },
+      ),
+      DeudaCobrar.updateMany(
+        { usuarioId, "cobros.gastoId": { $in: gastoIds } },
+        { $pull: { cobros: { gastoId: { $in: gastoIds } } }, $set: { estado: "activa" } },
+      ),
+    ]);
     await reconciliarPrestamosUsuarioSeguro(usuarioId);
   }
 

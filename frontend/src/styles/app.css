@@ -6984,6 +6984,183 @@ td {
   background: #ffffff;
 }
 
+.receivables-panel {
+  border-color: #bcded4;
+}
+
+.receivables-header {
+  background:
+    radial-gradient(circle at 86% 0, rgba(88, 178, 151, 0.2), transparent 34%),
+    linear-gradient(135deg, #f7fcfa, #eaf6f2);
+}
+
+.receivables-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #527069;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.receivable-feedback {
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6faf9;
+}
+
+.receivable-bcu-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 18px;
+  border-bottom: 1px solid #dce8e5;
+  background: #ffffff;
+  color: #5c736d;
+  font-size: 10px;
+}
+
+.receivable-bcu-note strong {
+  color: #174e43;
+  font-size: 11px;
+}
+
+.receivable-card {
+  border-color: #cfe1dc;
+}
+
+.receivable-card.is-settled {
+  opacity: 0.82;
+}
+
+.loan-status.is-saldada {
+  background: #dce8e5;
+  color: #3d5f57 !important;
+}
+
+.receivable-progress > span {
+  background: linear-gradient(90deg, #16826b, #71c9ae);
+}
+
+.receivable-notes,
+.receivable-overpayment {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dae7e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #536c65;
+  font-size: 11px;
+}
+
+.receivable-overpayment {
+  border-color: #efd9aa;
+  background: #fffaf0;
+  color: #745414;
+  font-weight: 750;
+}
+
+.receivable-payments-table {
+  min-width: 1080px !important;
+}
+
+.receivable-rate {
+  display: grid;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.receivable-rate small {
+  color: #71827e;
+  font-size: 9px;
+}
+
+.receivable-modal-backdrop {
+  z-index: 150;
+}
+
+.receivable-form-modal,
+.receivable-payment-modal {
+  width: min(820px, calc(100vw - 32px));
+}
+
+.receivable-payment-modal {
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
+.receivable-candidate-list {
+  display: grid;
+  gap: 7px;
+  max-height: min(440px, 52vh);
+  padding: 2px;
+  overflow: auto;
+}
+
+.receivable-candidate {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid #d7e3e0;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #173b34;
+  text-align: left;
+}
+
+.receivable-candidate:hover,
+.receivable-candidate.is-selected {
+  border-color: #3f9a82;
+  background: #eff9f5;
+}
+
+.receivable-candidate > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.receivable-candidate > span strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receivable-candidate small {
+  color: #687c77;
+  font-size: 10px;
+}
+
+.receivable-candidate > strong {
+  flex: 0 0 auto;
+  color: #087662;
+}
+
+.receivable-conversion-preview {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px solid #bfe0d7;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f1faf7, #e8f7f2);
+}
+
+.receivable-conversion-preview span,
+.receivable-conversion-preview small {
+  color: #61766f;
+  font-size: 10px;
+}
+
+.receivable-conversion-preview strong {
+  color: #087662;
+  font-size: 21px;
+}
+
 @media (max-width: 1050px) {
   .loan-summary-grid,
   .loan-simulator-results,
@@ -7032,6 +7209,17 @@ td {
   .loan-modal-section-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .receivables-header-actions,
+  .receivable-bcu-note,
+  .receivable-candidate {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .receivables-header-actions {
+    width: 100%;
   }
 }
 

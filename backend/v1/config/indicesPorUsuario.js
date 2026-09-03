@@ -2,17 +2,19 @@ import mongoose from "mongoose";
 import Banco from "../0.1-models/banco.model.js";
 import Categoria from "../0.1-models/categoria.model.js";
 import Cuenta from "../0.1-models/cuenta.model.js";
+import DeudaCobrar from "../0.1-models/deudaCobrar.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
 import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import SaldoCuenta from "../0.1-models/saldoCuenta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 
-const VERSION_INDICES = "2026-09-02-performance-v1";
+const VERSION_INDICES = "2026-09-03-deudas-cobrar-v2";
 const ID_MIGRACION_INDICES = "indices-aplicacion";
 
 const configuraciones = [
   { modelo: Banco, indicesLegados: ["nombreBanco_1"] },
   { modelo: Cuenta, indicesLegados: ["nombreCuenta_1"] },
+  { modelo: DeudaCobrar, indicesLegados: [] },
   { modelo: Gasto, indicesLegados: [] },
   { modelo: Categoria, indicesLegados: ["nombreCategoria_1"] },
   { modelo: Subcategoria, indicesLegados: ["nombreSubcategoria_1"] },

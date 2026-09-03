@@ -10,6 +10,7 @@ import {
   formatearPrestamo,
 } from "../../../utils/prestamos.js";
 import PrestamoSimulatorModal from "./PrestamoSimulatorModal.jsx";
+import DeudasCobrarPanel from "./DeudasCobrarPanel.jsx";
 
 const simuladorInicial = {
   tipo: "auto",
@@ -395,10 +396,11 @@ function PrestamosPage() {
   };
 
   return <section className="page-section loans-page">
-    <header className="page-header loans-header"><div><span className="page-eyebrow">Financiación</span><h1>Deudas y préstamos</h1><p>Simulá, controlá el capital y conciliá automáticamente las cuotas debitadas de tus cuentas.</p></div><button type="button" onClick={registrarSimulacion}>Registrar préstamo</button></header>
+    <header className="page-header loans-header"><div><span className="page-eyebrow">Compromisos y cobros</span><h1>Deudas y préstamos</h1><p>Controlá tanto el dinero que te deben como los préstamos y financiaciones que vos pagás.</p></div><button type="button" onClick={registrarSimulacion}>Registrar préstamo</button></header>
     {error && <p className="inline-error loans-feedback">{error}</p>}{mensaje && <p className="loans-success loans-feedback">{mensaje}</p>}
+    <DeudasCobrarPanel cotizacion={cotizacionUi.cotizacion} />
     <div className="loan-summary-grid"><article><span>Préstamos activos</span><strong>{resumenGlobal.activos}</strong></article><article><span>Cuotas conciliadas</span><strong>{resumenGlobal.cuotasPagadas}</strong></article><article><span>Cuotas restantes</span><strong>{resumenGlobal.cuotasRestantes}</strong></article><article><span>Actualización</span><strong>Automática</strong><small>Por cuenta, subcategoría y referencia</small></article></div>
-    <section className="loan-panel" id="prestamos-activos"><header className="loan-panel-header"><div><span className="page-eyebrow">Seguimiento</span><h2>Préstamos registrados</h2><p>Los débitos bancarios continúan siendo gastos; aquí sólo se concilian y explican.</p></div><button type="button" className="secondary-button" onClick={cargar} disabled={cargando}>{cargando ? "Actualizando..." : "Actualizar"}</button></header><div className="loan-list">{cargando && !prestamos.length ? <p className="empty-state">Cargando préstamos...</p> : prestamos.length ? prestamos.map((prestamo) => <PrestamoCard key={prestamo._id} prestamo={prestamo} abierto={Boolean(abiertos[prestamo._id])} procesando={procesandoId === prestamo._id} onToggle={() => setAbiertos((actual) => ({ ...actual, [prestamo._id]: !actual[prestamo._id] }))} onReconcile={() => reconciliar(prestamo._id)} onUnlink={(gastoId) => desvincular(prestamo._id, gastoId)} onDelete={() => eliminar(prestamo._id)} />) : <div className="loan-empty-state"><strong>No hay préstamos registrados.</strong><span>Abrí el simulador, compará las condiciones y creá el préstamo cuando estés conforme.</span></div>}</div></section>
+    <section className="loan-panel" id="prestamos-activos"><header className="loan-panel-header"><div><span className="page-eyebrow">Dinero que pagás</span><h2>Préstamos registrados</h2><p>Los débitos bancarios continúan siendo gastos; aquí sólo se concilian y explican.</p></div><button type="button" className="secondary-button" onClick={cargar} disabled={cargando}>{cargando ? "Actualizando..." : "Actualizar"}</button></header><div className="loan-list">{cargando && !prestamos.length ? <p className="empty-state">Cargando préstamos...</p> : prestamos.length ? prestamos.map((prestamo) => <PrestamoCard key={prestamo._id} prestamo={prestamo} abierto={Boolean(abiertos[prestamo._id])} procesando={procesandoId === prestamo._id} onToggle={() => setAbiertos((actual) => ({ ...actual, [prestamo._id]: !actual[prestamo._id] }))} onReconcile={() => reconciliar(prestamo._id)} onUnlink={(gastoId) => desvincular(prestamo._id, gastoId)} onDelete={() => eliminar(prestamo._id)} />) : <div className="loan-empty-state"><strong>No hay préstamos registrados.</strong><span>Abrí el simulador, compará las condiciones y creá el préstamo cuando estés conforme.</span></div>}</div></section>
     <PrestamoSimulatorModal
       abierto={modalAbierto}
       form={form}
