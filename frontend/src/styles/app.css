@@ -8917,6 +8917,98 @@ td {
   min-height: 38px;
 }
 
+.general-consolidated-result {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(300px, 0.8fr);
+  gap: 12px 24px;
+  padding: 17px;
+  border: 1px solid #bcded5;
+  border-left: 5px solid #2f7f70;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f5fbf9 0%, #eaf6f2 100%);
+}
+
+.general-consolidated-result.is-negative {
+  border-color: #ebc7c2;
+  border-left-color: #b73529;
+  background: linear-gradient(135deg, #fffafa 0%, #fbeeed 100%);
+}
+
+.general-consolidated-result.is-pending {
+  border-left-color: #80918d;
+}
+
+.general-consolidated-result.is-neutral .general-consolidated-heading > strong,
+.general-consolidated-result.is-pending .general-consolidated-heading > strong {
+  color: #526762;
+}
+
+.general-consolidated-heading {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.general-consolidated-heading > span {
+  color: #536b65;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.general-consolidated-heading > strong {
+  overflow-wrap: anywhere;
+  color: #126b5a;
+  font-size: clamp(21px, 3vw, 30px);
+}
+
+.general-consolidated-result.is-negative .general-consolidated-heading > strong {
+  color: #b73529;
+}
+
+.general-consolidated-heading > small,
+.general-consolidated-result > p {
+  color: #60736f;
+  font-size: 10px;
+}
+
+.general-consolidated-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.general-consolidated-totals > div {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.general-consolidated-totals dt {
+  color: #6a7e79;
+  font-size: 10px;
+}
+
+.general-consolidated-totals dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #193d35;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.general-consolidated-result > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .general-month-kpis {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -9083,6 +9175,10 @@ td {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .general-consolidated-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .general-period-filters {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9118,6 +9214,10 @@ td {
 
   .general-period-filters .general-account-filter {
     grid-column: 1;
+  }
+
+  .general-consolidated-totals {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .general-rate-reference {

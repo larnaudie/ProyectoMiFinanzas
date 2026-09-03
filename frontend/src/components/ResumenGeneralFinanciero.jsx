@@ -9,6 +9,7 @@ import {
 import {
   resumirMovimientosMensuales,
   resumirSaldosCuentas,
+  totalizarCampoEnUyu,
   totalizarSaldosEnUyu,
 } from "../utils/resumenFinanciero.js";
 import { EquivalenciaMontoUi } from "./UiExchangeReference.jsx";
@@ -150,6 +151,44 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
   const saldoTotalUsd = saldoTotalUyu !== null && uyuPorDolar > 0
     ? saldoTotalUyu / uyuPorDolar
     : null;
+  const entradasConsolidadasUyu = cuentaMensual
+    ? null
+    : totalizarCampoEnUyu(
+      resumenMensual,
+      "ingresosBancarios",
+      cotizacion.cotizacion,
+    );
+  const salidasConsolidadasUyu = cuentaMensual
+    ? null
+    : totalizarCampoEnUyu(
+      resumenMensual,
+      "egresosBancarios",
+      cotizacion.cotizacion,
+    );
+  const resultadoConsolidadoUyu = cuentaMensual
+    ? null
+    : totalizarCampoEnUyu(
+      resumenMensual,
+      "resultadoBancario",
+      cotizacion.cotizacion,
+    );
+  const resultadoConsolidadoUsd = resultadoConsolidadoUyu !== null && uyuPorDolar > 0
+    ? resultadoConsolidadoUyu / uyuPorDolar
+    : null;
+  const estadoResultadoConsolidado = resultadoConsolidadoUyu === null
+    ? "is-pending"
+    : resultadoConsolidadoUyu < 0
+      ? "is-negative"
+      : resultadoConsolidadoUyu > 0
+        ? "is-positive"
+        : "is-neutral";
+  const etiquetaResultadoConsolidado = resultadoConsolidadoUyu === null
+    ? "Cotización pendiente"
+    : resultadoConsolidadoUyu < 0
+      ? "Déficit consolidado"
+      : resultadoConsolidadoUyu > 0
+        ? "Ahorro consolidado"
+        : "Resultado equilibrado";
 
   const cambiarMes = (mes) => {
     const [anio] = periodo.split("-");
@@ -358,6 +397,55 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
 
         {!cargando && !error && (
           <>
+            {!cuentaMensual && (
+              <section
+                className={`general-consolidated-result ${estadoResultadoConsolidado}`}
+                aria-label="Resultado consolidado del mes"
+              >
+                <div className="general-consolidated-heading">
+                  <span>Resultado comparable entre monedas</span>
+                  <strong>
+                    {resultadoConsolidadoUyu === null
+                      ? etiquetaResultadoConsolidado
+                      : `${etiquetaResultadoConsolidado}: ${formatearMontoMoneda(
+                        Math.abs(resultadoConsolidadoUyu),
+                        "UYU",
+                      )}`}
+                  </strong>
+                  {resultadoConsolidadoUsd !== null && (
+                    <small>
+                      ≈ {formatearMontoMoneda(Math.abs(resultadoConsolidadoUsd), "USD")}
+                      {" · "}US$ 1 = {formatearMontoMoneda(uyuPorDolar, "UYU")}
+                    </small>
+                  )}
+                </div>
+
+                <dl className="general-consolidated-totals">
+                  <div>
+                    <dt>Entradas equivalentes</dt>
+                    <dd>
+                      {entradasConsolidadasUyu === null
+                        ? "Cotización pendiente"
+                        : formatearMontoMoneda(entradasConsolidadasUyu, "UYU")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Salidas equivalentes</dt>
+                    <dd>
+                      {salidasConsolidadasUyu === null
+                        ? "Cotización pendiente"
+                        : formatearMontoMoneda(salidasConsolidadasUyu, "UYU")}
+                    </dd>
+                  </div>
+                </dl>
+
+                <p>
+                  Convierte cada moneda con la referencia BCU para compararlas.
+                  Las transferencias entre tus cuentas permanecen neutrales.
+                </p>
+              </section>
+            )}
+
             <div className="general-month-kpis">
               <article>
                 <span>Entradas bancarias</span>
@@ -404,7 +492,7 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
               </article>
 
               <article className="economic-result-card">
-                <span>Resultado del mes</span>
+                <span>{cuentaMensual ? "Resultado de la cuenta" : "Resultado por moneda"}</span>
                 <dl>
                   {monedasDelMes.map((moneda) => {
                     const resumen = resumenMensual[moneda];
@@ -427,7 +515,9 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
                   })}
                 </dl>
                 <small>
-                  Entradas menos salidas bancarias del período.
+                  {cuentaMensual
+                    ? "Entradas menos salidas bancarias de la cuenta."
+                    : "Desglose sin mezclar monedas; el consolidado comparable aparece arriba."}
                 </small>
               </article>
             </div>

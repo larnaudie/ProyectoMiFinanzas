@@ -498,3 +498,40 @@ test("convierte sólo la referencia consolidada y conserva los importes original
     4350,
   );
 });
+
+test("consolida entradas y salidas de distintas monedas en un único resultado", () => {
+  const cotizacion = {
+    usd: { uyuPorDolar: 40.235 },
+    ui: { uyuPorUnidad: 6.64 },
+  };
+  const movimientos = {
+    UYU: {
+      ingresosBancarios: 53738.24,
+      egresosBancarios: 119129.6,
+      resultadoBancario: -65391.36,
+    },
+    USD: {
+      ingresosBancarios: 4000,
+      egresosBancarios: 141.2,
+      resultadoBancario: 3858.8,
+    },
+    UI: {
+      ingresosBancarios: 0,
+      egresosBancarios: 0,
+      resultadoBancario: 0,
+    },
+  };
+
+  assert.equal(
+    totalizarCampoEnUyu(movimientos, "ingresosBancarios", cotizacion),
+    214678.24,
+  );
+  assert.equal(
+    totalizarCampoEnUyu(movimientos, "egresosBancarios", cotizacion),
+    124810.78,
+  );
+  assert.equal(
+    totalizarCampoEnUyu(movimientos, "resultadoBancario", cotizacion),
+    89867.46,
+  );
+});
