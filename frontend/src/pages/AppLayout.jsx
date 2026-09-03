@@ -14,6 +14,7 @@ function AppLayout() {
   const [menuFijado, setMenuFijado] = useState(false);
   const [menuHover, setMenuHover] = useState(false);
   const [cargandoCuentaActual, setCargandoCuentaActual] = useState(false);
+  const [errorCuentaActual, setErrorCuentaActual] = useState("");
   const cerrarMenuTimerRef = useRef(null);
   const menuAbierto = menuFijado || menuHover;
   const coincidenciaCuenta = matchPath(
@@ -59,11 +60,13 @@ function AppLayout() {
   useEffect(() => {
     if (!cuentaId || cuentaActual) {
       setCargandoCuentaActual(false);
+      setErrorCuentaActual("");
       return undefined;
     }
 
     let solicitudActiva = true;
     setCargandoCuentaActual(true);
+    setErrorCuentaActual("");
 
     api.get("/cuentas")
       .then((response) => {
@@ -72,6 +75,11 @@ function AppLayout() {
       })
       .catch((error) => {
         console.error("No se pudo identificar la cuenta actual:", error);
+        if (solicitudActiva) {
+          setErrorCuentaActual(
+            error.response?.data?.message || "No se pudo cargar la cuenta.",
+          );
+        }
       })
       .finally(() => {
         if (solicitudActiva) setCargandoCuentaActual(false);
@@ -115,6 +123,9 @@ function AppLayout() {
                 menuAbierto,
                 alEntrarMenu: abrirMenuTemporal,
                 alSalirMenu: cerrarMenuTemporal,
+                cuentaActual,
+                cargandoCuentaActual,
+                errorCuentaActual,
               }}
             />
           </section>

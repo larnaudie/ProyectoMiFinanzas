@@ -12,12 +12,24 @@ const limpiarCategoriaVacia = (data) => {
     return dataLimpia;
 };
 
-export const obtenerSubcategoriasService = async (usuarioId) => {
+export const obtenerSubcategoriasService = async (
+    usuarioId,
+    { incluirConteos = true } = {},
+) => {
+    const consultaSubcategorias = Subcategoria.find({ usuarioId })
+        .populate("categoria", "nombreCategoria")
+        .lean();
+
+    // Los selectores del importador sólo necesitan el catálogo. Evitamos allí
+    // recorrer todos los gastos del usuario para calcular un contador que no se
+    // muestra en esa pantalla.
+    if (!incluirConteos) {
+        return consultaSubcategorias;
+    }
+
     const usuarioObjectId = new mongoose.Types.ObjectId(usuarioId);
     const [subcategorias, conteosGastos] = await Promise.all([
-        Subcategoria.find({ usuarioId })
-            .populate("categoria", "nombreCategoria")
-            .lean(),
+        consultaSubcategorias,
         Gasto.aggregate([
             {
                 $match: {

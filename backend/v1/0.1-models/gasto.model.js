@@ -99,5 +99,6 @@ gastoSchema.index(
     partialFilterExpression: { hashImportacion: { $type: "string" } },
   },
 );
+gastoSchema.index({ usuarioId: 1, cuentaId: 1, fecha: 1 });
 
 export default mongoose.model("Gasto", gastoSchema, "gastos");

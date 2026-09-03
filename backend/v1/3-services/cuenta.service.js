@@ -58,7 +58,9 @@ const presentarCuenta = (cuenta) => {
 };
 
 export const obtenerCuentasService = async (usuarioId) => {
-    const cuentas = await Cuenta.find({ usuarioId }).sort({ orden: 1, _id: 1 });
+    const cuentas = await Cuenta.find({ usuarioId })
+        .sort({ orden: 1, _id: 1 })
+        .lean();
     return cuentas.map(presentarCuenta);
 }
 

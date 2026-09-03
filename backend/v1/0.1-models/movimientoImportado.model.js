@@ -70,7 +70,12 @@ const movimientoImportadoSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-movimientoImportadoSchema.index({ usuarioId: 1, cuentaId: 1, estadoImportacion: 1 });
+movimientoImportadoSchema.index({
+  usuarioId: 1,
+  cuentaId: 1,
+  estadoImportacion: 1,
+  fechaBanco: -1,
+});
 movimientoImportadoSchema.index(
   { usuarioId: 1, cuentaId: 1, hashBanco: 1 },
   { unique: true },

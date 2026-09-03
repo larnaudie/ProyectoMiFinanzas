@@ -244,7 +244,7 @@ function ImportExcelPage() {
 
   const cargarSubcategorias = () => {
     return api
-      .get("/subcategorias")
+      .get("/subcategorias?incluirConteos=false")
       .then((response) => {
         const subcategoriasActualizadas = response.data.subcategorias || [];
         setSubcategorias(subcategoriasActualizadas);

@@ -79,5 +79,6 @@ const cuentaSchema = new mongoose.Schema({
 });
 
 cuentaSchema.index({ usuarioId: 1, nombreCuenta: 1 }, { unique: true });
+cuentaSchema.index({ usuarioId: 1, orden: 1, _id: 1 });
 
 export default mongoose.model("Cuenta", cuentaSchema, "cuentas");

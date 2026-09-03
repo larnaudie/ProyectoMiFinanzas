@@ -8,7 +8,10 @@ import {
 
 export const obtenerSubcategorias = async (req, res, next) => {
   try {
-    const subcategoriasObtenidas = await obtenerSubcategoriasService(req.user.id);
+    const subcategoriasObtenidas = await obtenerSubcategoriasService(
+      req.user.id,
+      { incluirConteos: req.query.incluirConteos !== "false" },
+    );
     res.json({
       message: "Subcategorías obtenidas",
       subcategorias: subcategoriasObtenidas,
