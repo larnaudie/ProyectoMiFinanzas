@@ -49,6 +49,7 @@ const CAMPOS_DASHBOARD = [
   "categoriaId",
   "subcategoriaId",
   "tipoMovimiento",
+  "origen.tipo",
   "origen.referenciaId",
   "resumenTarjetaId",
 ].join(" ");

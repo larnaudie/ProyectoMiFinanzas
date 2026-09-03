@@ -48,6 +48,7 @@ test("la vista de dashboard consulta solo las cuentas necesarias y usa una respu
     CUENTA_PRESUPUESTO_ID,
   ]);
   assert.match(camposSeleccionados, /montoBancario/);
+  assert.match(camposSeleccionados, /origen\.tipo/);
   assert.doesNotMatch(camposSeleccionados, /factura/);
   assert.deepEqual(poblaciones, [
     { path: "subcategoriaId", campos: "nombreSubcategoria" },
