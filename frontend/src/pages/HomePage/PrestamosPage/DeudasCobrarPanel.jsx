@@ -15,6 +15,17 @@ const formularioInicial = {
   notas: "",
 };
 
+const filtrosCobroInicial = {
+  texto: "",
+  cuentaId: "",
+  subcategoriaId: "",
+  moneda: "",
+  fechaDesde: "",
+  fechaHasta: "",
+  montoMin: "",
+  montoMax: "",
+};
+
 const mensajeError = (error) => error.response?.data?.message
   || error.response?.data?.error?.map?.((item) => item.message).join(". ")
   || "No se pudo completar la operación.";
@@ -85,9 +96,37 @@ function DeudaFormModal({ guardando, onClose, onCreate }) {
   );
 }
 
-function CobroModal({ deuda, movimientos, cotizacion, cargando, vinculando, onClose, onLink }) {
+function CobroModal({
+  deuda,
+  movimientos,
+  cuentas,
+  subcategorias,
+  paginacion,
+  cotizacion,
+  cargando,
+  vinculando,
+  onClose,
+  onLink,
+  onSearch,
+}) {
   const [seleccionadoId, setSeleccionadoId] = useState("");
+  const [filtros, setFiltros] = useState(filtrosCobroInicial);
   const seleccionado = movimientos.find((movimiento) => movimiento._id === seleccionadoId);
+  const cambiarFiltro = (campo, valor) => setFiltros((actual) => ({ ...actual, [campo]: valor }));
+  const buscar = (event) => {
+    event.preventDefault();
+    setSeleccionadoId("");
+    onSearch(filtros, 1);
+  };
+  const limpiar = () => {
+    setFiltros(filtrosCobroInicial);
+    setSeleccionadoId("");
+    onSearch(filtrosCobroInicial, 1);
+  };
+  const cambiarPagina = (pagina) => {
+    setSeleccionadoId("");
+    onSearch(filtros, pagina);
+  };
   const montoConvertido = seleccionado
     ? convertirMonedaPrestamo(
       seleccionado.montoBancario,
@@ -105,6 +144,50 @@ function CobroModal({ deuda, movimientos, cotizacion, cargando, vinculando, onCl
           <button type="button" className="secondary-button" onClick={onClose}>Cerrar</button>
         </div>
         <p className="loan-form-note">Elegí un ingreso bancario real. Si usa otra moneda, guardaremos la equivalencia BCU de este momento.</p>
+        <form className="receivable-search" onSubmit={buscar}>
+          <div className="receivable-search-grid">
+            <label className="receivable-search-text">Detalle
+              <input value={filtros.texto} onChange={(event) => cambiarFiltro("texto", event.target.value)} placeholder="Nombre, referencia o texto del movimiento" />
+            </label>
+            <label>Cuenta
+              <select value={filtros.cuentaId} onChange={(event) => cambiarFiltro("cuentaId", event.target.value)}>
+                <option value="">Todas las cuentas</option>
+                {cuentas.filter((cuenta) => cuenta.tipoCuenta !== "credito").map((cuenta) => <option key={cuenta._id} value={cuenta._id}>{cuenta.nombreCuenta}</option>)}
+              </select>
+            </label>
+            <label>Subcategoría
+              <select value={filtros.subcategoriaId} onChange={(event) => cambiarFiltro("subcategoriaId", event.target.value)}>
+                <option value="">Todas las subcategorías</option>
+                {subcategorias.map((subcategoria) => <option key={subcategoria._id} value={subcategoria._id}>{subcategoria.nombreSubcategoria}</option>)}
+              </select>
+            </label>
+            <label>Moneda
+              <select value={filtros.moneda} onChange={(event) => cambiarFiltro("moneda", event.target.value)}>
+                <option value="">Todas</option><option value="UYU">UYU</option><option value="USD">USD</option><option value="UI">UI</option>
+              </select>
+            </label>
+            <label>Desde
+              <input type="date" value={filtros.fechaDesde} onChange={(event) => cambiarFiltro("fechaDesde", event.target.value)} />
+            </label>
+            <label>Hasta
+              <input type="date" value={filtros.fechaHasta} onChange={(event) => cambiarFiltro("fechaHasta", event.target.value)} />
+            </label>
+            <label>Monto mínimo
+              <input type="number" min="0" step="0.01" value={filtros.montoMin} onChange={(event) => cambiarFiltro("montoMin", event.target.value)} placeholder="Sin mínimo" />
+            </label>
+            <label>Monto máximo
+              <input type="number" min="0" step="0.01" value={filtros.montoMax} onChange={(event) => cambiarFiltro("montoMax", event.target.value)} placeholder="Sin máximo" />
+            </label>
+          </div>
+          <div className="receivable-search-actions">
+            <button type="button" className="secondary-button" onClick={limpiar}>Limpiar filtros</button>
+            <button type="submit" disabled={cargando}>{cargando ? "Buscando..." : "Buscar movimientos"}</button>
+          </div>
+        </form>
+        <div className="receivable-results-heading">
+          <strong>{paginacion.total.toLocaleString("es-UY")} movimiento(s) encontrado(s)</strong>
+          <span>Página {paginacion.pagina} de {paginacion.totalPaginas}</span>
+        </div>
         {cargando ? <p className="empty-state">Buscando ingresos disponibles...</p> : movimientos.length ? (
           <div className="receivable-candidate-list" role="radiogroup" aria-label="Ingresos disponibles">
             {movimientos.map((movimiento) => (
@@ -116,12 +199,20 @@ function CobroModal({ deuda, movimientos, cotizacion, cargando, vinculando, onCl
                 key={movimiento._id}
                 onClick={() => setSeleccionadoId(movimiento._id)}
               >
-                <span><strong>{movimiento.detalle}</strong><small>{fechaCorta(movimiento.fecha)} · {movimiento.cuentaId?.nombreCuenta || "Cuenta"}</small></span>
+                <span><strong>{movimiento.detalle}</strong><small>{fechaCorta(movimiento.fecha)} · {movimiento.cuentaId?.nombreCuenta || "Cuenta"}{movimiento.subcategoriaId?.nombreSubcategoria ? ` · ${movimiento.subcategoriaId.nombreSubcategoria}` : ""}</small></span>
                 <strong>{formatearPrestamo(movimiento.montoBancario, movimiento.moneda)}</strong>
               </button>
             ))}
           </div>
-        ) : <div className="loan-empty-state"><strong>No hay ingresos disponibles.</strong><span>Importá o creá el cobro en la cuenta bancaria y dejalo en estado creado para poder vincularlo.</span></div>}
+        ) : <div className="loan-empty-state"><strong>No encontramos ingresos con esos filtros.</strong><span>Probá limpiar algún filtro o verificá que el cobro esté creado como ingreso bancario.</span></div>}
+
+        {paginacion.totalPaginas > 1 && (
+          <div className="receivable-pagination">
+            <button type="button" className="secondary-button" disabled={cargando || paginacion.pagina <= 1} onClick={() => cambiarPagina(paginacion.pagina - 1)}>Anterior</button>
+            <span>{((paginacion.pagina - 1) * paginacion.limite) + 1}–{Math.min(paginacion.pagina * paginacion.limite, paginacion.total)} de {paginacion.total}</span>
+            <button type="button" className="secondary-button" disabled={cargando || paginacion.pagina >= paginacion.totalPaginas} onClick={() => cambiarPagina(paginacion.pagina + 1)}>Siguiente</button>
+          </div>
+        )}
 
         {seleccionado && (
           <div className="receivable-conversion-preview">
@@ -192,7 +283,7 @@ function DeudaCard({ deuda, abierto, procesando, onToggle, onOpenLink, onUnlink,
   );
 }
 
-export default function DeudasCobrarPanel({ cotizacion }) {
+export default function DeudasCobrarPanel({ cotizacion, cuentas = [], subcategorias = [] }) {
   const [deudas, setDeudas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -204,6 +295,12 @@ export default function DeudasCobrarPanel({ cotizacion }) {
   const [deudaCobro, setDeudaCobro] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
   const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
+  const [paginacion, setPaginacion] = useState({
+    pagina: 1,
+    limite: 25,
+    total: 0,
+    totalPaginas: 1,
+  });
 
   const resumen = useMemo(() => deudas.reduce((total, deuda) => ({
     activas: total.activas + (deuda.estado === "activa" ? 1 : 0),
@@ -231,12 +328,23 @@ export default function DeudasCobrarPanel({ cotizacion }) {
       setMensaje("Deuda creada. Ya podés vincular los cobros que vayas recibiendo.");
     } catch (apiError) { setError(mensajeError(apiError)); } finally { setGuardando(false); }
   };
-  const abrirCobros = async (deuda) => {
-    setDeudaCobro(deuda); setCargandoMovimientos(true); setError("");
+  const buscarMovimientos = async (filtros = filtrosCobroInicial, pagina = 1) => {
+    setCargandoMovimientos(true); setError("");
     try {
-      const response = await api.get("/deudas/candidatos");
+      const response = await api.get("/deudas/candidatos", {
+        params: { ...filtros, pagina, limite: 25 },
+      });
       setMovimientos(response.data.movimientos || []);
-    } catch (apiError) { setError(mensajeError(apiError)); setDeudaCobro(null); } finally { setCargandoMovimientos(false); }
+      setPaginacion(response.data.paginacion || {
+        pagina: 1, limite: 25, total: 0, totalPaginas: 1,
+      });
+    } catch (apiError) { setError(mensajeError(apiError)); } finally { setCargandoMovimientos(false); }
+  };
+  const abrirCobros = (deuda) => {
+    setDeudaCobro(deuda);
+    setMovimientos([]);
+    setPaginacion({ pagina: 1, limite: 25, total: 0, totalPaginas: 1 });
+    buscarMovimientos(filtrosCobroInicial, 1);
   };
   const vincular = async (gastoId) => {
     if (!deudaCobro) return;
@@ -283,7 +391,7 @@ export default function DeudasCobrarPanel({ cotizacion }) {
       <div className="receivable-bcu-note"><strong>Conversión BCU congelada por cobro</strong><span>{cotizacion?.usd?.uyuPorDolar ? `Referencia actual: US$ 1 = $ ${Number(cotizacion.usd.uyuPorDolar).toLocaleString("es-UY")}` : "La API consultará la referencia del BCU al vincular monedas diferentes."}</span></div>
       <div className="loan-list">{cargando && !deudas.length ? <p className="empty-state">Cargando deudas...</p> : deudas.length ? deudas.map((deuda) => <DeudaCard key={deuda._id} deuda={deuda} abierto={Boolean(abiertas[deuda._id])} procesando={procesandoId === deuda._id} onToggle={() => setAbiertas((actual) => ({ ...actual, [deuda._id]: !actual[deuda._id] }))} onOpenLink={() => abrirCobros(deuda)} onUnlink={(gastoId) => desvincular(deuda._id, gastoId)} onState={(estado) => cambiarEstado(deuda._id, estado)} onDelete={() => eliminar(deuda._id)} />) : <div className="loan-empty-state"><strong>No tenés deudas a cobrar registradas.</strong><span>Creá una con el capital acordado y vinculá cada transferencia que recibas.</span></div>}</div>
       {formAbierto && <DeudaFormModal guardando={guardando} onClose={() => setFormAbierto(false)} onCreate={crear} />}
-      {deudaCobro && <CobroModal deuda={deudaCobro} movimientos={movimientos} cotizacion={cotizacion} cargando={cargandoMovimientos} vinculando={procesandoId === deudaCobro._id} onClose={() => setDeudaCobro(null)} onLink={vincular} />}
+      {deudaCobro && <CobroModal deuda={deudaCobro} movimientos={movimientos} cuentas={cuentas} subcategorias={subcategorias} paginacion={paginacion} cotizacion={cotizacion} cargando={cargandoMovimientos} vinculando={procesandoId === deudaCobro._id} onClose={() => setDeudaCobro(null)} onLink={vincular} onSearch={buscarMovimientos} />}
     </section>
   );
 }

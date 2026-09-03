@@ -32,8 +32,8 @@ export const crearDeudaCobrar = async (req, res, next) => {
 
 export const obtenerCandidatosCobro = async (req, res, next) => {
   try {
-    const movimientos = await obtenerCandidatosCobroService(req.user.id);
-    res.status(200).json({ message: "Movimientos obtenidos", movimientos });
+    const resultado = await obtenerCandidatosCobroService(req.user.id, req.query);
+    res.status(200).json({ message: "Movimientos obtenidos", ...resultado });
   } catch (error) { next(error); }
 };
 

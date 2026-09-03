@@ -8,7 +8,7 @@ import MovimientoImportado from "../0.1-models/movimientoImportado.model.js";
 import SaldoCuenta from "../0.1-models/saldoCuenta.model.js";
 import Subcategoria from "../0.1-models/subcategoria.model.js";
 
-const VERSION_INDICES = "2026-09-03-deudas-cobrar-v2";
+const VERSION_INDICES = "2026-09-03-busqueda-deudas-v3";
 const ID_MIGRACION_INDICES = "indices-aplicacion";
 
 const configuraciones = [

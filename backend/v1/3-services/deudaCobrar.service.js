@@ -1,6 +1,7 @@
 import DeudaCobrar from "../0.1-models/deudaCobrar.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
 import Cuenta from "../0.1-models/cuenta.model.js";
+import mongoose from "mongoose";
 import {
   calcularResumenDeuda,
   convertirCobroDeuda,
@@ -101,26 +102,87 @@ export const crearDeudaCobrarService = async (usuarioId, data) => {
   return obtenerDeudaCobrarPorIdService(usuarioId, deuda._id);
 };
 
-export const obtenerCandidatosCobroService = async (usuarioId) => {
-  const cuentas = await Cuenta.find({ usuarioId, tipoCuenta: "debito" })
+const escaparRegex = (valor) => String(valor).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const enteroAcotado = (valor, predeterminado, minimo, maximo) => {
+  const numero = Number.parseInt(valor, 10);
+  return Number.isFinite(numero)
+    ? Math.min(maximo, Math.max(minimo, numero))
+    : predeterminado;
+};
+
+const fechaLimite = (valor, finDelDia = false) => {
+  if (!valor) return null;
+  const fecha = new Date(`${valor}T${finDelDia ? "23:59:59.999" : "00:00:00.000"}Z`);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+};
+
+export const obtenerCandidatosCobroService = async (usuarioId, filtros = {}) => {
+  const pagina = enteroAcotado(filtros.pagina, 1, 1, 100000);
+  const limite = enteroAcotado(filtros.limite, 25, 10, 50);
+  const moneda = ["UYU", "USD", "UI"].includes(filtros.moneda)
+    ? filtros.moneda
+    : "";
+  const cuentaId = String(filtros.cuentaId || "");
+  const subcategoriaId = String(filtros.subcategoriaId || "");
+
+  if (cuentaId && !mongoose.isValidObjectId(cuentaId)) {
+    throw errorHttp("La cuenta elegida no es válida", 400);
+  }
+  if (subcategoriaId && !mongoose.isValidObjectId(subcategoriaId)) {
+    throw errorHttp("La subcategoría elegida no es válida", 400);
+  }
+
+  const consultaCuentas = { usuarioId, tipoCuenta: "debito" };
+  if (moneda) consultaCuentas.moneda = moneda;
+  if (cuentaId) consultaCuentas._id = cuentaId;
+  const cuentas = await Cuenta.find(consultaCuentas)
     .select("_id nombreCuenta moneda")
     .lean();
   const cuentasPorId = new Map(cuentas.map((cuenta) => [String(cuenta._id), cuenta]));
 
-  const movimientos = await Gasto.find({
+  const consulta = {
     usuarioId,
     cuentaId: { $in: cuentas.map((cuenta) => cuenta._id) },
     estado: "creado",
     montoBancario: { $gt: 0 },
     prestamoId: null,
-    $or: [{ deudaCobrarId: null }, { deudaCobrarId: { $exists: false } }],
-  })
-    .select("detalle fecha montoBancario moneda cuentaId")
-    .sort({ fecha: -1, _id: -1 })
-    .limit(500)
-    .lean();
+    deudaCobrarId: null,
+  };
 
-  return movimientos.map((movimiento) => {
+  const texto = String(filtros.texto || "").trim().slice(0, 100);
+  if (texto) consulta.detalle = { $regex: escaparRegex(texto), $options: "i" };
+  if (subcategoriaId) consulta.subcategoriaId = subcategoriaId;
+
+  const desde = fechaLimite(filtros.fechaDesde);
+  const hasta = fechaLimite(filtros.fechaHasta, true);
+  if (desde || hasta) {
+    consulta.fecha = {};
+    if (desde) consulta.fecha.$gte = desde;
+    if (hasta) consulta.fecha.$lte = hasta;
+  }
+
+  const montoMin = Number(filtros.montoMin);
+  const montoMax = Number(filtros.montoMax);
+  if (Number.isFinite(montoMin) && filtros.montoMin !== "") {
+    consulta.montoBancario.$gte = Math.max(0, montoMin);
+  }
+  if (Number.isFinite(montoMax) && filtros.montoMax !== "") {
+    consulta.montoBancario.$lte = Math.max(0, montoMax);
+  }
+
+  const [movimientos, total] = await Promise.all([
+    Gasto.find(consulta)
+      .select("detalle fecha montoBancario moneda cuentaId subcategoriaId")
+      .populate("subcategoriaId", "nombreSubcategoria")
+      .sort({ fecha: -1, _id: -1 })
+      .skip((pagina - 1) * limite)
+      .limit(limite)
+      .lean(),
+    Gasto.countDocuments(consulta),
+  ]);
+
+  const resultados = movimientos.map((movimiento) => {
     const cuenta = cuentasPorId.get(String(movimiento.cuentaId));
     return {
       ...movimiento,
@@ -128,6 +190,16 @@ export const obtenerCandidatosCobroService = async (usuarioId) => {
       cuentaId: cuenta || movimiento.cuentaId,
     };
   });
+
+  return {
+    movimientos: resultados,
+    paginacion: {
+      pagina,
+      limite,
+      total,
+      totalPaginas: Math.max(1, Math.ceil(total / limite)),
+    },
+  };
 };
 
 export const vincularCobroDeudaService = async (usuarioId, id, data) => {
@@ -144,7 +216,7 @@ export const vincularCobroDeudaService = async (usuarioId, id, data) => {
       estado: "creado",
       montoBancario: { $gt: 0 },
       prestamoId: null,
-      $or: [{ deudaCobrarId: null }, { deudaCobrarId: { $exists: false } }],
+      deudaCobrarId: null,
     },
     { $set: { deudaCobrarId: deuda._id } },
     { new: true },

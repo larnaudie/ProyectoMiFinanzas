@@ -7091,10 +7091,61 @@ td {
   overflow: auto;
 }
 
+.receivable-search {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d5e4e0;
+  border-radius: 10px;
+  background: #f7faf9;
+}
+
+.receivable-search-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.receivable-search-grid label {
+  min-width: 0;
+}
+
+.receivable-search-text {
+  grid-column: span 2;
+}
+
+.receivable-search-grid input,
+.receivable-search-grid select {
+  width: 100%;
+  min-width: 0;
+}
+
+.receivable-search-actions,
+.receivable-results-heading,
+.receivable-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.receivable-search-actions {
+  justify-content: flex-end;
+}
+
+.receivable-results-heading {
+  color: #657a74;
+  font-size: 10px;
+}
+
+.receivable-results-heading strong {
+  color: #1b4b40;
+}
+
 .receivable-candidate-list {
   display: grid;
   gap: 7px;
-  max-height: min(440px, 52vh);
+  max-height: min(330px, 40vh);
   padding: 2px;
   overflow: auto;
 }
@@ -7161,6 +7212,17 @@ td {
   font-size: 21px;
 }
 
+.receivable-pagination {
+  justify-content: center;
+  color: #60756f;
+  font-size: 10px;
+}
+
+.receivable-pagination button {
+  min-height: 32px;
+  padding: 6px 11px;
+}
+
 @media (max-width: 1050px) {
   .loan-summary-grid,
   .loan-simulator-results,
@@ -7220,6 +7282,20 @@ td {
 
   .receivables-header-actions {
     width: 100%;
+  }
+
+  .receivable-search-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .receivable-search-text {
+    grid-column: auto;
+  }
+
+  .receivable-search-actions,
+  .receivable-results-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

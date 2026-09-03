@@ -106,5 +106,7 @@ gastoSchema.index(
   },
 );
 gastoSchema.index({ usuarioId: 1, cuentaId: 1, fecha: 1 });
+gastoSchema.index({ usuarioId: 1, estado: 1, fecha: -1, _id: -1 });
+gastoSchema.index({ usuarioId: 1, estado: 1, subcategoriaId: 1, fecha: -1 });
 
 export default mongoose.model("Gasto", gastoSchema, "gastos");
