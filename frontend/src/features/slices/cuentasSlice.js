@@ -30,6 +30,9 @@ const cuentasSlice = createSlice({
       if (index !== -1) {
         state.cuentas[index] = action.payload;
       }
+      if (state.cuentaActual?._id === action.payload._id) {
+        state.cuentaActual = action.payload;
+      }
     },
     eliminarCuenta: (state, action) => {
       state.cuentas = state.cuentas.filter(

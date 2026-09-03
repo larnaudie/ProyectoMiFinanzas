@@ -56,8 +56,14 @@ export const actualizarSaldoCuentaDesdeExcel = async ({
       ? cuenta.saldoActualizadoEn
       : null);
 
+  // Un ajuste manual representa el valor que el usuario conoce en ese momento,
+  // pero la siguiente importacion bancaria debe volver a dejar la cuenta
+  // sincronizada con el saldo informado por el banco. Entre dos Excels, en
+  // cambio, conservamos siempre el saldo con fecha bancaria mas reciente para
+  // que importar un estado viejo no haga retroceder la cuenta.
   if (
-    fechaReferenciaActual
+    cuenta.saldoOrigen === "excel"
+    && fechaReferenciaActual
     && fechaSaldo < new Date(fechaReferenciaActual)
   ) {
     return { ...respuesta, motivo: "saldo_mas_antiguo" };

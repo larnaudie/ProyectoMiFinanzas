@@ -31,6 +31,28 @@ const moverCuenta = (cuentas, idOrigen, idDestino) => {
 
 const obtenerRutaCuenta = (cuenta) => `/cuentas/${cuenta._id}/gastos`;
 
+const formatearFechaSaldo = (fecha) => {
+  if (!fecha) return "";
+  const fechaValida = new Date(fecha);
+  if (Number.isNaN(fechaValida.getTime())) return "";
+
+  return new Intl.DateTimeFormat("es-UY", { timeZone: "UTC" }).format(fechaValida);
+};
+
+const describirOrigenSaldo = (cuenta) => {
+  if (cuenta.saldoActual === null || cuenta.saldoActual === undefined) {
+    return "Se completa al importar un Excel con la columna Saldo.";
+  }
+
+  if (cuenta.saldoOrigen === "excel") {
+    const fecha = formatearFechaSaldo(cuenta.saldoInformadoAl);
+    return fecha ? `Excel · saldo al ${fecha}` : "Actualizado desde Excel";
+  }
+
+  if (cuenta.saldoOrigen === "manual") return "Ajustado manualmente";
+  return "Saldo informado";
+};
+
 function QuickExpensePanel({
   gastoRapido,
   facturaRapida,
@@ -127,6 +149,9 @@ function HomePage() {
   const [cuentaDestinoId, setCuentaDestinoId] = useState(null);
   const [guardandoOrden, setGuardandoOrden] = useState(false);
   const [errorOrden, setErrorOrden] = useState("");
+  const [edicionSaldoCuenta, setEdicionSaldoCuenta] = useState(null);
+  const [guardandoSaldoCuenta, setGuardandoSaldoCuenta] = useState(false);
+  const [errorSaldoCuenta, setErrorSaldoCuenta] = useState("");
 
   const [gastoRapido, setGastoRapido] = useState({
     cuentaId: "",
@@ -231,6 +256,54 @@ function HomePage() {
   const terminarArrastreCuenta = () => {
     setCuentaArrastradaId(null);
     setCuentaDestinoId(null);
+  };
+
+  const abrirEdicionSaldo = (cuenta) => {
+    setEdicionSaldoCuenta({
+      cuenta,
+      valor: cuenta.saldoActual ?? "",
+    });
+    setErrorSaldoCuenta("");
+  };
+
+  const cerrarEdicionSaldo = () => {
+    if (guardandoSaldoCuenta) return;
+    setEdicionSaldoCuenta(null);
+    setErrorSaldoCuenta("");
+  };
+
+  const guardarSaldoCuenta = async (event) => {
+    event.preventDefault();
+    if (!edicionSaldoCuenta?.cuenta?._id) return;
+
+    const valorTexto = String(edicionSaldoCuenta.valor ?? "").trim();
+    const saldoActual = valorTexto === ""
+      ? null
+      : Number(valorTexto.replace(",", "."));
+
+    if (saldoActual !== null && !Number.isFinite(saldoActual)) {
+      setErrorSaldoCuenta("Ingresá un saldo válido.");
+      return;
+    }
+
+    try {
+      setGuardandoSaldoCuenta(true);
+      setErrorSaldoCuenta("");
+      const response = await api.patch(
+        `/cuentas/${edicionSaldoCuenta.cuenta._id}`,
+        { saldoActual },
+      );
+      dispatch(actualizarCuenta(response.data.cuenta));
+      setEdicionSaldoCuenta(null);
+    } catch (apiError) {
+      setErrorSaldoCuenta(
+        apiError.response?.data?.message
+        || apiError.response?.data?.mensaje
+        || "No se pudo actualizar el saldo.",
+      );
+    } finally {
+      setGuardandoSaldoCuenta(false);
+    }
   };
 
   const moverCarousel = (direccion) => {
@@ -384,8 +457,10 @@ function HomePage() {
                       : "UYU + USD")
                     : cuenta.moneda || "UYU"}
                 </span>
-                {cuenta.tipoCuenta !== "credito" && (
-                  <span className="account-card-current-balance">
+              </Link>
+              {cuenta.tipoCuenta !== "credito" && (
+                <div className="account-card-current-balance">
+                  <span className="account-card-balance-copy">
                     <small>Saldo actual</small>
                     <strong>
                       {cuenta.saldoActual === null || cuenta.saldoActual === undefined
@@ -393,8 +468,21 @@ function HomePage() {
                         : formatearMontoMoneda(cuenta.saldoActual, cuenta.moneda)}
                     </strong>
                   </span>
-                )}
-              </Link>
+                  <button
+                    className="account-card-balance-edit"
+                    type="button"
+                    onClick={() => abrirEdicionSaldo(cuenta)}
+                  >
+                    Editar
+                  </button>
+                  <small
+                    className="account-card-balance-source"
+                    title={cuenta.saldoArchivoNombre || undefined}
+                  >
+                    {describirOrigenSaldo(cuenta)}
+                  </small>
+                </div>
+              )}
               <div className="account-card-actions">
                 <Link
                   className="account-card-action"
@@ -430,6 +518,69 @@ function HomePage() {
           onCuentaActualizada={(cuenta) => dispatch(actualizarCuenta(cuenta))}
         />
       </div>
+
+      {edicionSaldoCuenta && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) cerrarEdicionSaldo();
+          }}
+        >
+          <form
+            className="modal-panel account-balance-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-balance-modal-title"
+            onSubmit={guardarSaldoCuenta}
+          >
+            <header className="modal-header">
+              <div>
+                <h2 id="account-balance-modal-title">Editar saldo actual</h2>
+                <p>{edicionSaldoCuenta.cuenta.nombreCuenta}</p>
+              </div>
+            </header>
+
+            <div className="modal-form">
+              <label>
+                Saldo en {edicionSaldoCuenta.cuenta.moneda || "UYU"}
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  autoFocus
+                  value={edicionSaldoCuenta.valor}
+                  placeholder="Ej: 9832,26"
+                  onChange={(event) => setEdicionSaldoCuenta((actual) => ({
+                    ...actual,
+                    valor: event.target.value,
+                  }))}
+                />
+              </label>
+              <p className="account-balance-modal-help">
+                Podés dejarlo vacío para marcarlo como no informado. La próxima
+                importación bancaria que contenga la columna Saldo volverá a
+                actualizarlo automáticamente.
+              </p>
+              {errorSaldoCuenta && <p className="inline-error">{errorSaldoCuenta}</p>}
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={guardandoSaldoCuenta}
+                onClick={cerrarEdicionSaldo}
+              >
+                Cancelar
+              </button>
+              <button type="submit" disabled={guardandoSaldoCuenta}>
+                {guardandoSaldoCuenta ? "Guardando..." : "Guardar saldo"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
     </section>
   );

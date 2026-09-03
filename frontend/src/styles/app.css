@@ -8058,13 +8058,22 @@ td {
 /* Resumen general simple: saldos actuales y resultado mensual. */
 .account-card-current-balance {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
   margin-top: 8px;
   padding-top: 10px;
   border-top: 1px solid #e1ebe8;
 }
 
-.account-card-current-balance small {
+.account-card-balance-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.account-card-current-balance small,
+.account-card-balance-copy small {
   color: #6c807b;
   font-size: 10px;
   font-weight: 800;
@@ -8075,6 +8084,49 @@ td {
 .account-card .account-card-current-balance strong {
   color: #174f43;
   font-size: 15px;
+}
+
+.account-card-balance-edit {
+  position: relative;
+  z-index: 2;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid #c6d8d3;
+  background: rgba(255, 255, 255, 0.88);
+  color: #315c52;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.account-card-balance-edit:hover {
+  border-color: #7da79d;
+  background: #ffffff;
+}
+
+.account-card-current-balance .account-card-balance-source {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.account-balance-modal {
+  max-width: 430px;
+}
+
+.account-balance-modal .modal-header p,
+.account-balance-modal-help {
+  margin: 5px 0 0;
+  color: #60716e;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.account-balance-modal input {
+  width: 100%;
 }
 
 .general-finance-overview {
