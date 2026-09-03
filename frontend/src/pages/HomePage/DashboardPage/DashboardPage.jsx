@@ -155,6 +155,7 @@ function DashboardPage({ embedded = false }) {
     ? cuentaActualLayout
     : cuentas.find((cuenta) => cuenta._id === cuentaSeleccionada);
   const esCuentaCredito = cuentaActual?.tipoCuenta === "credito";
+  const esCuentaFuentePresupuestoActual = esCuentaFuentePresupuesto(cuentaActual);
   const idsCuentasDashboard = useMemo(() => {
     if (!cuentaId) return "";
 
@@ -531,14 +532,34 @@ function DashboardPage({ embedded = false }) {
         moneda,
         Math.max(
           1,
-          ...datosMensualesPorMoneda[moneda].flatMap((mes) => [
-            mes.montoBancario,
-            esCuentaCredito ? mes.pagosTarjeta : mes.montoReal,
-          ]),
+          ...datosMensualesPorMoneda[moneda].flatMap((mes) => {
+            const presupuestoMes = presupuestoPorMes.get(mes.clave);
+            if (
+              esCuentaFuentePresupuestoActual
+              && moneda === "USD"
+              && presupuestoMes?.disponible
+            ) {
+              return [
+                presupuestoMes.transferidoUsd,
+                presupuestoMes.presupuestoUsd,
+              ];
+            }
+
+            return [
+              mes.montoBancario,
+              esCuentaCredito ? mes.pagosTarjeta : mes.montoReal,
+            ];
+          }),
         ),
       ]),
     ),
-    [datosMensualesPorMoneda, esCuentaCredito, monedasDashboard],
+    [
+      datosMensualesPorMoneda,
+      esCuentaCredito,
+      esCuentaFuentePresupuestoActual,
+      monedasDashboard,
+      presupuestoPorMes,
+    ],
   );
 
   const ultimoResumenFiltrado = useMemo(
@@ -1143,11 +1164,19 @@ function DashboardPage({ embedded = false }) {
             <div className="dashboard-legend" aria-label="Leyenda">
               <span>
                 <i className="banking-dot" />
-                {esCuentaCredito ? "Consumos" : "Monto bancario"}
+                {esCuentaCredito
+                  ? "Consumos"
+                  : esCuentaFuentePresupuestoActual
+                    ? "Transferido desde CA USD"
+                    : "Monto bancario"}
               </span>
               <span>
                 <i className="real-dot" />
-                {esCuentaCredito ? "Pagos y reintegros" : "Monto real"}
+                {esCuentaCredito
+                  ? "Pagos y reintegros"
+                  : esCuentaFuentePresupuestoActual
+                    ? "Presupuesto mensual"
+                    : "Monto real"}
               </span>
             </div>
           </div>
@@ -1196,9 +1225,19 @@ function DashboardPage({ embedded = false }) {
                   <div className="monthly-period-currencies">
                     {monedasDashboard.map((moneda) => {
                       const mes = datosMensualesPorMoneda[moneda][indiceMes];
-                      const segundoMonto = esCuentaCredito
-                        ? mes.pagosTarjeta
-                        : mes.montoReal;
+                      const muestraPresupuestoTransferencias = (
+                        esCuentaFuentePresupuestoActual
+                        && moneda === "USD"
+                        && presupuestoMes?.disponible
+                      );
+                      const primerMonto = muestraPresupuestoTransferencias
+                        ? presupuestoMes.transferidoUsd
+                        : mes.montoBancario;
+                      const segundoMonto = muestraPresupuestoTransferencias
+                        ? presupuestoMes.presupuestoUsd
+                        : esCuentaCredito
+                          ? mes.pagosTarjeta
+                          : mes.montoReal;
                       const resultadoTarjeta = mes.saldoTarjeta;
                       const resultadoTarjetaPositivo = resultadoTarjeta < 0;
                       const tarjetaSinVariacion = resultadoTarjeta === 0;
@@ -1232,7 +1271,9 @@ function DashboardPage({ embedded = false }) {
                               </small>
                             ) : (
                               <small className="monthly-budget-context">
-                                Gasto real {formatearMonto(mes.montoReal, moneda)}
+                                {muestraPresupuestoTransferencias
+                                  ? `Presupuesto ${formatearMonto(segundoMonto, moneda)}`
+                                  : `Gasto real ${formatearMonto(mes.montoReal, moneda)}`}
                               </small>
                             )}
                           </div>
@@ -1240,15 +1281,19 @@ function DashboardPage({ embedded = false }) {
                           <div className="monthly-bars">
                             <div className="monthly-bar-line">
                               <span className="monthly-bar-name">
-                                {esCuentaCredito ? "Consumos" : "Bancario"}
+                                {muestraPresupuestoTransferencias
+                                  ? "Transferido"
+                                  : esCuentaCredito
+                                    ? "Consumos"
+                                    : "Bancario"}
                               </span>
                               <span className="monthly-bar-amount">
                                 <strong>
-                                  {formatearMonto(mes.montoBancario, moneda)}
+                                  {formatearMonto(primerMonto, moneda)}
                                 </strong>
                                 {moneda === "UI" && (
                                   <EquivalenciaMontoUi
-                                    monto={mes.montoBancario}
+                                    monto={primerMonto}
                                     cotizacion={cotizacionUi.cotizacion}
                                   />
                                 )}
@@ -1259,7 +1304,7 @@ function DashboardPage({ embedded = false }) {
                                   style={{
                                     width: `${Math.max(
                                       0,
-                                      (mes.montoBancario / maximoBarras) * 100,
+                                      (primerMonto / maximoBarras) * 100,
                                     )}%`,
                                   }}
                                 />
@@ -1268,7 +1313,11 @@ function DashboardPage({ embedded = false }) {
 
                             <div className="monthly-bar-line">
                               <span className="monthly-bar-name">
-                                {esCuentaCredito ? "Pagos" : "Real"}
+                                {muestraPresupuestoTransferencias
+                                  ? "Presupuesto"
+                                  : esCuentaCredito
+                                    ? "Pagos"
+                                    : "Real"}
                               </span>
                               <span className="monthly-bar-amount">
                                 <strong>
