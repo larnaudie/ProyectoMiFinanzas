@@ -25,6 +25,7 @@ import {
   construirPlanesCuotasResumen,
   extraerPlanCuotasTarjeta,
 } from "../utils/planesCuotasTarjeta.js";
+import { reconciliarPrestamosUsuarioSeguro } from "./conciliacionPrestamo.service.js";
 
 export const actualizarSaldoCuentaDesdeExcel = async ({
   cuenta,
@@ -1155,10 +1156,18 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
   id,
   data,
 }) => {
-  const movimiento = await MovimientoImportado.findOne({
-    _id: id,
-    usuarioId,
-  });
+  const [movimiento, subcategoria] = await Promise.all([
+    MovimientoImportado.findOne({
+      _id: id,
+      usuarioId,
+    }),
+    data.subcategoriaId
+      ? Subcategoria.findOne({
+          _id: data.subcategoriaId,
+          usuarioId,
+        }).select("nombreSubcategoria")
+      : null,
+  ]);
 
   if (!movimiento) {
     throw new Error("Movimiento importado no encontrado");
@@ -1173,26 +1182,6 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
   }
 
   const hashImportacion = `bancario|${movimiento.hashBanco}`;
-  const gastoExistente = await Gasto.findOne({
-    usuarioId,
-    $or: [
-      {
-        "origen.tipo": "excel",
-        "origen.referenciaId": movimiento._id,
-      },
-      { hashImportacion },
-    ],
-  }).select("_id");
-
-  if (gastoExistente) {
-    movimiento.gastoId = gastoExistente._id;
-    movimiento.estadoImportacion = "vinculado";
-    await movimiento.save();
-
-    const error = new Error("El gasto de este movimiento bancario ya existe");
-    error.status = 409;
-    throw error;
-  }
 
   let gasto;
   try {
@@ -1221,9 +1210,38 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
         hashImportacion,
       },
       usuarioId,
+      {
+        // El movimiento ya fue encontrado dentro del usuario y contiene la
+        // moneda de la cuenta de débito importada.
+        cuentaPreCargada: {
+          _id: movimiento.cuentaId,
+          moneda: movimiento.moneda,
+          monedas: [],
+          tipoCuenta: "debito",
+        },
+        subcategoriaPreCargada: subcategoria,
+        // Se ejecuta junto con el vínculo final para no sumar otra espera en
+        // serie a esta acción.
+        reconciliarPrestamos: false,
+      },
     );
   } catch (error) {
     if (error?.code === 11000) {
+      const gastoExistente = await Gasto.findOne({
+        usuarioId,
+        $or: [
+          {
+            "origen.tipo": "excel",
+            "origen.referenciaId": movimiento._id,
+          },
+          { hashImportacion },
+        ],
+      }).select("_id");
+      if (gastoExistente) {
+        movimiento.gastoId = gastoExistente._id;
+        movimiento.estadoImportacion = "vinculado";
+        await movimiento.save();
+      }
       const conflicto = new Error("El gasto de este movimiento bancario ya existe");
       conflicto.status = 409;
       throw conflicto;
@@ -1234,7 +1252,10 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
   movimiento.gastoId = gasto._id;
   movimiento.estadoImportacion = "vinculado";
 
-  await movimiento.save();
+  await Promise.all([
+    movimiento.save(),
+    reconciliarPrestamosUsuarioSeguro(usuarioId),
+  ]);
 
   return {
     movimiento,

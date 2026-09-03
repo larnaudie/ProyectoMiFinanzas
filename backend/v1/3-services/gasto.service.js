@@ -177,27 +177,39 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   return presentarGasto(gastoActualizado);
 };
 
-export const crearGastoService = async (data, usuarioId) => {
+export const crearGastoService = async (
+  data,
+  usuarioId,
+  {
+    cuentaPreCargada = null,
+    subcategoriaPreCargada,
+    reconciliarPrestamos = true,
+  } = {},
+) => {
   const gastoData = limpiarCamposVacios(data);
-  let cuentaGasto = null;
+  let cuentaGasto = cuentaPreCargada;
 
-  if (gastoData.cuentaId) {
+  if (gastoData.cuentaId && !cuentaGasto) {
     cuentaGasto = await Cuenta.findOne({
       _id: gastoData.cuentaId,
       usuarioId,
     }).select("moneda tipoCuenta monedas");
+  }
 
-    if (cuentaGasto) {
-      gastoData.moneda = obtenerMonedaMovimiento(
-        cuentaGasto,
-        gastoData.moneda,
-      );
-    }
+  if (cuentaGasto) {
+    gastoData.moneda = obtenerMonedaMovimiento(
+      cuentaGasto,
+      gastoData.moneda,
+    );
   }
 
   normalizarSignoGastoTarjeta(gastoData);
   normalizarMontosGasto(gastoData);
-  await aplicarPoliticaSubcategoria(gastoData, usuarioId);
+  await aplicarPoliticaSubcategoria(
+    gastoData,
+    usuarioId,
+    subcategoriaPreCargada,
+  );
   Object.assign(
     gastoData,
     aplicarPoliticaCuentaCredito(gastoData, cuentaGasto),
@@ -233,7 +245,9 @@ export const crearGastoService = async (data, usuarioId) => {
     montoReal: calcularMontoRealGasto(gastoData),
   });
 
-  await reconciliarPrestamosUsuarioSeguro(usuarioId);
+  if (reconciliarPrestamos) {
+    await reconciliarPrestamosUsuarioSeguro(usuarioId);
+  }
   return gasto;
 };
 
@@ -475,7 +489,11 @@ const normalizarSumaAlPresupuesto = (gastoData) => {
     && gastoData.sumaAlPresupuesto === true;
 };
 
-const aplicarPoliticaSubcategoria = async (gastoData, usuarioId) => {
+const aplicarPoliticaSubcategoria = async (
+  gastoData,
+  usuarioId,
+  subcategoriaPreCargada,
+) => {
   if (
     !gastoData.subcategoriaId
     || gastoData?.origen?.tipo === "tarjeta"
@@ -486,10 +504,12 @@ const aplicarPoliticaSubcategoria = async (gastoData, usuarioId) => {
   const subcategoriaId = typeof gastoData.subcategoriaId === "object"
     ? gastoData.subcategoriaId._id
     : gastoData.subcategoriaId;
-  const subcategoria = await Subcategoria.findOne({
-    _id: subcategoriaId,
-    usuarioId,
-  }).select("nombreSubcategoria");
+  const subcategoria = subcategoriaPreCargada !== undefined
+    ? subcategoriaPreCargada
+    : await Subcategoria.findOne({
+        _id: subcategoriaId,
+        usuarioId,
+      }).select("nombreSubcategoria");
 
   if (!subcategoria) {
     return;
@@ -554,6 +574,11 @@ const validarReferenciaOrigen = async (
   const referenciaId = gastoData?.origen?.referenciaId;
   if (!referenciaId) return;
 
+  // En una importación bancaria la referencia apunta a MovimientoImportado,
+  // no a otro Gasto. Validarla contra la colección de gastos era una consulta
+  // innecesaria en cada creación.
+  if (gastoData?.origen?.tipo === "excel") return;
+
   if (gastoData?.origen?.tipo === "tarjeta" && gastoData.tipoMovimiento !== "pago") {
     const error = new Error("Sólo los movimientos de tipo Pago pueden vincularse");
     error.status = 409;
@@ -563,10 +588,6 @@ const validarReferenciaOrigen = async (
   const referencia = await Gasto.findOne({ _id: referenciaId, usuarioId })
     .select("cuentaId origen.referenciaId");
   if (!referencia) {
-    if (gastoData?.origen?.tipo === "excel") {
-      return;
-    }
-
     const error = new Error("El movimiento vinculado no existe");
     error.status = 404;
     throw error;

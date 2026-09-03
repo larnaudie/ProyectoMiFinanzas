@@ -195,6 +195,7 @@ function ImportExcelPage() {
   });
   const [aplicandoBulkBancario, setAplicandoBulkBancario] = useState(false);
   const [creandoSeleccionadosBancario, setCreandoSeleccionadosBancario] = useState(false);
+  const [gastoBancarioProcesandoId, setGastoBancarioProcesandoId] = useState("");
   const [categorias, setCategorias] = useState([]);
   const [subcategorias, setSubcategorias] = useState([]);
   const [subcategoriasDetectadas, setSubcategoriasDetectadas] = useState([]);
@@ -672,7 +673,7 @@ function ImportExcelPage() {
     return payload;
   };
 
-  const crearGastoBancario = (gasto) => {
+  const crearGastoBancario = async (gasto) => {
     if (!gastoCompletoParaCrear(gasto)) {
       setMensajeBancario(
         "Para crear el gasto completa detalle, fecha, monto bancario o real, porcentaje y subcategoría.",
@@ -680,25 +681,34 @@ function ImportExcelPage() {
       return;
     }
 
-    api
-      .post(`/importaciones/movimientos/${gasto._id}/crear-gasto`, armarPayloadGastoBancario(gasto))
-      .then((response) => {
-        const gastoCreado = response.data.gasto;
-        setGastosBancarios((actuales) =>
-          actuales.map((item) =>
-            item._id === gasto._id
-              ? { ...item, estado: "vinculado", gastoId: gastoCreado._id }
-              : item,
-          ),
-        );
-        setMensajeBancario("Gasto creado correctamente desde el movimiento bancario.");
-        setGastosBancariosSeleccionados((actuales) => actuales.filter((id) => id !== gasto._id));
-      })
-      .catch((apiError) => {
-        setMensajeBancario(
-          obtenerMensajeError(apiError, "No se pudo crear el gasto desde el movimiento."),
-        );
-      });
+    if (gastoBancarioProcesandoId) return;
+
+    setGastoBancarioProcesandoId(gasto._id);
+    setMensajeBancario("");
+    try {
+      const response = await api.post(
+        `/importaciones/movimientos/${gasto._id}/crear-gasto`,
+        armarPayloadGastoBancario(gasto),
+      );
+      const gastoCreado = response.data.gasto;
+      setGastosBancarios((actuales) =>
+        actuales.map((item) =>
+          item._id === gasto._id
+            ? { ...item, estado: "vinculado", gastoId: gastoCreado._id }
+            : item,
+        ),
+      );
+      setMensajeBancario("Gasto creado correctamente desde el movimiento bancario.");
+      setGastosBancariosSeleccionados((actuales) =>
+        actuales.filter((id) => id !== gasto._id),
+      );
+    } catch (apiError) {
+      setMensajeBancario(
+        obtenerMensajeError(apiError, "No se pudo crear el gasto desde el movimiento."),
+      );
+    } finally {
+      setGastoBancarioProcesandoId("");
+    }
   };
 
   const crearGastosBancariosSeleccionados = async () => {
@@ -1463,6 +1473,7 @@ function ImportExcelPage() {
             bulk={bulkBancario}
             aplicandoBulk={aplicandoBulkBancario}
             creandoSeleccionados={creandoSeleccionadosBancario}
+            gastoProcesandoId={gastoBancarioProcesandoId}
             onChange={cambiarGastoBancario}
             onCrear={crearGastoBancario}
             onToggleSeleccion={cambiarSeleccionGastoBancario}
@@ -1959,6 +1970,7 @@ function TablaGastosBancarios({
   bulk,
   aplicandoBulk,
   creandoSeleccionados,
+  gastoProcesandoId,
   onChange,
   onCrear,
   onToggleSeleccion,
@@ -2079,7 +2091,7 @@ function TablaGastosBancarios({
             type="button"
             className="selection-action"
             onClick={onCrearSeleccionados}
-            disabled={creandoSeleccionados}
+            disabled={creandoSeleccionados || Boolean(gastoProcesandoId)}
           >
             {creandoSeleccionados ? "Creando..." : "Crear seleccionados"}
           </button>
@@ -2256,10 +2268,14 @@ function TablaGastosBancarios({
                   <button
                     type="button"
                     className="secondary-button"
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={Boolean(gasto.gastoId) || Boolean(gastoProcesandoId)}
                     onClick={() => onCrear(gasto)}
                   >
-                    {gasto.gastoId ? "Creado" : "Crear gasto"}
+                    {gasto.gastoId
+                      ? "Creado"
+                      : gastoProcesandoId === gasto._id
+                        ? "Creando..."
+                        : "Crear gasto"}
                   </button>
                 </td>
               </tr>
