@@ -6,14 +6,13 @@ import {
 } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   actualizarGasto,
   agregarGasto,
   eliminarGasto,
   guardarGastos,
 } from "../../../features/slices/gastosSlice";
-import { guardarCuentas } from "../../../features/slices/cuentasSlice";
 import { agregarCategoria, guardarCategorias } from "../../../features/slices/categoriasSlice";
 import { agregarSubcategoria, guardarSubcategorias } from "../../../features/slices/subcategoriasSlice";
 import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
@@ -37,6 +36,7 @@ import {
   crearFiltrosGastosIniciales,
   fechaParaInput,
   filtrarGastos,
+  MESES_DEL_ANIO,
   obtenerFechaActualParaFiltro,
 } from "../../../utils/filtrosGastos.js";
 import {
@@ -46,6 +46,9 @@ import {
   resumirValoresMonetarios,
 } from "../../../utils/montosGasto.js";
 import { resumirGastoReal } from "../../../utils/resultadoEconomico.js";
+import {
+  resumirPresupuestoMensualPorTransferencias,
+} from "../../../utils/presupuestoMensual.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -242,15 +245,6 @@ function DesglocePage() {
       });
 
     api
-      .get("/cuentas")
-      .then((response) => {
-        dispatch(guardarCuentas(response.data.cuentas));
-      })
-      .catch((error) => {
-        console.error("Error al obtener las cuentas:", error);
-      });
-
-    api
       .get("/categorias")
       .then((response) => {
         dispatch(guardarCategorias(response.data.categorias));
@@ -314,6 +308,76 @@ function DesglocePage() {
   const gastosCreados = gastosFiltrados.filter(
     (gasto) => gasto.estado === "creado",
   );
+
+  const resumenAhorrosFiltrado = useMemo(() => {
+    if (esCuentaCredito || filtros.fechaModo !== "mes") {
+      return { modoDisponible: false, disponible: false };
+    }
+
+    const clavesEncontradas = [
+      ...new Set(
+        gastos
+          .filter((gasto) => gasto.estado === "creado")
+          .map((gasto) => fechaParaInput(gasto.fecha).slice(0, 7))
+          .filter((clave) => /^\d{4}-\d{2}$/.test(clave))
+          .filter((clave) => (
+            (!filtros.fechaAnio || clave.slice(0, 4) === filtros.fechaAnio)
+            && (!filtros.fechaMes || clave.slice(5, 7) === filtros.fechaMes)
+          )),
+      ),
+    ].sort();
+    const claves = filtros.fechaAnio && filtros.fechaMes
+      ? [`${filtros.fechaAnio}-${filtros.fechaMes}`]
+      : clavesEncontradas;
+    const resumenes = claves
+      .map((periodo) => resumirPresupuestoMensualPorTransferencias({
+        gastos,
+        cuentas,
+        periodo,
+      }))
+      .filter((resumen) => resumen.disponible);
+    const presupuestoUsd = resumenes.reduce(
+      (total, resumen) => total + resumen.presupuestoUsd,
+      0,
+    );
+    const transferidoUsd = resumenes.reduce(
+      (total, resumen) => total + resumen.transferidoUsd,
+      0,
+    );
+    const resultadoUsd = Number((presupuestoUsd - transferidoUsd).toFixed(2));
+    const nombreMes = MESES_DEL_ANIO.find(
+      (mes) => mes.valor === filtros.fechaMes,
+    )?.nombre;
+    const etiquetaPeriodo = nombreMes && filtros.fechaAnio
+      ? `${nombreMes} de ${filtros.fechaAnio}`
+      : filtros.fechaAnio
+        ? `el año ${filtros.fechaAnio}`
+        : nombreMes
+          ? `${nombreMes} de todos los años`
+          : "todos los períodos";
+
+    return {
+      modoDisponible: true,
+      disponible: resumenes.length > 0,
+      mesesIncluidos: resumenes.length,
+      presupuestoUsd: Number(presupuestoUsd.toFixed(2)),
+      transferidoUsd: Number(transferidoUsd.toFixed(2)),
+      resultadoUsd,
+      estado: resultadoUsd < 0
+        ? "deficit"
+        : resultadoUsd > 0
+          ? "ahorro"
+          : "equilibrio",
+      etiquetaPeriodo,
+    };
+  }, [
+    cuentas,
+    esCuentaCredito,
+    filtros.fechaAnio,
+    filtros.fechaMes,
+    filtros.fechaModo,
+    gastos,
+  ]);
 
   const ordenPendientes = useSortableRows(
     gastosPendientes,
@@ -1119,6 +1183,74 @@ function DesglocePage() {
         </div>
       )}
 
+      {mostrarTotales && !esCuentaCredito && (
+        <section
+          id="ahorros-movimientos"
+          className="movements-savings-panel page-scroll-section"
+        >
+          <header className="movements-savings-heading">
+            <div>
+              <span>Ahorros</span>
+              <h3>
+                {resumenAhorrosFiltrado.modoDisponible
+                  ? `Resultado de ${resumenAhorrosFiltrado.etiquetaPeriodo}`
+                  : "Resultado mensual"}
+              </h3>
+            </div>
+            {resumenAhorrosFiltrado.disponible && (
+              <strong
+                className={
+                  resumenAhorrosFiltrado.estado === "deficit"
+                    ? "totals-value-negative"
+                    : "totals-value-positive"
+                }
+              >
+                {resumenAhorrosFiltrado.estado === "deficit"
+                  ? "Déficit"
+                  : resumenAhorrosFiltrado.estado === "ahorro"
+                    ? "Ahorro"
+                    : "Sin diferencia"}
+                : US$ {formatearMonto(resumenAhorrosFiltrado.resultadoUsd)}
+              </strong>
+            )}
+          </header>
+
+          {!resumenAhorrosFiltrado.modoDisponible ? (
+            <p className="movements-savings-empty">
+              Elegí <strong>Fecha · Por mes</strong> para ver el ahorro del período.
+            </p>
+          ) : !resumenAhorrosFiltrado.disponible ? (
+            <p className="movements-savings-empty">
+              No hay movimientos suficientes para calcular este período.
+            </p>
+          ) : (
+            <div className="movements-savings-values">
+              <div>
+                <span>Presupuesto base</span>
+                <strong>
+                  US$ {formatearMonto(resumenAhorrosFiltrado.presupuestoUsd)}
+                </strong>
+                <small>
+                  {resumenAhorrosFiltrado.mesesIncluidos} mes
+                  {resumenAhorrosFiltrado.mesesIncluidos === 1 ? "" : "es"}
+                </small>
+              </div>
+              <div>
+                <span>Transferido desde Caja Ahorro USD</span>
+                <strong>
+                  US$ {formatearMonto(resumenAhorrosFiltrado.transferidoUsd)}
+                </strong>
+                <small>Movimientos con subcategoría Transf.</small>
+              </div>
+            </div>
+          )}
+          <p className="movements-savings-help">
+            El mes y el año de los filtros actualizan este resultado. Las
+            transferencias continúan siendo neutrales dentro del gasto real.
+          </p>
+        </section>
+      )}
+
       {gastosSeleccionadosVisibles.length > 0 && (
         <div className="selection-actions">
           <span>
@@ -1733,6 +1865,9 @@ function DesglocePage() {
           <NavegacionSecciones
             secciones={[
               { id: "filtros-gastos", etiqueta: "Filtros" },
+              ...(!resumenId && !esCuentaCredito
+                ? [{ id: "ahorros-movimientos", etiqueta: "Ahorros" }]
+                : []),
               { id: "lista-gastos", etiqueta: "Lista de gastos" },
             ]}
           />
