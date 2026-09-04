@@ -8176,7 +8176,16 @@ td {
 .payment-analysis-remove {
   min-height: 34px;
   padding: 6px 10px;
+  border-color: #e0aaa4;
+  background: #fff4f2;
+  color: #a53228;
   font-size: 11px;
+}
+
+.payment-analysis-remove:hover:not(:disabled) {
+  border-color: #c65b50;
+  background: #ffe7e3;
+  color: #8d251d;
 }
 
 .payment-analysis-item-actions {

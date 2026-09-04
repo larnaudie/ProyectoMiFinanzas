@@ -359,7 +359,9 @@ function AnalisisPage() {
 
   const eliminarControl = async (control) => {
     const confirmar = window.confirm(
-      `¿Quitar “${control.nombre}” del control mensual? El gasto no se eliminará.`,
+      `Esto eliminará “${control.nombre}” de TODOS los meses y años.\n\n`
+      + `Para excluirlo únicamente de ${MESES[mes - 1]} de ${anio}, usá “Omitir ${MESES[mes - 1]} ${anio}”.\n\n`
+      + "¿Querés eliminar igualmente el control completo?",
     );
     if (!confirmar) return;
     setEliminandoId(control._id);
@@ -617,7 +619,7 @@ function AnalisisPage() {
                                 disabled={actualizandoPeriodoId === control._id}
                                 onClick={() => cambiarExcepcionPeriodo(control, false)}
                               >
-                                Volver a controlar este mes
+                                Incluir {MESES[mes - 1]} {anio}
                               </button>
                             ) : control.motivoOmision !== "fuera_calendario" ? (
                               <button
@@ -626,7 +628,7 @@ function AnalisisPage() {
                                 disabled={actualizandoPeriodoId === control._id}
                                 onClick={() => cambiarExcepcionPeriodo(control, true)}
                               >
-                                No controlar este mes
+                                Omitir {MESES[mes - 1]} {anio}
                               </button>
                             ) : null}
                             <button
@@ -634,9 +636,7 @@ function AnalisisPage() {
                               className="secondary-button"
                               onClick={() => iniciarEdicion(control)}
                             >
-                              {control.motivoOmision === "fuera_calendario"
-                                ? "Editar calendario"
-                                : "Editar"}
+                              Configurar meses
                             </button>
                             <button
                               type="button"
@@ -644,7 +644,9 @@ function AnalisisPage() {
                               disabled={eliminandoId === control._id}
                               onClick={() => eliminarControl(control)}
                             >
-                              {eliminandoId === control._id ? "Quitando…" : "Quitar control"}
+                              {eliminandoId === control._id
+                                ? "Eliminando…"
+                                : "Eliminar de todos los períodos"}
                             </button>
                           </div>
                         </div>
