@@ -6,6 +6,13 @@ const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
+const FECHA_ACTUAL = new Date();
+const ANIO_ACTUAL = FECHA_ACTUAL.getFullYear();
+const MES_ACTUAL = FECHA_ACTUAL.getMonth() + 1;
+const ANIOS_DISPONIBLES = Array.from(
+  { length: 7 },
+  (_, indice) => ANIO_ACTUAL + 1 - indice,
+);
 
 const ESTADOS = {
   pagado: "Pagado",
@@ -14,15 +21,16 @@ const ESTADOS = {
 };
 
 export function MonthlyPaymentChecklist() {
-  const ahora = new Date();
-  const anio = ahora.getFullYear();
-  const mes = ahora.getMonth() + 1;
+  const [anio, setAnio] = useState(ANIO_ACTUAL);
+  const [mes, setMes] = useState(MES_ACTUAL);
   const [analisis, setAnalisis] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let activo = true;
+    setCargando(true);
+    setError(false);
 
     api.get("/analisis", { params: { anio, mes } })
       .then((response) => {
@@ -30,7 +38,10 @@ export function MonthlyPaymentChecklist() {
       })
       .catch((solicitudError) => {
         console.error("No se pudo cargar el checklist mensual:", solicitudError);
-        if (activo) setError(true);
+        if (activo) {
+          setAnalisis(null);
+          setError(true);
+        }
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -40,30 +51,6 @@ export function MonthlyPaymentChecklist() {
       activo = false;
     };
   }, [anio, mes]);
-
-  if (cargando) {
-    return (
-      <section className="home-payment-checklist is-loading" aria-live="polite">
-        <span className="home-payment-checklist-loading-mark" aria-hidden="true" />
-        <div>
-          <strong>Revisando tus pagos de {MESES[mes - 1]}…</strong>
-          <small>Buscando las subcategorías de tu checklist.</small>
-        </div>
-      </section>
-    );
-  }
-
-  if (error) {
-    return (
-      <section className="home-payment-checklist is-error" role="status">
-        <div>
-          <strong>No pudimos revisar los pagos de este mes.</strong>
-          <small>Podés consultar el checklist completo desde su sección.</small>
-        </div>
-        <Link to="/analisis">Abrir checklist</Link>
-      </section>
-    );
-  }
 
   const controles = analisis?.controles || [];
   const resumen = analisis?.resumen || {
@@ -87,24 +74,75 @@ export function MonthlyPaymentChecklist() {
       <header>
         <div>
           <span className="home-payment-checklist-kicker">Recordatorio mensual</span>
-          <h2 id="home-payment-checklist-title">Checklist de {MESES[mes - 1]}</h2>
-          {resumen.total === 0 ? (
+          <h2 id="home-payment-checklist-title">
+            Checklist de {MESES[mes - 1]} de {anio}
+          </h2>
+          {cargando ? (
+            <p>Revisando los pagos del período seleccionado…</p>
+          ) : error ? (
+            <p>No pudimos revisar los pagos de este período. Intentá nuevamente.</p>
+          ) : resumen.total === 0 ? (
             <p>Todavía no configuraste pagos mensuales para controlar.</p>
           ) : todoPago ? (
-            <p>Todo al día: encontramos todos los pagos de este mes.</p>
+            <p>Todo al día: encontramos todos los pagos de este período.</p>
           ) : (
             <p>
               Atención: todavía no encontramos {cantidadSinConfirmar}
-              {cantidadSinConfirmar === 1 ? " pago" : " pagos"} de este mes.
+              {cantidadSinConfirmar === 1 ? " pago" : " pagos"} de este período.
             </p>
           )}
         </div>
-        <Link to="/analisis">
-          {resumen.total === 0 ? "Configurar checklist" : "Ver detalle"}
-        </Link>
+
+        <div className="home-payment-checklist-actions">
+          <div className="home-payment-checklist-period" aria-label="Período del checklist">
+            <label>
+              Mes
+              <select
+                value={mes}
+                onChange={(event) => setMes(Number(event.target.value))}
+              >
+                {MESES.map((nombreMes, indice) => (
+                  <option value={indice + 1} key={nombreMes}>{nombreMes}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Año
+              <select
+                value={anio}
+                onChange={(event) => setAnio(Number(event.target.value))}
+              >
+                {ANIOS_DISPONIBLES.map((valor) => (
+                  <option value={valor} key={valor}>{valor}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Link
+            className="home-payment-checklist-link"
+            to={`/analisis?mes=${mes}&anio=${anio}`}
+          >
+            {!cargando && resumen.total === 0 ? "Configurar checklist" : "Ver detalle"}
+          </Link>
+        </div>
       </header>
 
-      {resumen.total > 0 && (
+      {cargando ? (
+        <div className="home-payment-checklist-status" role="status">
+          <span className="home-payment-checklist-loading-mark" aria-hidden="true" />
+          <span>
+            <strong>Consultando {MESES[mes - 1]} de {anio}…</strong>
+            <small>Buscando cada subcategoría en todas tus cuentas.</small>
+          </span>
+        </div>
+      ) : error ? (
+        <div className="home-payment-checklist-status is-error" role="status">
+          <span>
+            <strong>No se pudo cargar este período.</strong>
+            <small>Podés elegir otro mes o abrir el detalle para volver a intentarlo.</small>
+          </span>
+        </div>
+      ) : resumen.total > 0 ? (
         <>
           <div className="home-payment-checklist-progress-copy">
             <strong>{resumen.pagados} de {resumen.total} pagados</strong>
@@ -144,11 +182,13 @@ export function MonthlyPaymentChecklist() {
             })}
           </div>
         </>
-      )}
+      ) : null}
 
-      <small className="home-payment-checklist-help">
-        Los checks se completan automáticamente al crear un movimiento con esa subcategoría.
-      </small>
+      {!cargando && !error && (
+        <small className="home-payment-checklist-help">
+          Los checks se completan automáticamente al crear un movimiento con esa subcategoría.
+        </small>
+      )}
     </section>
   );
 }

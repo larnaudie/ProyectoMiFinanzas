@@ -4891,7 +4891,42 @@ td {
   line-height: 1.45;
 }
 
-.home-payment-checklist > header > a {
+.home-payment-checklist-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.home-payment-checklist-period {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 92px;
+  gap: 8px;
+}
+
+.home-payment-checklist-period label {
+  display: grid;
+  gap: 4px;
+  color: #587169;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.home-payment-checklist-period select {
+  min-height: 38px;
+  border: 1px solid #c7d9d4;
+  border-radius: 8px;
+  padding: 7px 28px 7px 9px;
+  background: #ffffff;
+  color: #173e35;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.home-payment-checklist-link {
   flex: 0 0 auto;
   min-height: 38px;
   padding: 9px 14px;
@@ -4903,7 +4938,7 @@ td {
   text-decoration: none;
 }
 
-.home-payment-checklist > header > a:hover {
+.home-payment-checklist-link:hover {
   background: #105648;
 }
 
@@ -5019,28 +5054,27 @@ td {
   line-height: 1.4;
 }
 
-.home-payment-checklist.is-loading,
-.home-payment-checklist.is-error {
+.home-payment-checklist-status {
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 0 2px;
 }
 
-.home-payment-checklist.is-loading strong,
-.home-payment-checklist.is-loading small,
-.home-payment-checklist.is-error strong,
-.home-payment-checklist.is-error small {
+.home-payment-checklist-status strong,
+.home-payment-checklist-status small {
   display: block;
 }
 
-.home-payment-checklist.is-loading small,
-.home-payment-checklist.is-error small {
+.home-payment-checklist-status small {
   margin-top: 3px;
   color: #657973;
 }
 
-.home-payment-checklist.is-error > a {
-  color: #176a59;
-  font-weight: 800;
+.home-payment-checklist-status.is-error {
+  color: #9b3028;
 }
 
 .home-payment-checklist-loading-mark {
@@ -5078,7 +5112,12 @@ td {
     flex-direction: column;
   }
 
-  .home-payment-checklist > header > a {
+  .home-payment-checklist-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-payment-checklist-link {
     text-align: center;
   }
 
@@ -5086,13 +5125,8 @@ td {
     grid-template-columns: 1fr;
   }
 
-  .home-payment-checklist.is-loading,
-  .home-payment-checklist.is-error {
+  .home-payment-checklist-status {
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .home-payment-checklist.is-error > a {
-    grid-column: 1 / -1;
   }
 }
 

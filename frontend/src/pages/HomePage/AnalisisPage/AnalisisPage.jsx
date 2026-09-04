@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
 import SearchableSubcategorySelect from "../../../components/SearchableSubcategorySelect.jsx";
 import { api } from "../../../services/api.js";
@@ -48,9 +48,16 @@ const formatearMonto = (moneda, valor) => {
 
 function AnalisisPage() {
   const contextoLayout = useOutletContext();
+  const [parametrosBusqueda] = useSearchParams();
   const menuAbierto = contextoLayout?.menuAbierto || false;
-  const [anio, setAnio] = useState(ANIO_ACTUAL);
-  const [mes, setMes] = useState(MES_ACTUAL);
+  const mesSolicitado = Number(parametrosBusqueda.get("mes"));
+  const anioSolicitado = Number(parametrosBusqueda.get("anio"));
+  const [anio, setAnio] = useState(
+    ANIOS_DISPONIBLES.includes(anioSolicitado) ? anioSolicitado : ANIO_ACTUAL,
+  );
+  const [mes, setMes] = useState(
+    mesSolicitado >= 1 && mesSolicitado <= 12 ? mesSolicitado : MES_ACTUAL,
+  );
   const [analisis, setAnalisis] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
