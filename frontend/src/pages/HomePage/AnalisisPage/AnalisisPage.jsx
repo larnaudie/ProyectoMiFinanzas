@@ -15,6 +15,11 @@ const ANIOS_DISPONIBLES = Array.from(
   { length: 7 },
   (_, indice) => ANIO_ACTUAL + 1 - indice,
 );
+const TODOS_LOS_MESES = Array.from({ length: 12 }, (_, indice) => indice + 1);
+const MESES_CORTOS = [
+  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+];
 
 const ESTADOS = {
   pagado: {
@@ -28,6 +33,10 @@ const ESTADOS = {
   no_encontrado: {
     etiqueta: "No encontrado",
     descripcion: "No aparece un movimiento con esta subcategoría en el mes.",
+  },
+  omitido: {
+    etiqueta: "No corresponde",
+    descripcion: "Este pago no forma parte del control para el período seleccionado.",
   },
 };
 
@@ -45,6 +54,47 @@ const formatearMonto = (moneda, valor) => {
     maximumFractionDigits: 2,
   })}`;
 };
+
+const describirCalendario = (meses = TODOS_LOS_MESES) => {
+  if (meses.length === 12) return "Todos los meses";
+  if (meses.length === 1) return `Solo ${MESES[meses[0] - 1]}`;
+  return meses.map((numeroMes) => MESES_CORTOS[numeroMes - 1]).join(", ");
+};
+
+function SelectorMeses({ value, onChange }) {
+  const alternarMes = (numeroMes) => {
+    const siguientes = value.includes(numeroMes)
+      ? value.filter((mesElegido) => mesElegido !== numeroMes)
+      : [...value, numeroMes].sort((a, b) => a - b);
+    onChange(siguientes);
+  };
+
+  return (
+    <fieldset className="payment-analysis-month-selector">
+      <legend>Meses en los que corresponde</legend>
+      <div>
+        {MESES_CORTOS.map((nombreMes, indice) => {
+          const numeroMes = indice + 1;
+          return (
+            <label key={nombreMes}>
+              <input
+                type="checkbox"
+                checked={value.includes(numeroMes)}
+                onChange={() => alternarMes(numeroMes)}
+              />
+              <span>{nombreMes}</span>
+            </label>
+          );
+        })}
+      </div>
+      <small>
+        {value.length
+          ? describirCalendario(value)
+          : "Seleccioná al menos un mes."}
+      </small>
+    </fieldset>
+  );
+}
 
 function AnalisisPage() {
   const contextoLayout = useOutletContext();
@@ -65,12 +115,20 @@ function AnalisisPage() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [nombre, setNombre] = useState("");
   const [subcategoriaId, setSubcategoriaId] = useState("");
+  const [mesesActivos, setMesesActivos] = useState(TODOS_LOS_MESES);
   const [guardando, setGuardando] = useState(false);
   const [editandoId, setEditandoId] = useState("");
   const [nombreEdicion, setNombreEdicion] = useState("");
   const [subcategoriaEdicionId, setSubcategoriaEdicionId] = useState("");
+  const [mesesEdicion, setMesesEdicion] = useState(TODOS_LOS_MESES);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [eliminandoId, setEliminandoId] = useState("");
+  const [actualizandoPeriodoId, setActualizandoPeriodoId] = useState("");
+  const [asignandoControl, setAsignandoControl] = useState(null);
+  const [candidatosPago, setCandidatosPago] = useState([]);
+  const [candidatoPagoId, setCandidatoPagoId] = useState("");
+  const [cargandoCandidatos, setCargandoCandidatos] = useState(false);
+  const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
 
   const cargarAnalisis = useCallback(async () => {
     setCargando(true);
@@ -93,17 +151,22 @@ function AnalisisPage() {
   const limpiarFormulario = () => {
     setNombre("");
     setSubcategoriaId("");
+    setMesesActivos(TODOS_LOS_MESES);
     setMostrarFormulario(false);
   };
 
   const agregarControl = async (event) => {
     event.preventDefault();
-    if (!subcategoriaId) return;
+    if (!subcategoriaId || !mesesActivos.length) return;
     setGuardando(true);
     setError("");
     setMensaje("");
     try {
-      await api.post("/analisis/controles", { nombre, subcategoriaId });
+      await api.post("/analisis/controles", {
+        nombre,
+        subcategoriaId,
+        mesesActivos,
+      });
       limpiarFormulario();
       setMensaje("Pago mensual agregado al control.");
       await cargarAnalisis();
@@ -143,6 +206,7 @@ function AnalisisPage() {
     setEditandoId(control._id);
     setNombreEdicion(control.nombre);
     setSubcategoriaEdicionId(control.subcategoria._id);
+    setMesesEdicion(control.mesesActivos || TODOS_LOS_MESES);
     setError("");
     setMensaje("");
   };
@@ -151,11 +215,12 @@ function AnalisisPage() {
     setEditandoId("");
     setNombreEdicion("");
     setSubcategoriaEdicionId("");
+    setMesesEdicion(TODOS_LOS_MESES);
   };
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
-    if (!editandoId || !subcategoriaEdicionId) return;
+    if (!editandoId || !subcategoriaEdicionId || !mesesEdicion.length) return;
     setGuardandoEdicion(true);
     setError("");
     setMensaje("");
@@ -163,6 +228,7 @@ function AnalisisPage() {
       await api.patch(`/analisis/controles/${editandoId}`, {
         nombre: nombreEdicion,
         subcategoriaId: subcategoriaEdicionId,
+        mesesActivos: mesesEdicion,
       });
       cancelarEdicion();
       setMensaje("Pago mensual actualizado. Ningún gasto fue modificado.");
@@ -175,6 +241,119 @@ function AnalisisPage() {
       );
     } finally {
       setGuardandoEdicion(false);
+    }
+  };
+
+  const cambiarExcepcionPeriodo = async (control, omitido) => {
+    if (omitido) {
+      const confirmar = window.confirm(
+        `¿Dejar de controlar “${control.nombre}” solamente en ${MESES[mes - 1]} de ${anio}?`,
+      );
+      if (!confirmar) return;
+    }
+    setActualizandoPeriodoId(control._id);
+    setError("");
+    setMensaje("");
+    try {
+      await api.put(`/analisis/controles/${control._id}/excepcion`, {
+        anio,
+        mes,
+        omitido,
+      });
+      setMensaje(omitido
+        ? `“${control.nombre}” no se controlará en ${MESES[mes - 1]} de ${anio}.`
+        : `“${control.nombre}” volvió al checklist de ${MESES[mes - 1]} de ${anio}.`);
+      await cargarAnalisis();
+    } catch (solicitudError) {
+      console.error("No se pudo actualizar el período del pago:", solicitudError);
+      setError(
+        solicitudError.response?.data?.message
+        || "No se pudo actualizar el control de este período.",
+      );
+    } finally {
+      setActualizandoPeriodoId("");
+    }
+  };
+
+  const abrirAsignacionPago = async (control) => {
+    setAsignandoControl(control);
+    setCandidatosPago([]);
+    setCandidatoPagoId("");
+    setCargandoCandidatos(true);
+    setError("");
+    setMensaje("");
+    try {
+      const response = await api.get(
+        `/analisis/controles/${control._id}/candidatos`,
+        { params: { anio, mes } },
+      );
+      setCandidatosPago(response.data.movimientos || []);
+    } catch (solicitudError) {
+      console.error("No se pudieron cargar movimientos para asignar:", solicitudError);
+      setError(
+        solicitudError.response?.data?.message
+        || "No se pudieron buscar pagos de otros meses.",
+      );
+      setAsignandoControl(null);
+    } finally {
+      setCargandoCandidatos(false);
+    }
+  };
+
+  const cerrarAsignacionPago = () => {
+    if (guardandoAsignacion) return;
+    setAsignandoControl(null);
+    setCandidatosPago([]);
+    setCandidatoPagoId("");
+  };
+
+  const guardarAsignacionPago = async () => {
+    if (!asignandoControl || !candidatoPagoId) return;
+    setGuardandoAsignacion(true);
+    setError("");
+    setMensaje("");
+    try {
+      await api.put(`/analisis/controles/${asignandoControl._id}/asignacion`, {
+        anio,
+        mes,
+        gastoId: candidatoPagoId,
+      });
+      const nombreControl = asignandoControl.nombre;
+      cerrarAsignacionPago();
+      setMensaje(
+        `Pago asignado a “${nombreControl}” para ${MESES[mes - 1]} de ${anio}.`,
+      );
+      await cargarAnalisis();
+    } catch (solicitudError) {
+      console.error("No se pudo asignar el pago al período:", solicitudError);
+      setError(
+        solicitudError.response?.data?.message
+        || "No se pudo asignar el movimiento al período.",
+      );
+    } finally {
+      setGuardandoAsignacion(false);
+    }
+  };
+
+  const quitarAsignacionPago = async (control) => {
+    const confirmar = window.confirm(
+      `¿Desvincular el pago asignado a ${MESES[mes - 1]} de ${anio}? El movimiento no se eliminará.`,
+    );
+    if (!confirmar) return;
+    setActualizandoPeriodoId(control._id);
+    setError("");
+    setMensaje("");
+    try {
+      await api.delete(`/analisis/controles/${control._id}/asignacion`, {
+        params: { anio, mes },
+      });
+      setMensaje("La asignación se quitó. El movimiento original no fue modificado.");
+      await cargarAnalisis();
+    } catch (solicitudError) {
+      console.error("No se pudo quitar la asignación del pago:", solicitudError);
+      setError("No se pudo quitar la asignación del período.");
+    } finally {
+      setActualizandoPeriodoId("");
     }
   };
 
@@ -200,6 +379,8 @@ function AnalisisPage() {
 
   const resumen = analisis?.resumen || {
     total: 0,
+    totalConfigurados: 0,
+    omitidos: 0,
     pagados: 0,
     pendientes: 0,
     noEncontrados: 0,
@@ -258,9 +439,9 @@ function AnalisisPage() {
       <aside className="payment-analysis-explanation">
         <strong>¿Cómo funciona?</strong>
         <p>
-          Elegís una subcategoría para cada pago mensual. La aplicación busca
-          movimientos de esa subcategoría durante el mes en todas tus cuentas y
-          marca el check automáticamente. Esta pantalla no modifica tus gastos.
+          Elegís una subcategoría y los meses en los que corresponde pagarla.
+          La aplicación marca el check con el movimiento del mes, o con otro
+          movimiento que vos asignes al período. También podés omitir un caso puntual.
         </p>
       </aside>
 
@@ -277,7 +458,8 @@ function AnalisisPage() {
           >
             <article>
               <small>Items del checklist</small>
-              <strong>{resumen.total}</strong>
+              <strong>{resumen.totalConfigurados ?? resumen.total}</strong>
+              {resumen.omitidos > 0 && <small>{resumen.omitidos} no corresponden este mes</small>}
             </article>
             <article className="is-success">
               <small>Pagados</small>
@@ -349,6 +531,10 @@ function AnalisisPage() {
                               ariaLabel={`Subcategoría de ${control.nombre}`}
                             />
                           </label>
+                          <SelectorMeses
+                            value={mesesEdicion}
+                            onChange={setMesesEdicion}
+                          />
                           <div className="payment-analysis-edit-actions">
                             <button
                               type="button"
@@ -360,7 +546,11 @@ function AnalisisPage() {
                             </button>
                             <button
                               type="submit"
-                              disabled={guardandoEdicion || !subcategoriaEdicionId}
+                              disabled={
+                                guardandoEdicion
+                                || !subcategoriaEdicionId
+                                || !mesesEdicion.length
+                              }
                             >
                               {guardandoEdicion ? "Guardando…" : "Guardar cambios"}
                             </button>
@@ -376,7 +566,11 @@ function AnalisisPage() {
                               aria-readonly="true"
                               aria-label={`${control.nombre}: ${estado.etiqueta}`}
                             >
-                              {control.estado === "pagado" ? "✓" : ""}
+                              {control.estado === "pagado"
+                                ? "✓"
+                                : control.estado === "omitido"
+                                  ? "—"
+                                  : ""}
                             </span>
                             <span className={`analysis-status-chip status-${control.estado}`}>
                               {estado.etiqueta}
@@ -388,15 +582,61 @@ function AnalisisPage() {
                               Busca la subcategoría <strong>{control.subcategoria.nombre}</strong>
                               {" "}en todas tus cuentas.
                             </p>
-                            <small>{estado.descripcion}</small>
+                            <small>
+                              {control.motivoOmision === "fuera_calendario"
+                                ? `Calendario: ${describirCalendario(control.mesesActivos)}.`
+                                : estado.descripcion}
+                            </small>
+                            {control.estado !== "omitido" && (
+                              <small>Calendario: {describirCalendario(control.mesesActivos)}.</small>
+                            )}
                           </div>
                           <div className="payment-analysis-item-actions">
+                            {control.estado !== "omitido" && control.estado !== "pagado" && (
+                              <button
+                                type="button"
+                                onClick={() => abrirAsignacionPago(control)}
+                              >
+                                Usar pago de otro mes
+                              </button>
+                            )}
+                            {control.pagoAsignado && (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={actualizandoPeriodoId === control._id}
+                                onClick={() => quitarAsignacionPago(control)}
+                              >
+                                Quitar asignación
+                              </button>
+                            )}
+                            {control.motivoOmision === "excepcion_periodo" ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={actualizandoPeriodoId === control._id}
+                                onClick={() => cambiarExcepcionPeriodo(control, false)}
+                              >
+                                Volver a controlar este mes
+                              </button>
+                            ) : control.motivoOmision !== "fuera_calendario" ? (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                disabled={actualizandoPeriodoId === control._id}
+                                onClick={() => cambiarExcepcionPeriodo(control, true)}
+                              >
+                                No controlar este mes
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="secondary-button"
                               onClick={() => iniciarEdicion(control)}
                             >
-                              Editar
+                              {control.motivoOmision === "fuera_calendario"
+                                ? "Editar calendario"
+                                : "Editar"}
                             </button>
                             <button
                               type="button"
@@ -429,6 +669,9 @@ function AnalisisPage() {
                                   <small>
                                     {movimiento.cuenta} · {formatearFecha(movimiento.fecha)}
                                     {movimiento.estado === "pendiente" ? " · Pendiente" : ""}
+                                    {movimiento.asignadoAlPeriodo
+                                      ? ` · Asignado a ${MESES[mes - 1]} de ${anio}`
+                                      : ""}
                                   </small>
                                 </span>
                                 <strong>{formatearMonto(movimiento.moneda, movimiento.monto)}</strong>
@@ -452,7 +695,7 @@ function AnalisisPage() {
               <div>
                 <span className="page-eyebrow">Configuración independiente</span>
                 <h2>Pagos a controlar</h2>
-                <p>Solo guardamos qué subcategorías querés consultar cada mes.</p>
+                <p>Elegí la subcategoría y en qué meses debe aparecer en el checklist.</p>
               </div>
             </header>
 
@@ -494,11 +737,15 @@ function AnalisisPage() {
                     ariaLabel="Seleccionar subcategoría del pago mensual"
                   />
                 </label>
+                <SelectorMeses value={mesesActivos} onChange={setMesesActivos} />
                 <div className="payment-analysis-form-actions">
                   <button type="button" className="secondary-button" onClick={limpiarFormulario}>
                     Cancelar
                   </button>
-                  <button type="submit" disabled={guardando || !subcategoriaId}>
+                  <button
+                    type="submit"
+                    disabled={guardando || !subcategoriaId || !mesesActivos.length}
+                  >
                     {guardando ? "Guardando…" : "Agregar al control"}
                   </button>
                 </div>
@@ -514,6 +761,95 @@ function AnalisisPage() {
             )}
           </section>
         </>
+      )}
+
+      {asignandoControl && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) cerrarAsignacionPago();
+          }}
+        >
+          <form
+            className="modal-panel payment-assignment-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-assignment-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              guardarAsignacionPago();
+            }}
+          >
+            <header className="modal-header">
+              <div>
+                <span className="page-eyebrow">Pago realizado en otra fecha</span>
+                <h2 id="payment-assignment-title">
+                  Completar {MESES[mes - 1]} de {anio}
+                </h2>
+                <p>
+                  Elegí qué movimiento de {asignandoControl.nombre} corresponde
+                  a este período. Su fecha bancaria no cambiará.
+                </p>
+              </div>
+            </header>
+
+            <div className="payment-assignment-body">
+              {cargandoCandidatos ? (
+                <p className="analysis-loading">Buscando pagos creados…</p>
+              ) : candidatosPago.length === 0 ? (
+                <div className="payment-analysis-empty">
+                  <strong>No encontramos movimientos disponibles</strong>
+                  <p>
+                    Primero creá o clasificá el pago con la subcategoría
+                    {" "}<strong>{asignandoControl.subcategoria.nombre}</strong>.
+                  </p>
+                </div>
+              ) : (
+                <div className="payment-assignment-list">
+                  {candidatosPago.map((movimiento) => (
+                    <label
+                      className={candidatoPagoId === movimiento.gastoId ? "is-selected" : ""}
+                      key={movimiento.gastoId}
+                    >
+                      <input
+                        type="radio"
+                        name="movimientoPago"
+                        value={movimiento.gastoId}
+                        checked={candidatoPagoId === movimiento.gastoId}
+                        onChange={(event) => setCandidatoPagoId(event.target.value)}
+                      />
+                      <span>
+                        <strong>{movimiento.detalle}</strong>
+                        <small>
+                          {movimiento.cuenta} · {formatearFecha(movimiento.fecha)}
+                        </small>
+                      </span>
+                      <strong>{formatearMonto(movimiento.moneda, movimiento.monto)}</strong>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <footer className="payment-assignment-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={guardandoAsignacion}
+                onClick={cerrarAsignacionPago}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardandoAsignacion || !candidatoPagoId}
+              >
+                {guardandoAsignacion ? "Asignando…" : "Asignar a este período"}
+              </button>
+            </footer>
+          </form>
+        </div>
       )}
     </section>
   );

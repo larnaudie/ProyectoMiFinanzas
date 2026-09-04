@@ -18,6 +18,7 @@ const ESTADOS = {
   pagado: "Pagado",
   pendiente: "Pendiente de completar",
   no_encontrado: "No detectado",
+  omitido: "No corresponde este mes",
 };
 
 export function MonthlyPaymentChecklist() {
@@ -55,11 +56,14 @@ export function MonthlyPaymentChecklist() {
   const controles = analisis?.controles || [];
   const resumen = analisis?.resumen || {
     total: 0,
+    totalConfigurados: 0,
+    omitidos: 0,
     pagados: 0,
     pendientes: 0,
     noEncontrados: 0,
   };
   const cantidadSinConfirmar = resumen.total - resumen.pagados;
+  const totalConfigurados = resumen.totalConfigurados ?? resumen.total;
   const porcentaje = resumen.total > 0
     ? Math.round((resumen.pagados / resumen.total) * 100)
     : 0;
@@ -81,8 +85,10 @@ export function MonthlyPaymentChecklist() {
             <p>Revisando los pagos del período seleccionado…</p>
           ) : error ? (
             <p>No pudimos revisar los pagos de este período. Intentá nuevamente.</p>
-          ) : resumen.total === 0 ? (
+          ) : totalConfigurados === 0 ? (
             <p>Todavía no configuraste pagos mensuales para controlar.</p>
+          ) : resumen.total === 0 ? (
+            <p>No hay pagos programados para este período.</p>
           ) : todoPago ? (
             <p>Todo al día: encontramos todos los pagos de este período.</p>
           ) : (
@@ -122,7 +128,9 @@ export function MonthlyPaymentChecklist() {
             className="home-payment-checklist-link"
             to={`/analisis?mes=${mes}&anio=${anio}`}
           >
-            {!cargando && resumen.total === 0 ? "Configurar checklist" : "Ver detalle"}
+            {!cargando && totalConfigurados === 0
+              ? "Configurar checklist"
+              : "Ver detalle"}
           </Link>
         </div>
       </header>
@@ -142,22 +150,26 @@ export function MonthlyPaymentChecklist() {
             <small>Podés elegir otro mes o abrir el detalle para volver a intentarlo.</small>
           </span>
         </div>
-      ) : resumen.total > 0 ? (
+      ) : totalConfigurados > 0 ? (
         <>
-          <div className="home-payment-checklist-progress-copy">
-            <strong>{resumen.pagados} de {resumen.total} pagados</strong>
-            <span>{porcentaje}%</span>
-          </div>
-          <div
-            className="home-payment-checklist-progress"
-            role="progressbar"
-            aria-valuemin="0"
-            aria-valuemax={resumen.total}
-            aria-valuenow={resumen.pagados}
-            aria-label="Progreso de pagos mensuales"
-          >
-            <span style={{ width: `${porcentaje}%` }} />
-          </div>
+          {resumen.total > 0 && (
+            <>
+              <div className="home-payment-checklist-progress-copy">
+                <strong>{resumen.pagados} de {resumen.total} pagados</strong>
+                <span>{porcentaje}%</span>
+              </div>
+              <div
+                className="home-payment-checklist-progress"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax={resumen.total}
+                aria-valuenow={resumen.pagados}
+                aria-label="Progreso de pagos mensuales"
+              >
+                <span style={{ width: `${porcentaje}%` }} />
+              </div>
+            </>
+          )}
 
           <div className="home-payment-checklist-items">
             {controles.map((control) => {
@@ -171,7 +183,7 @@ export function MonthlyPaymentChecklist() {
                     aria-readonly="true"
                     aria-label={`${control.nombre}: ${ESTADOS[control.estado]}`}
                   >
-                    {pagado ? "✓" : ""}
+                    {pagado ? "✓" : control.estado === "omitido" ? "—" : ""}
                   </span>
                   <span>
                     <strong>{control.nombre}</strong>

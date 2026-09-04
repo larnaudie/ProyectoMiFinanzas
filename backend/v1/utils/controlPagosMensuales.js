@@ -14,6 +14,16 @@ const numero = (valor) => {
 const redondear = (valor) =>
   Math.round((numero(valor) + Number.EPSILON) * 100) / 100;
 
+const TODOS_LOS_MESES = Array.from({ length: 12 }, (_, indice) => indice + 1);
+
+export const normalizarMesesActivos = (valor) => {
+  if (!Array.isArray(valor) || valor.length === 0) return [...TODOS_LOS_MESES];
+  const meses = [...new Set(valor.map(Number))]
+    .filter((mes) => Number.isInteger(mes) && mes >= 1 && mes <= 12)
+    .sort((a, b) => a - b);
+  return meses.length ? meses : [...TODOS_LOS_MESES];
+};
+
 export const normalizarTextoControl = (valor = "") =>
   String(valor)
     .normalize("NFD")
@@ -55,7 +65,7 @@ const montoCoincidencia = (gasto) => {
   return redondear(gasto.montoBancario);
 };
 
-const crearCoincidencia = (gasto) => ({
+export const crearCoincidencia = (gasto, opciones = {}) => ({
   gastoId: idDe(gasto),
   cuentaId: idDe(gasto.cuentaId),
   cuenta: textoDe(gasto.cuentaId, "nombreCuenta", "Cuenta"),
@@ -69,12 +79,31 @@ const crearCoincidencia = (gasto) => ({
   montoBancario: redondear(gasto.montoBancario),
   montoReal: redondear(gasto.montoReal),
   incluirMontoReal: gasto.incluirMontoReal === true,
+  asignadoAlPeriodo: opciones.asignadoAlPeriodo === true,
 });
 
-export const evaluarControlesMensuales = ({ controles = [], gastos = [] }) => {
+const estaDentroDelPeriodo = (gasto, periodo = {}) => {
+  if (!periodo.inicio || !periodo.fin) return true;
+  const fecha = new Date(gasto.fecha);
+  return !Number.isNaN(fecha.getTime())
+    && fecha >= periodo.inicio
+    && fecha < periodo.fin;
+};
+
+const coincidePeriodo = (item, periodo = {}) => (
+  Number(item?.anio) === Number(periodo.anio)
+  && Number(item?.mes) === Number(periodo.mes)
+);
+
+export const evaluarControlesMensuales = ({
+  controles = [],
+  gastos = [],
+  periodo = {},
+}) => {
+  const gastosPorId = new Map(gastos.map((gasto) => [idDe(gasto), gasto]));
   const gastosPorSubcategoria = new Map();
 
-  gastos.forEach((gasto) => {
+  gastos.filter((gasto) => estaDentroDelPeriodo(gasto, periodo)).forEach((gasto) => {
     const subcategoriaId = idDe(gasto.subcategoriaId);
     if (!subcategoriaId) return;
     if (!gastosPorSubcategoria.has(subcategoriaId)) {
@@ -85,16 +114,49 @@ export const evaluarControlesMensuales = ({ controles = [], gastos = [] }) => {
 
   const resultados = controles.map((control) => {
     const subcategoriaId = idDe(control.subcategoriaId);
-    const coincidencias = (gastosPorSubcategoria.get(subcategoriaId) || [])
-      .map(crearCoincidencia)
+    const mesesActivos = normalizarMesesActivos(control.mesesActivos);
+    const fueraDeCalendario = Number.isInteger(Number(periodo.mes))
+      && !mesesActivos.includes(Number(periodo.mes));
+    const excepcion = (control.excepciones || []).some((item) => (
+      coincidePeriodo(item, periodo)
+    ));
+    const omitido = fueraDeCalendario || excepcion;
+    const asignacion = (control.pagosAsignados || []).find((item) => (
+      coincidePeriodo(item, periodo)
+    ));
+    const gastosAsignadosAOtrosPeriodos = new Set(
+      (control.pagosAsignados || [])
+        .filter((item) => !coincidePeriodo(item, periodo))
+        .map((item) => idDe(item.gastoId)),
+    );
+    const gastoAsignado = asignacion
+      ? gastosPorId.get(idDe(asignacion.gastoId))
+      : null;
+    const coincidenciasNaturales = (gastosPorSubcategoria.get(subcategoriaId) || [])
+      .filter((gasto) => !gastosAsignadosAOtrosPeriodos.has(idDe(gasto)));
+    const coincidencias = coincidenciasNaturales
+      .map((gasto) => crearCoincidencia(gasto, {
+        asignadoAlPeriodo: Boolean(gastoAsignado && idDe(gasto) === idDe(gastoAsignado)),
+      }));
+    if (
+      gastoAsignado
+      && !coincidencias.some((item) => item.gastoId === idDe(gastoAsignado))
+    ) {
+      coincidencias.push(crearCoincidencia(gastoAsignado, {
+        asignadoAlPeriodo: true,
+      }));
+    }
+    coincidencias
       .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
     const creados = coincidencias.filter((item) => item.estado === "creado");
     const pendientes = coincidencias.filter((item) => item.estado === "pendiente");
-    const estado = creados.length
-      ? "pagado"
-      : pendientes.length
-        ? "pendiente"
-        : "no_encontrado";
+    const estado = omitido
+      ? "omitido"
+      : creados.length
+        ? "pagado"
+        : pendientes.length
+          ? "pendiente"
+          : "no_encontrado";
 
     return {
       _id: idDe(control),
@@ -108,19 +170,32 @@ export const evaluarControlesMensuales = ({ controles = [], gastos = [] }) => {
         ),
       },
       estado,
-      coincidencias,
+      coincidencias: omitido ? [] : coincidencias,
       cantidadCreados: creados.length,
       cantidadPendientes: pendientes.length,
+      mesesActivos,
+      motivoOmision: fueraDeCalendario
+        ? "fuera_calendario"
+        : excepcion
+          ? "excepcion_periodo"
+          : null,
+      pagoAsignado: gastoAsignado
+        ? crearCoincidencia(gastoAsignado, { asignadoAlPeriodo: true })
+        : null,
     };
   });
+
+  const aplicables = resultados.filter((item) => item.estado !== "omitido");
 
   return {
     controles: resultados,
     resumen: {
-      total: resultados.length,
-      pagados: resultados.filter((item) => item.estado === "pagado").length,
-      pendientes: resultados.filter((item) => item.estado === "pendiente").length,
-      noEncontrados: resultados.filter(
+      total: aplicables.length,
+      totalConfigurados: resultados.length,
+      omitidos: resultados.length - aplicables.length,
+      pagados: aplicables.filter((item) => item.estado === "pagado").length,
+      pendientes: aplicables.filter((item) => item.estado === "pendiente").length,
+      noEncontrados: aplicables.filter(
         (item) => item.estado === "no_encontrado",
       ).length,
     },

@@ -62,6 +62,8 @@ test("distingue gasto pendiente de pago no encontrado", () => {
   assert.equal(resultado.controles[1].estado, "no_encontrado");
   assert.deepEqual(resultado.resumen, {
     total: 2,
+    totalConfigurados: 2,
+    omitidos: 0,
     pagados: 0,
     pendientes: 1,
     noEncontrados: 1,
@@ -99,4 +101,80 @@ test("calcula límites UTC del mes consultado", () => {
   const periodo = limitesPeriodoControl({ anio: 2026, mes: 7 });
   assert.equal(periodo.inicio.toISOString(), "2026-07-01T00:00:00.000Z");
   assert.equal(periodo.fin.toISOString(), "2026-08-01T00:00:00.000Z");
+});
+
+test("omite del resultado los pagos que no corresponden al mes configurado", () => {
+  const resultado = evaluarControlesMensuales({
+    controles: [{
+      ...control("factura", "Facturación electrónica", subcategoria("factura", "Factura")),
+      mesesActivos: [6],
+    }],
+    gastos: [],
+    periodo: limitesPeriodoControl({ anio: 2026, mes: 7 }),
+  });
+
+  assert.equal(resultado.controles[0].estado, "omitido");
+  assert.equal(resultado.controles[0].motivoOmision, "fuera_calendario");
+  assert.deepEqual(resultado.resumen, {
+    total: 0,
+    totalConfigurados: 1,
+    omitidos: 1,
+    pagados: 0,
+    pendientes: 0,
+    noEncontrados: 0,
+  });
+});
+
+test("permite omitir un único mes sin alterar el calendario habitual", () => {
+  const resultado = evaluarControlesMensuales({
+    controles: [{
+      ...control("ute", "UTE", subcategoria("ute", "UTE")),
+      mesesActivos: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      excepciones: [{ anio: 2026, mes: 7 }],
+    }],
+    gastos: [],
+    periodo: limitesPeriodoControl({ anio: 2026, mes: 7 }),
+  });
+
+  assert.equal(resultado.controles[0].estado, "omitido");
+  assert.equal(resultado.controles[0].motivoOmision, "excepcion_periodo");
+});
+
+test("un pago de otro mes puede completar el período al que fue asignado", () => {
+  const pagoAgosto = gasto({
+    _id: "pago-agosto",
+    subcategoriaId: "ute",
+    fecha: "2026-08-05T00:00:00.000Z",
+  });
+  const resultado = evaluarControlesMensuales({
+    controles: [{
+      ...control("ute", "UTE", subcategoria("ute", "UTE")),
+      pagosAsignados: [{ anio: 2026, mes: 7, gastoId: "pago-agosto" }],
+    }],
+    gastos: [pagoAgosto],
+    periodo: limitesPeriodoControl({ anio: 2026, mes: 7 }),
+  });
+
+  assert.equal(resultado.controles[0].estado, "pagado");
+  assert.equal(resultado.controles[0].pagoAsignado.gastoId, "pago-agosto");
+  assert.equal(resultado.controles[0].coincidencias[0].asignadoAlPeriodo, true);
+});
+
+test("un pago asignado a un período anterior no completa también su mes bancario", () => {
+  const pagoAgosto = gasto({
+    _id: "pago-atrasado",
+    subcategoriaId: "ute",
+    fecha: "2026-08-05T00:00:00.000Z",
+  });
+  const resultado = evaluarControlesMensuales({
+    controles: [{
+      ...control("ute", "UTE", subcategoria("ute", "UTE")),
+      pagosAsignados: [{ anio: 2026, mes: 7, gastoId: "pago-atrasado" }],
+    }],
+    gastos: [pagoAgosto],
+    periodo: limitesPeriodoControl({ anio: 2026, mes: 8 }),
+  });
+
+  assert.equal(resultado.controles[0].estado, "no_encontrado");
+  assert.equal(resultado.controles[0].coincidencias.length, 0);
 });
