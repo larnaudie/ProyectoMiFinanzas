@@ -89,3 +89,124 @@ test("el importador bancario agrupa lecturas y escrituras sin perder duplicados"
   assert.equal(llamadas.escribirMovimientos, 1);
   assert.equal(llamadas.operacionesMovimiento, 2);
 });
+
+test("reemplaza un debito a confirmar y conserva el gasto vinculado", async (t) => {
+  const originales = {
+    buscarCuenta: Cuenta.findOne,
+    buscarGastos: Gasto.find,
+    escribirGastos: Gasto.bulkWrite,
+    buscarMovimientos: MovimientoImportado.find,
+    escribirMovimientos: MovimientoImportado.bulkWrite,
+    escribirSaldos: SaldoCuenta.bulkWrite,
+  };
+  t.after(() => {
+    Cuenta.findOne = originales.buscarCuenta;
+    Gasto.find = originales.buscarGastos;
+    Gasto.bulkWrite = originales.escribirGastos;
+    MovimientoImportado.find = originales.buscarMovimientos;
+    MovimientoImportado.bulkWrite = originales.escribirMovimientos;
+    SaldoCuenta.bulkWrite = originales.escribirSaldos;
+  });
+
+  const usuarioId = "64a000000000000000000001";
+  const cuentaId = "64b000000000000000000001";
+  const gastoId = "64c000000000000000000001";
+  const movimientoId = "64d000000000000000000001";
+  const provisional = {
+    _id: movimientoId,
+    usuarioId,
+    cuentaId,
+    gastoId,
+    referenciaBanco: "2952",
+    fechaBanco: new Date("2026-08-17T12:00:00.000Z"),
+    detalleOriginal:
+      "DEBITO A CONFIRMAR BANRED COMPRA 917155 - MONTEVIDEO/MACROMERCADO VIS3 -",
+    detalleNormalizado:
+      "debito a confirmar banred compra 917155 montevideo macromercado vis3",
+    montoBancario: -945.88,
+    montoReal: -945.88,
+    saldoBanco: null,
+    tipoMonto: "bancario",
+    moneda: "UYU",
+    hashBanco: "hash-provisional",
+    estadoImportacion: "vinculado",
+    archivoNombre: "agosto-parcial.xlsx",
+    isNew: false,
+  };
+  let operacionesMovimiento = [];
+  let operacionesGasto = [];
+
+  Cuenta.findOne = () => ({
+    select: async () => ({
+      _id: cuentaId,
+      moneda: "UYU",
+      tipoCuenta: "debito",
+      monedas: [],
+    }),
+  });
+  MovimientoImportado.find = async () => [provisional];
+  MovimientoImportado.bulkWrite = async (operaciones) => {
+    operacionesMovimiento = operaciones;
+    return { matchedCount: operaciones.length };
+  };
+  SaldoCuenta.bulkWrite = async () => ({ matchedCount: 0, upsertedCount: 0 });
+  Gasto.find = (filtro) => {
+    if (filtro?._id) {
+      return {
+        async distinct() {
+          return [gastoId];
+        },
+      };
+    }
+    return {
+      select() {
+        return this;
+      },
+      async lean() {
+        return [];
+      },
+    };
+  };
+  Gasto.bulkWrite = async (operaciones) => {
+    operacionesGasto = operaciones;
+    return { matchedCount: operaciones.length };
+  };
+
+  const buffer = crearBuffer([
+    ["Moneda"],
+    ["UYU"],
+    ["Fecha", "Referencia", "Tipo Movimiento", "Descripción", "Débito", "Crédito"],
+    [
+      "17/08/2026",
+      "622723917155",
+      "COMPRA CON TARJETA DEBITO MACROMERCADO, MONTEVIDEO",
+      "",
+      -945.88,
+      "",
+    ],
+  ]);
+  const resultado = await importarExcelService({
+    usuarioId,
+    cuentaId,
+    file: { buffer, originalname: "agosto-definitivo.xlsx" },
+  });
+
+  assert.equal(resultado.totalReemplazados, 1);
+  assert.equal(resultado.movimientos[0].estado, "reemplazado_provisional");
+  assert.equal(resultado.movimientos[0].movimiento._id, movimientoId);
+  assert.equal(resultado.movimientos[0].movimiento.gastoId, gastoId);
+  assert.equal(resultado.movimientos[0].movimiento.estadoImportacion, "vinculado");
+  assert.equal(operacionesMovimiento.length, 1);
+  assert.equal(operacionesMovimiento[0].updateOne.filter._id, movimientoId);
+  assert.equal(
+    operacionesMovimiento[0].updateOne.update.$set.referenciaBanco,
+    "622723917155",
+  );
+  assert.equal(operacionesGasto.length, 1);
+  assert.equal(operacionesGasto[0].updateOne.filter._id, gastoId);
+  assert.equal(
+    operacionesGasto[0].updateOne.update.$set.detalle,
+    "COMPRA CON TARJETA DEBITO MACROMERCADO, MONTEVIDEO",
+  );
+  assert.equal(operacionesGasto[0].updateOne.update.$set.montoBancario, -945.88);
+});

@@ -26,6 +26,10 @@ import {
   extraerPlanCuotasTarjeta,
 } from "../utils/planesCuotasTarjeta.js";
 import { reconciliarPrestamosUsuarioSeguro } from "./conciliacionPrestamo.service.js";
+import {
+  correspondeAConfirmacionDeDebito,
+  esDebitoProvisional,
+} from "../utils/movimientosBancarios.js";
 
 export const actualizarSaldoCuentaDesdeExcel = async ({
   cuenta,
@@ -140,11 +144,37 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
         .filter(Boolean),
     ),
   ];
-  const movimientosExistentes = hashesBuscados.length > 0
+  const movimientosDefinitivos = movimientosPreparados.filter(
+    ({ movimiento }) => !esDebitoProvisional(movimiento),
+  );
+  const fechasDefinitivas = movimientosDefinitivos
+    .map(({ movimiento }) => new Date(movimiento.fechaBanco).getTime())
+    .filter(Number.isFinite);
+  const montosDefinitivos = [
+    ...new Set(
+      movimientosDefinitivos.map(({ movimiento }) => Number(movimiento.montoBancario)),
+    ),
+  ];
+  const margenProvisional = 3 * 24 * 60 * 60 * 1000;
+  const filtrosExistentes = [];
+  if (hashesBuscados.length > 0) {
+    filtrosExistentes.push({ hashBanco: { $in: hashesBuscados } });
+  }
+  if (fechasDefinitivas.length > 0 && montosDefinitivos.length > 0) {
+    filtrosExistentes.push({
+      fechaBanco: {
+        $gte: new Date(Math.min(...fechasDefinitivas) - margenProvisional),
+        $lte: new Date(Math.max(...fechasDefinitivas) + margenProvisional),
+      },
+      montoBancario: { $in: montosDefinitivos },
+      detalleNormalizado: { $regex: "debito a confirmar" },
+    });
+  }
+  const movimientosExistentes = filtrosExistentes.length > 0
     ? await MovimientoImportado.find({
         usuarioId,
         cuentaId,
-        hashBanco: { $in: hashesBuscados },
+        $or: filtrosExistentes,
       })
     : [];
   const movimientosPorHash = new Map(
@@ -176,6 +206,9 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   const gastosPorMonto = indexarGastosPorMonto(gastosParaDuplicados);
   const movimientosNuevos = [];
   const actualizacionesPorId = new Map();
+  const actualizacionesGastosPorId = new Map();
+  const provisionalesDisponibles = movimientosExistentes.filter(esDebitoProvisional);
+  const provisionalesUsados = new Set();
 
   for (const {
     movimiento,
@@ -211,6 +244,61 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
     }
 
     let movimientoExistente = movimientosPorHash.get(hashBanco) || null;
+    let reemplazoProvisional = false;
+
+    if (!movimientoExistente && !esDebitoProvisional(movimiento)) {
+      const provisional = provisionalesDisponibles.find((candidato) => (
+        !provisionalesUsados.has(String(candidato._id))
+        && correspondeAConfirmacionDeDebito({
+          provisional: candidato,
+          definitivo: movimiento,
+        })
+      ));
+
+      if (provisional) {
+        const hashProvisional = provisional.hashBanco;
+        const gastoVinculadoValido = provisional.gastoId
+          && idsGastosValidos.has(String(provisional.gastoId));
+        provisionalesUsados.add(String(provisional._id));
+        movimientosPorHash.delete(hashProvisional);
+
+        provisional.referenciaBanco = movimiento.referenciaBanco || null;
+        provisional.fechaBanco = movimiento.fechaBanco;
+        provisional.detalleOriginal = movimiento.detalleOriginal;
+        provisional.detalleNormalizado = detalleNormalizado;
+        provisional.montoBancario = movimiento.montoBancario;
+        provisional.montoReal = movimiento.montoReal || 0;
+        provisional.saldoBanco = movimiento.saldoBanco ?? null;
+        provisional.tipoMonto = movimiento.tipoMonto || "bancario";
+        provisional.moneda = obtenerMonedaMovimiento(cuenta, movimiento.moneda);
+        provisional.hashBanco = hashBanco;
+        provisional.archivoNombre = file.originalname;
+        provisional.estadoImportacion = gastoVinculadoValido
+          ? "vinculado"
+          : "pendiente";
+        provisional.gastoId = gastoVinculadoValido ? provisional.gastoId : null;
+        movimientosPorHash.set(hashBanco, provisional);
+        movimientoExistente = provisional;
+        reemplazoProvisional = true;
+
+        if (gastoVinculadoValido) {
+          actualizacionesGastosPorId.set(String(provisional.gastoId), {
+            updateOne: {
+              filter: { _id: provisional.gastoId, usuarioId, cuentaId },
+              update: {
+                $set: {
+                  detalle: movimiento.detalleOriginal,
+                  fecha: movimiento.fechaBanco,
+                  montoBancario: movimiento.montoBancario,
+                  moneda: obtenerMonedaMovimiento(cuenta, movimiento.moneda),
+                  hashImportacion: `bancario|${hashBanco}`,
+                },
+              },
+            },
+          });
+        }
+      }
+    }
 
     if (!movimientoExistente && hashAnterior) {
       const movimientoAnterior = movimientosPorHash.get(hashAnterior) || null;
@@ -260,7 +348,9 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
 
     if (movimientoExistente) {
       movimientosProcesados.push({
-        estado: "duplicado_importacion",
+        estado: reemplazoProvisional
+          ? "reemplazado_provisional"
+          : "duplicado_importacion",
         movimiento: movimientoExistente,
         posiblesDuplicados,
       });
@@ -301,8 +391,13 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
           $set: {
             montoBancario: movimiento.montoBancario,
             montoReal: movimiento.montoReal,
+            referenciaBanco: movimiento.referenciaBanco || null,
+            fechaBanco: movimiento.fechaBanco,
+            detalleOriginal: movimiento.detalleOriginal,
+            detalleNormalizado: movimiento.detalleNormalizado,
             saldoBanco: movimiento.saldoBanco ?? null,
             tipoMonto: movimiento.tipoMonto,
+            moneda: movimiento.moneda,
             hashBanco: movimiento.hashBanco,
             estadoImportacion: movimiento.estadoImportacion,
             gastoId: movimiento.gastoId || null,
@@ -318,7 +413,13 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
     })),
   ];
   const operacionesSaldos = [...operacionesSaldosPorHash.values()];
+  const operacionesGastos = [...actualizacionesGastosPorId.values()];
   const resultadoSaldosVacio = { matchedCount: 0, upsertedCount: 0 };
+
+  if (operacionesGastos.length > 0) {
+    await Gasto.bulkWrite(operacionesGastos, { ordered: false });
+  }
+
   const [, resultadoSaldos, saldoCuenta] = await Promise.all([
     operacionesMovimientos.length > 0
       ? MovimientoImportado.bulkWrite(operacionesMovimientos, { ordered: false })
@@ -336,6 +437,9 @@ export const importarExcelService = async ({ usuarioId, cuentaId, file }) => {
   return {
     totalLeidos: movimientos.length,
     totalProcesados: movimientosProcesados.length,
+    totalReemplazados: movimientosProcesados.filter(
+      ({ estado }) => estado === "reemplazado_provisional",
+    ).length,
     movimientos: movimientosProcesados,
     saldoDetectado: saldoCuenta,
     saldosGuardados:

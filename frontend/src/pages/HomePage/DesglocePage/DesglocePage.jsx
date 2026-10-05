@@ -1153,7 +1153,7 @@ function DesglocePage() {
             </strong>
           </div>
           <div className="totals-breakdown-item">
-            <span>Resultado neto</span>
+            <span>Movimiento neto del período</span>
             <strong
               className={
                 resumen.neto < 0
@@ -1213,8 +1213,8 @@ function DesglocePage() {
               <span>Conciliación bancaria</span>
               <h3>
                 {resumenAhorrosFiltrado.modoDisponible
-                  ? `Resultado de ${resumenAhorrosFiltrado.etiquetaPeriodo}`
-                  : "Resultado mensual"}
+                  ? `Conciliación de ${resumenAhorrosFiltrado.etiquetaPeriodo}`
+                  : "Conciliación mensual"}
               </h3>
             </div>
             {resumenAhorrosFiltrado.disponible
@@ -1235,7 +1235,7 @@ function DesglocePage() {
 
           {!resumenAhorrosFiltrado.modoDisponible ? (
             <p className="movements-savings-empty">
-              Elegí <strong>Fecha · Por mes</strong> para ver el ahorro del período.
+              Elegí <strong>Fecha · Por mes</strong> para conciliar el saldo del período.
             </p>
           ) : !resumenAhorrosFiltrado.disponible ? (
             <p className="movements-savings-empty">
@@ -1276,7 +1276,7 @@ function DesglocePage() {
                 <small>Incluye gastos y transferencias enviadas.</small>
               </div>
               <div>
-                <span>Movimiento neto</span>
+                <span>Movimiento neto del período</span>
                 <strong
                   className={
                     resumenAhorrosFiltrado.resultado < 0

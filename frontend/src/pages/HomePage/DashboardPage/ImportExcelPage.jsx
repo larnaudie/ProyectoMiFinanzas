@@ -1365,6 +1365,13 @@ function ImportExcelPage() {
               <span>Procesados</span>
               <strong>{resultado.totalProcesados}</strong>
             </article>
+            {resultado.totalReemplazados > 0 && (
+              <article>
+                <span>Débitos provisionales reemplazados</span>
+                <strong>{resultado.totalReemplazados}</strong>
+                <small>Se conservaron sus categorías y ajustes.</small>
+              </article>
+            )}
             {resultado.saldosGuardados > 0 && (
               <article>
                 <span>Saldos históricos guardados</span>
