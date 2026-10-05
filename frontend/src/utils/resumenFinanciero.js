@@ -245,6 +245,57 @@ export const resumirSaldosCuentas = (cuentas = []) => {
   return resumen;
 };
 
+export const conciliarSaldoCuentaPorPeriodo = ({
+  saldoActual,
+  saldoInformadoAl,
+  periodoFin,
+  resultadoPeriodo,
+  resultadosMensuales = [],
+} = {}) => {
+  const tieneSaldo = saldoActual !== null
+    && saldoActual !== undefined
+    && saldoActual !== "";
+  const saldo = Number(saldoActual);
+  const resultado = Number(resultadoPeriodo);
+  const periodoSaldo = String(saldoInformadoAl || "").slice(0, 7);
+  const periodoSeleccionado = String(periodoFin || "");
+
+  if (
+    !tieneSaldo
+    || !Number.isFinite(saldo)
+    || !Number.isFinite(resultado)
+    || !/^\d{4}-\d{2}$/.test(periodoSaldo)
+    || !/^\d{4}-\d{2}$/.test(periodoSeleccionado)
+    || periodoSeleccionado > periodoSaldo
+  ) {
+    return { disponible: false };
+  }
+
+  const flujoPosterior = resultadosMensuales.reduce((total, item) => {
+    const periodo = String(item?.periodo || "");
+    const valor = Number(item?.resultadoBancario);
+    if (
+      periodo <= periodoSeleccionado
+      || periodo > periodoSaldo
+      || !Number.isFinite(valor)
+    ) {
+      return total;
+    }
+    return total + valor;
+  }, 0);
+  const saldoFinal = redondear(saldo - flujoPosterior);
+  const saldoInicial = redondear(saldoFinal - resultado);
+
+  return {
+    disponible: true,
+    periodoSaldo,
+    saldoInicial,
+    movimientoNeto: redondear(resultado),
+    saldoFinal,
+    saldoFinalInformado: periodoSeleccionado === periodoSaldo,
+  };
+};
+
 export const factorMonedaEnUyu = (moneda, cotizacion) => {
   const normalizada = normalizarMoneda(moneda);
   if (normalizada === "UYU") return 1;

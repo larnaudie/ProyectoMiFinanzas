@@ -1,11 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  conciliarSaldoCuentaPorPeriodo,
   resumirMovimientosMensuales,
   resumirSaldosCuentas,
   totalizarCampoEnUyu,
   totalizarSaldosEnUyu,
 } from "../src/utils/resumenFinanciero.js";
+
+test("concilia el saldo final informado con el movimiento neto del período", () => {
+  const conciliacion = conciliarSaldoCuentaPorPeriodo({
+    saldoActual: 117191.49,
+    saldoInformadoAl: "2026-10-02T00:00:00.000Z",
+    periodoFin: "2026-10",
+    resultadoPeriodo: 112430.88,
+    resultadosMensuales: [],
+  });
+
+  assert.deepEqual(conciliacion, {
+    disponible: true,
+    periodoSaldo: "2026-10",
+    saldoInicial: 4760.61,
+    movimientoNeto: 112430.88,
+    saldoFinal: 117191.49,
+    saldoFinalInformado: true,
+  });
+});
+
+test("reconstruye un saldo histórico descontando los movimientos posteriores", () => {
+  const conciliacion = conciliarSaldoCuentaPorPeriodo({
+    saldoActual: 117191.49,
+    saldoInformadoAl: "2026-10-02T00:00:00.000Z",
+    periodoFin: "2026-08",
+    resultadoPeriodo: -600.11,
+    resultadosMensuales: [
+      { periodo: "2026-09", resultadoBancario: -729.18 },
+      { periodo: "2026-10", resultadoBancario: 116802.95 },
+    ],
+  });
+
+  assert.equal(conciliacion.saldoInicial, 1717.83);
+  assert.equal(conciliacion.saldoFinal, 1117.72);
+  assert.equal(conciliacion.saldoFinalInformado, false);
+});
+
+test("no inventa una conciliación sin saldo informado", () => {
+  assert.deepEqual(
+    conciliarSaldoCuentaPorPeriodo({
+      saldoActual: null,
+      saldoInformadoAl: null,
+      periodoFin: "2026-08",
+      resultadoPeriodo: 100,
+    }),
+    { disponible: false },
+  );
+});
 
 const cuentas = [
   { _id: "uyu", tipoCuenta: "debito", moneda: "UYU" },

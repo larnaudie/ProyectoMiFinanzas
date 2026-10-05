@@ -47,7 +47,10 @@ import {
   resumirValoresMonetarios,
 } from "../../../utils/montosGasto.js";
 import { resumirGastoReal } from "../../../utils/resultadoEconomico.js";
-import { resumirMovimientosMensuales } from "../../../utils/resumenFinanciero.js";
+import {
+  conciliarSaldoCuentaPorPeriodo,
+  resumirMovimientosMensuales,
+} from "../../../utils/resumenFinanciero.js";
 
 // Los campos populados pueden venir como objeto o como string.
 // Esta funcion nos devuelve siempre el id para poder comparar y guardar.
@@ -314,7 +317,7 @@ function DesglocePage() {
     }
 
     const moneda = normalizarMoneda(cuentaActual?.moneda);
-    const clavesEncontradas = [
+    const clavesCuenta = [
       ...new Set(
         gastos
           .filter((gasto) => (
@@ -322,24 +325,29 @@ function DesglocePage() {
             && obtenerId(gasto.cuentaId) === cuentaId
           ))
           .map((gasto) => fechaParaInput(gasto.fecha).slice(0, 7))
-          .filter((clave) => /^\d{4}-\d{2}$/.test(clave))
-          .filter((clave) => (
-            (!filtros.fechaAnio || clave.slice(0, 4) === filtros.fechaAnio)
-            && (!filtros.fechaMes || clave.slice(5, 7) === filtros.fechaMes)
-          )),
+          .filter((clave) => /^\d{4}-\d{2}$/.test(clave)),
       ),
     ].sort();
+    const clavesEncontradas = clavesCuenta.filter((clave) => (
+      (!filtros.fechaAnio || clave.slice(0, 4) === filtros.fechaAnio)
+      && (!filtros.fechaMes || clave.slice(5, 7) === filtros.fechaMes)
+    ));
     const claves = filtros.fechaAnio && filtros.fechaMes
       ? [`${filtros.fechaAnio}-${filtros.fechaMes}`]
       : clavesEncontradas;
-    const resumenes = claves
-      .map((periodo) => resumirMovimientosMensuales({
-        gastos,
-        cuentas,
+    const resumenesCuentaPorPeriodo = new Map(
+      clavesCuenta.map((periodo) => [
         periodo,
-        cuentaId,
-      }))
-      .map((resumen) => resumen[moneda])
+        resumirMovimientosMensuales({
+          gastos,
+          cuentas,
+          periodo,
+          cuentaId,
+        })[moneda],
+      ]),
+    );
+    const resumenes = claves
+      .map((periodo) => resumenesCuentaPorPeriodo.get(periodo))
       .filter((resumen) => Number(resumen?.cantidad) > 0);
     const ingresosBancarios = resumenes.reduce(
       (total, resumen) => total + Number(resumen.ingresosBancarios || 0),
@@ -350,6 +358,18 @@ function DesglocePage() {
       0,
     );
     const resultado = Number((ingresosBancarios - egresosBancarios).toFixed(2));
+    const resultadosMensuales = clavesCuenta.map((periodo) => ({
+      periodo,
+      resultadoBancario:
+        resumenesCuentaPorPeriodo.get(periodo)?.resultadoBancario || 0,
+    }));
+    const conciliacion = conciliarSaldoCuentaPorPeriodo({
+      saldoActual: cuentaActual?.saldoActual,
+      saldoInformadoAl: cuentaActual?.saldoInformadoAl,
+      periodoFin: claves.at(-1),
+      resultadoPeriodo: resultado,
+      resultadosMensuales,
+    });
     const nombreMes = MESES_DEL_ANIO.find(
       (mes) => mes.valor === filtros.fechaMes,
     )?.nombre;
@@ -369,6 +389,7 @@ function DesglocePage() {
       ingresosBancarios: Number(ingresosBancarios.toFixed(2)),
       egresosBancarios: Number(egresosBancarios.toFixed(2)),
       resultado,
+      conciliacion,
       estado: resultado < 0
         ? "deficit"
         : resultado > 0
@@ -1189,28 +1210,24 @@ function DesglocePage() {
         >
           <header className="movements-savings-heading">
             <div>
-              <span>Ahorros</span>
+              <span>Conciliación bancaria</span>
               <h3>
                 {resumenAhorrosFiltrado.modoDisponible
                   ? `Resultado de ${resumenAhorrosFiltrado.etiquetaPeriodo}`
                   : "Resultado mensual"}
               </h3>
             </div>
-            {resumenAhorrosFiltrado.disponible && (
+            {resumenAhorrosFiltrado.disponible
+              && resumenAhorrosFiltrado.conciliacion?.disponible && (
               <strong
                 className={
-                  resumenAhorrosFiltrado.estado === "deficit"
+                  resumenAhorrosFiltrado.conciliacion.saldoFinal < 0
                     ? "totals-value-negative"
                     : "totals-value-positive"
                 }
               >
-                {resumenAhorrosFiltrado.estado === "deficit"
-                  ? "Déficit"
-                  : resumenAhorrosFiltrado.estado === "ahorro"
-                    ? "Ahorro"
-                    : "Sin diferencia"}
-                : {" "}{simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
-                  Math.abs(resumenAhorrosFiltrado.resultado),
+                Saldo final: {simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                  resumenAhorrosFiltrado.conciliacion.saldoFinal,
                 )}
               </strong>
             )}
@@ -1226,6 +1243,17 @@ function DesglocePage() {
             </p>
           ) : (
             <div className="movements-savings-values">
+              {resumenAhorrosFiltrado.conciliacion?.disponible && (
+                <div>
+                  <span>Saldo inicial</span>
+                  <strong>
+                    {simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                      resumenAhorrosFiltrado.conciliacion.saldoInicial,
+                    )}
+                  </strong>
+                  <small>Saldo antes de los movimientos del período.</small>
+                </div>
+              )}
               <div>
                 <span>Entradas bancarias</span>
                 <strong>
@@ -1247,12 +1275,29 @@ function DesglocePage() {
                 </strong>
                 <small>Incluye gastos y transferencias enviadas.</small>
               </div>
+              <div>
+                <span>Movimiento neto</span>
+                <strong
+                  className={
+                    resumenAhorrosFiltrado.resultado < 0
+                      ? "totals-value-negative"
+                      : "totals-value-positive"
+                  }
+                >
+                  {simboloMoneda(resumenAhorrosFiltrado.moneda)} {formatearMonto(
+                    resumenAhorrosFiltrado.resultado,
+                  )}
+                </strong>
+                <small>Entradas menos salidas del período.</small>
+              </div>
             </div>
           )}
           <p className="movements-savings-help">
-            El mes y el año de los filtros actualizan este resultado. Las
-            transferencias recibidas suman en esta cuenta y las enviadas restan;
-            los saldos anteriores del Excel no se consideran ingresos.
+            {resumenAhorrosFiltrado.conciliacion?.disponible
+              ? "Saldo inicial + movimiento neto = saldo final. "
+              : "El saldo final necesita un saldo informado para esta cuenta. "}
+            El mes y el año de los filtros actualizan la conciliación. Las
+            transferencias recibidas suman en esta cuenta y las enviadas restan.
           </p>
         </section>
       )}
@@ -1872,7 +1917,7 @@ function DesglocePage() {
             secciones={[
               { id: "filtros-gastos", etiqueta: "Filtros" },
               ...(!resumenId && !esCuentaCredito
-                ? [{ id: "ahorros-movimientos", etiqueta: "Ahorros" }]
+                ? [{ id: "ahorros-movimientos", etiqueta: "Conciliación" }]
                 : []),
               { id: "lista-gastos", etiqueta: "Lista de gastos" },
             ]}
