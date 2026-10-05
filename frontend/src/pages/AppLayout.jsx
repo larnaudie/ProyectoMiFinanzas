@@ -49,8 +49,10 @@ function AppLayout() {
     cancelarCierreMenu();
     setMenuFijado((actual) => {
       const siguiente = !actual;
-      const admiteHover = window.matchMedia?.("(hover: hover)").matches;
-      setMenuHover(!siguiente && Boolean(admiteHover));
+      // El estado temporal sólo debe activarse por un hover real. Si se
+      // conserva al desfijar desde el botón, no existe un mouseleave del
+      // sidebar que lo cierre y el menú parece quedar trabado abierto.
+      setMenuHover(false);
       return siguiente;
     });
   };
@@ -104,7 +106,7 @@ function AppLayout() {
       />
       <div className={clasesAppBody}>
         <div
-          className={`sidebar-hover-zone${menuFijado ? " hidden" : ""}`}
+          className={`sidebar-hover-zone${menuFijado ? " pinned" : ""}`}
           onMouseEnter={abrirMenuTemporal}
           onMouseLeave={cerrarMenuTemporal}
           aria-hidden="true"

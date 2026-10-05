@@ -3877,7 +3877,7 @@ td {
   background: linear-gradient(90deg, #e5f1ee 0%, #edf6f3 70%, #f4f7f6 100%);
   cursor: pointer;
   opacity: 1;
-  transition: width 180ms ease, flex-basis 180ms ease, opacity 140ms ease;
+  transition: width 240ms ease, flex-basis 240ms ease, opacity 140ms ease;
 }
 
 .sidebar-hover-zone::after {
@@ -3901,17 +3901,19 @@ td {
   opacity: 1;
 }
 
-.sidebar-hover-zone.hidden {
-  width: 0;
-  flex-basis: 0;
+.sidebar-hover-zone.pinned {
+  width: 224px;
+  flex-basis: 224px;
   border-right: 0;
   pointer-events: none;
-  opacity: 0;
+  opacity: 1;
 }
 
 .sidebar {
-  position: sticky;
+  position: fixed;
   top: 68px;
+  left: 0;
+  z-index: 80;
   width: 224px;
   height: calc(100vh - 68px);
   flex: 0 0 224px;
@@ -3928,9 +3930,6 @@ td {
 }
 
 .sidebar-collapsed {
-  position: fixed;
-  left: 0;
-  z-index: 80;
   width: 64px;
   flex-basis: 64px;
   padding: 24px 8px 18px;
@@ -3973,10 +3972,12 @@ td {
 }
 
 .sidebar-open:not(.sidebar-pinned) {
-  position: fixed;
-  left: 0;
   z-index: 90;
   box-shadow: 14px 0 34px rgba(12, 42, 36, 0.24);
+}
+
+.sidebar-open.sidebar-pinned {
+  z-index: 90;
 }
 
 .sidebar-intro {
