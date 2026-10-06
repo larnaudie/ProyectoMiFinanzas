@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../services/api";
 import {
   actualizarBanco,
@@ -65,6 +66,7 @@ function CreateIcon() {
 }
 
 function ManagePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const dispatch = useDispatch();
 
   const bancos = useSelector((state) => state.bancos.bancos);
@@ -235,6 +237,15 @@ function ManagePage() {
     setError("");
   };
 
+  useEffect(() => {
+    const entidadKey = searchParams.get("crear");
+    if (!entidadKey || modal || !entidades[entidadKey]) return;
+    abrirModal("crear", entidadKey);
+    setSearchParams({}, { replace: true });
+    // El parámetro se consume una sola vez al entrar desde el menú global.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, modal, setSearchParams]);
+
   const cerrarModal = () => {
     setModal(null);
     setForm({});
@@ -324,6 +335,7 @@ function ManagePage() {
     return (
       <section
         className={`manage-card manage-card-${entidadKey}`}
+        id={entidadKey}
         key={entidadKey}
       >
         <header className="manage-card-header">
@@ -416,8 +428,9 @@ function ManagePage() {
     <section className="page-section manage-page">
       <header className="page-header">
         <div>
-          <h1>Manage</h1>
-          <p>Gestion central de bancos, cuentas, categorias y estructuras futuras.</p>
+          <span className="page-eyebrow">Configuración de datos</span>
+          <h1>Administrar</h1>
+          <p>Gestión central de bancos, cuentas, categorías y subcategorías.</p>
         </div>
       </header>
 

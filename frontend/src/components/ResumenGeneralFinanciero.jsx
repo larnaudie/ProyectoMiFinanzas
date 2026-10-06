@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useCotizacionUi } from "../hooks/useCotizacionUi.js";
 import {
@@ -22,7 +23,7 @@ const formatearReferencia = (monto) => (
     : formatearMontoMoneda(monto, "UYU")
 );
 
-export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) {
+export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada, compacto = false }) {
   const [edicionSaldo, setEdicionSaldo] = useState(null);
   const [guardandoSaldo, setGuardandoSaldo] = useState("");
   const [errorSaldo, setErrorSaldo] = useState("");
@@ -81,6 +82,25 @@ export function ResumenGeneralFinanciero({ cuentas = [], onCuentaActualizada }) 
       setGuardandoSaldo("");
     }
   };
+
+  if (compacto) {
+    return (
+      <section className="home-balance-hero" aria-label="Patrimonio de referencia">
+        <div>
+          <span>Patrimonio de referencia</span>
+          <strong>
+            {haySaldoInformado ? formatearReferencia(saldoTotalUyu) : "Sin saldos informados"}
+          </strong>
+          <small>
+            {saldoTotalUsd !== null
+              ? `≈ ${formatearMontoMoneda(saldoTotalUsd, "USD")} · saldos informados`
+              : "Completá los saldos de tus cuentas para ver el total"}
+          </small>
+        </div>
+        <Link to="/dashboard">Abrir dashboard completo →</Link>
+      </section>
+    );
+  }
 
   return (
     <section id="dashboard-general" className="general-finance-overview">

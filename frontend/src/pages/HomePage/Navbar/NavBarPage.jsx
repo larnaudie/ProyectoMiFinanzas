@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { logout } from "../../../features/slices/authSlice.js";
 
 const Navbar = ({
@@ -10,8 +10,8 @@ const Navbar = ({
   alEntrarMenu,
   alSalirMenu,
   cuentaActual,
+  cuentas = [],
   cuentaId,
-  cargandoCuentaActual,
 }) => {
   const dispatch = useDispatch();
   const {
@@ -19,9 +19,12 @@ const Navbar = ({
     rol: rolUsuarioEstado,
   } = useSelector((state) => state.auth);
   const navigate = useNavigate();
+  const location = useLocation();
   const menuUsuarioRef = useRef(null);
+  const menuCrearRef = useRef(null);
   const disparadorRef = useRef(null);
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
+  const [menuCrearAbierto, setMenuCrearAbierto] = useState(false);
   const usuarioGuardado = localStorage.getItem("usuario");
   let usuario;
 
@@ -36,17 +39,21 @@ const Navbar = ({
   const inicialUsuario = nombreUsuario.trim().charAt(0).toUpperCase() || "U";
 
   useEffect(() => {
-    if (!menuUsuarioAbierto) return undefined;
+    if (!menuUsuarioAbierto && !menuCrearAbierto) return undefined;
 
     const cerrarAlClickearAfuera = (event) => {
       if (!menuUsuarioRef.current?.contains(event.target)) {
         setMenuUsuarioAbierto(false);
+      }
+      if (!menuCrearRef.current?.contains(event.target)) {
+        setMenuCrearAbierto(false);
       }
     };
 
     const cerrarConEscape = (event) => {
       if (event.key === "Escape") {
         setMenuUsuarioAbierto(false);
+        setMenuCrearAbierto(false);
         disparadorRef.current?.focus();
       }
     };
@@ -58,7 +65,30 @@ const Navbar = ({
       document.removeEventListener("pointerdown", cerrarAlClickearAfuera);
       document.removeEventListener("keydown", cerrarConEscape);
     };
-  }, [menuUsuarioAbierto]);
+  }, [menuCrearAbierto, menuUsuarioAbierto]);
+
+  useEffect(() => {
+    setMenuCrearAbierto(false);
+    setMenuUsuarioAbierto(false);
+  }, [location.pathname, location.search]);
+
+  const cambiarCuenta = (event) => {
+    const nuevaCuentaId = event.target.value;
+    if (!nuevaCuentaId) {
+      navigate(location.pathname.includes("dashboard") ? "/dashboard" : "/movimientos");
+      return;
+    }
+
+    if (location.pathname.includes("dashboard")) {
+      navigate(`/cuentas/${nuevaCuentaId}/dashboard`);
+      return;
+    }
+    if (location.pathname.includes("importar")) {
+      navigate(`/cuentas/${nuevaCuentaId}/importar-excel`);
+      return;
+    }
+    navigate(`/cuentas/${nuevaCuentaId}/gastos`);
+  };
 
   const cerrarSesion = () => {
     setMenuUsuarioAbierto(false);
@@ -95,29 +125,53 @@ const Navbar = ({
       </div>
 
       <div className="navbar-account-slot">
-        {cuentaId && (
-          <Link
-            className="navbar-account-context"
-            to={`/cuentas/${cuentaId}/gastos`}
-            title={cuentaActual?.nombreCuenta || "Cuenta actual"}
-          >
+        <label className="navbar-account-context" title={cuentaActual?.nombreCuenta || "Todas las cuentas"}>
             <span className="navbar-account-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
                 <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8M8 16h5" />
               </svg>
             </span>
             <span className="navbar-account-copy">
-              <small>Cuenta actual</small>
-              <strong>
-                {cuentaActual?.nombreCuenta
-                  || (cargandoCuentaActual ? "Cargando cuenta..." : "Cuenta no encontrada")}
-              </strong>
+              <small>Cuenta de trabajo</small>
+              <select
+                aria-label="Seleccionar cuenta de trabajo"
+                value={cuentaId || ""}
+                onChange={cambiarCuenta}
+              >
+                <option value="">Todas las cuentas</option>
+                {cuentas.map((cuenta) => (
+                  <option key={cuenta._id} value={cuenta._id}>{cuenta.nombreCuenta}</option>
+                ))}
+              </select>
             </span>
-          </Link>
-        )}
+        </label>
       </div>
 
-      <div className="user-menu" ref={menuUsuarioRef}>
+      <div className="navbar-actions">
+        <div className="navbar-create" ref={menuCrearRef}>
+          <button
+            className="navbar-create-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={menuCrearAbierto}
+            onClick={() => setMenuCrearAbierto((abierto) => !abierto)}
+          >
+            + Crear
+          </button>
+          {menuCrearAbierto && (
+            <div className="navbar-create-menu" role="menu">
+              <Link to={cuentaId ? `/cuentas/${cuentaId}/gastos?crear=gasto` : "/home#crear-rapido"}>Nuevo gasto</Link>
+              <Link to={cuentaId ? `/cuentas/${cuentaId}/importar-excel` : "/importar"}>Importar Excel</Link>
+              <Link to="/prestamos#deudas-cobrar">Nueva deuda</Link>
+              <Link to="/manage?crear=categorias">Nueva categoría</Link>
+              <Link to="/manage?crear=subcategorias">Nueva subcategoría</Link>
+              <Link to="/manage?crear=bancos">Nuevo banco</Link>
+              <Link to="/manage?crear=cuentas">Nueva cuenta</Link>
+            </div>
+          )}
+        </div>
+
+        <div className="user-menu" ref={menuUsuarioRef}>
         <button
           ref={disparadorRef}
           type="button"
@@ -165,6 +219,7 @@ const Navbar = ({
             </button>
           </div>
         )}
+        </div>
       </div>
     </header>
   );

@@ -3,6 +3,7 @@ import {
   useNavigate,
   useOutletContext,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import { api } from "../../../services/api";
 import { useDispatch, useSelector } from "react-redux";
@@ -148,6 +149,7 @@ const columnasOrdenablesGastos = {
 };
 
 function DesglocePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const contextoLayout = useOutletContext();
   const menuAbierto = contextoLayout?.menuAbierto || false;
   const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
@@ -438,6 +440,14 @@ function DesglocePage() {
     setModalActivo(modal);
     setErrorModal("");
   };
+
+  useEffect(() => {
+    const modalSolicitado = searchParams.get("crear");
+    if (!["gasto", "categoria", "subcategoria"].includes(modalSolicitado)) return;
+    abrirModal(modalSolicitado);
+    setSearchParams({}, { replace: true });
+    // El parámetro se consume una sola vez al entrar desde el menú global.
+  }, [searchParams, setSearchParams]);
 
   const cerrarModal = () => {
     setModalActivo(null);

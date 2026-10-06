@@ -11,7 +11,7 @@ function AppLayout() {
   const location = useLocation();
   const dispatch = useDispatch();
   const cuentas = useSelector((state) => state.cuentas.cuentas);
-  const [menuFijado, setMenuFijado] = useState(false);
+  const [menuFijado, setMenuFijado] = useState(() => window.innerWidth > 900);
   const [menuHover, setMenuHover] = useState(false);
   const [cargandoCuentaActual, setCargandoCuentaActual] = useState(false);
   const [errorCuentaActual, setErrorCuentaActual] = useState("");
@@ -60,9 +60,11 @@ function AppLayout() {
   useEffect(() => () => clearTimeout(cerrarMenuTimerRef.current), []);
 
   useEffect(() => {
-    if (!cuentaId || cuentaActual) {
+    if (cuentas.length > 0) {
       setCargandoCuentaActual(false);
-      setErrorCuentaActual("");
+      setErrorCuentaActual(
+        cuentaId && !cuentaActual ? "No se pudo encontrar la cuenta solicitada." : "",
+      );
       return undefined;
     }
 
@@ -90,7 +92,7 @@ function AppLayout() {
     return () => {
       solicitudActiva = false;
     };
-  }, [cuentaActual, cuentaId, dispatch]);
+  }, [cuentaActual, cuentaId, cuentas.length, dispatch]);
 
   return (
     <div className="app-shell">
@@ -101,6 +103,7 @@ function AppLayout() {
         alEntrarMenu={abrirMenuTemporal}
         alSalirMenu={cerrarMenuTemporal}
         cuentaActual={cuentaActual}
+        cuentas={cuentas}
         cuentaId={cuentaId}
         cargandoCuentaActual={cargandoCuentaActual}
       />

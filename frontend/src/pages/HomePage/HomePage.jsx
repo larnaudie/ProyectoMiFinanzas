@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { agregarGasto, actualizarGasto } from "../../features/slices/gastosSlice.js";
@@ -143,7 +143,6 @@ function QuickExpensePanel({
 function HomePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const carouselRef = useRef(null);
   const { cuentas, loading, error } = useSelector((state) => state.cuentas);
 
   const [cuentaArrastradaId, setCuentaArrastradaId] = useState(null);
@@ -307,15 +306,6 @@ function HomePage() {
     }
   };
 
-  const moverCarousel = (direccion) => {
-    if (!carouselRef.current) return;
-
-    carouselRef.current.scrollBy({
-      left: direccion * 300,
-      behavior: "smooth",
-    });
-  };
-
   const cambiarGastoRapido = (campo, valor) => {
     setGastoRapido({ ...gastoRapido, [campo]: valor });
     setErrorRapido("");
@@ -390,40 +380,34 @@ function HomePage() {
     <section className="page-section home-page">
       <header className="page-header">
         <div>
-          <h1>Cuentas</h1>
-          <p>Elegi una cuenta para trabajar sus gastos.</p>
+          <span className="page-eyebrow">Vista general</span>
+          <h1>Tu panorama financiero</h1>
+          <p>Tus recordatorios y accesos cotidianos en un único punto de entrada.</p>
         </div>
       </header>
 
-      <QuickExpensePanel
-        gastoRapido={gastoRapido}
-        facturaRapida={facturaRapida}
-        cuentas={cuentasParaGastoRapido}
-        creandoRapido={creandoRapido}
-        errorRapido={errorRapido}
-        onChange={cambiarGastoRapido}
-        onFileChange={setFacturaRapida}
-        onSubmit={crearGastoRapido}
+      <ResumenGeneralFinanciero
+        compacto
+        cuentas={cuentas}
+        onCuentaActualizada={(cuenta) => dispatch(actualizarCuenta(cuenta))}
       />
-
-      <MonthlyPaymentChecklist />
 
       {loading && <p>Cargando cuentas...</p>}
       {error && <p className="error-text">{error}</p>}
       {errorOrden && <p className="error-text">{errorOrden}</p>}
       {guardandoOrden && <p className="order-saving-text">Guardando orden...</p>}
 
-      <div className="account-carousel-shell">
-        <button
-          className="carousel-control carousel-control-left"
-          type="button"
-          aria-label="Ver cuentas anteriores"
-          onClick={() => moverCarousel(-1)}
-        >
-          &lt;
-        </button>
+      <section className="home-accounts-panel">
+        <header className="home-section-heading">
+          <div>
+            <span className="page-eyebrow">Acceso directo</span>
+            <h2>Tus cuentas</h2>
+            <p>Abrí una cuenta para ver y editar todos sus movimientos.</p>
+          </div>
+          <span>{cuentas.length} cuentas</span>
+        </header>
 
-        <div className="account-carousel" ref={carouselRef}>
+        <div className="home-account-grid">
           {cuentas.map((cuenta) => (
             <article
               className={`account-card${cuentaArrastradaId === cuenta._id ? " account-card-dragging" : ""}${cuentaDestinoId === cuenta._id ? " account-card-drop-target" : ""}`}
@@ -504,23 +488,30 @@ function HomePage() {
             </article>
           ))}
         </div>
+      </section>
 
-        <button
-          className="carousel-control carousel-control-right"
-          type="button"
-          aria-label="Ver mas cuentas"
-          onClick={() => moverCarousel(1)}
-        >
-          &gt;
-        </button>
+      <div className="home-priority-layout">
+        <MonthlyPaymentChecklist />
+        <div id="crear-rapido">
+          <QuickExpensePanel
+            gastoRapido={gastoRapido}
+            facturaRapida={facturaRapida}
+            cuentas={cuentasParaGastoRapido}
+            creandoRapido={creandoRapido}
+            errorRapido={errorRapido}
+            onChange={cambiarGastoRapido}
+            onFileChange={setFacturaRapida}
+            onSubmit={crearGastoRapido}
+          />
+        </div>
       </div>
 
-      <div className="home-dashboard-section">
-        <ResumenGeneralFinanciero
-          cuentas={cuentas}
-          onCuentaActualizada={(cuenta) => dispatch(actualizarCuenta(cuenta))}
-        />
-      </div>
+      <nav className="home-quick-links" aria-label="Accesos rápidos">
+        <Link to="/movimientos"><strong>Movimientos</strong><small>Buscar y editar gastos</small></Link>
+        <Link to="/importar"><strong>Importar Excel</strong><small>Cargar movimientos bancarios</small></Link>
+        <Link to="/manage"><strong>Administrar</strong><small>Cuentas y categorías</small></Link>
+        <Link to="/prestamos"><strong>Deudas y préstamos</strong><small>Seguir cobros y cuotas</small></Link>
+      </nav>
 
       {edicionSaldoCuenta && (
         <div

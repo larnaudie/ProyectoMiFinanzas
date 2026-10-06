@@ -739,7 +739,7 @@ function DashboardPage({ embedded = false }) {
               aria-current={
                 cuentaSeleccionada === "todas" ? "page" : undefined
               }
-              to="/home#dashboard-general"
+              to="/dashboard"
             >
               Todas las cuentas
             </Link>

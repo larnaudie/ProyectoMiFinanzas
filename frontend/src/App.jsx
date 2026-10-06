@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Provider } from "react-redux";
 import store from "./app/store.js";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -17,6 +17,7 @@ import ProfilePage from "./pages/HomePage/ProfilePage/ProfilePage.jsx";
 import MovimientosPage from "./pages/HomePage/MovimientosPage/MovimientosPage.jsx";
 import AnalisisPage from "./pages/HomePage/AnalisisPage/AnalisisPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
+import ImportPage from "./pages/HomePage/DashboardPage/ImportPage.jsx";
 
 function App() {
   return (
@@ -29,10 +30,8 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/home" element={<HomePage />} />
-              <Route
-                path="/dashboard"
-                element={<Navigate to="/home#dashboard-general" replace />}
-              />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/importar" element={<ImportPage />} />
               <Route path="/manage" element={<ManagePage />} />
               <Route path="/movimientos" element={<MovimientosPage />} />
               <Route path="/analisis" element={<AnalisisPage />} />

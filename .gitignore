@@ -19,7 +19,11 @@ frontend/dist/
 # Archivos temporales de herramientas y auditorías locales
 .codex-tmp/
 .tmp_xlrd/
+tmp/
 .vscode/
+
+# Réplica privada usada sólo por el prototipo local
+prototipos/navegacion-v2/data/*.local.json
 
 # Cachés locales
 **/__pycache__/
