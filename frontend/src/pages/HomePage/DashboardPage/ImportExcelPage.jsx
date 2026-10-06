@@ -41,7 +41,11 @@ const obtenerMensajeError = (error, mensajeDefault) => {
   return data?.message || data?.mensaje || mensajeDefault;
 };
 
-const gastoDesdeMovimiento = (movimiento) => {
+const gastoDesdeMovimiento = (item) => {
+  const movimiento = item?.movimiento || item;
+  const posiblesDuplicados = item?.posiblesDuplicados
+    || movimiento?.posiblesDuplicados
+    || [];
   const fila = {
     _id: movimiento._id,
     fecha: fechaParaInput(movimiento.fechaBanco),
@@ -54,6 +58,8 @@ const gastoDesdeMovimiento = (movimiento) => {
     incluirMontoReal: true,
     estado: movimiento.estadoImportacion || "pendiente",
     gastoId: obtenerId(movimiento.gastoId),
+    posiblesDuplicados,
+    posibleDuplicado: posiblesDuplicados.length > 0,
   };
 
   return {
@@ -325,15 +331,18 @@ function ImportExcelPage() {
       setGastosBancariosSeleccionados([]);
       setFile(null);
 
-      // El import bancario devuelve objetos { estado, movimiento, posiblesDuplicados }.
-      // Tomamos el movimiento y lo transformamos a una fila editable con forma de gasto.
+      // Conservamos posiblesDuplicados al transformar la respuesta; esa marca
+      // define cuándo la acción consciente debe llamarse "Duplicar gasto".
       setGastosBancarios(
         (data.movimientos || [])
-          .map((item) => item.movimiento)
           .filter(
-            (movimiento) =>
-              movimiento
-              && movimiento.estadoImportacion !== "ignorado",
+            (item) => {
+              const movimiento = item?.movimiento || item;
+              return (
+                movimiento
+                && movimiento.estadoImportacion !== "ignorado"
+              );
+            },
           )
           .map(gastoDesdeMovimiento),
       );
@@ -683,6 +692,14 @@ function ImportExcelPage() {
 
     if (gastoBancarioProcesandoId) return;
 
+    if (gasto.posibleDuplicado) {
+      const cantidad = gasto.posiblesDuplicados.length;
+      const confirmarDuplicado = window.confirm(
+        `Encontramos ${cantidad} gasto${cantidad === 1 ? "" : "s"} similar${cantidad === 1 ? "" : "es"} ya creado${cantidad === 1 ? "" : "s"}. ¿Querés duplicar el gasto igualmente?`,
+      );
+      if (!confirmarDuplicado) return;
+    }
+
     setGastoBancarioProcesandoId(gasto._id);
     setMensajeBancario("");
     try {
@@ -730,6 +747,16 @@ function ImportExcelPage() {
         `No se pueden crear ${movimientosInvalidos.length} movimiento${movimientosInvalidos.length === 1 ? "" : "s"}: revisa detalle, fecha, monto bancario o real, porcentaje y subcategoría.`,
       );
       return;
+    }
+
+    const posiblesDuplicados = movimientosSeleccionados.filter(
+      (gasto) => gasto.posibleDuplicado,
+    );
+    if (posiblesDuplicados.length > 0) {
+      const confirmarDuplicados = window.confirm(
+        `${posiblesDuplicados.length} movimiento${posiblesDuplicados.length === 1 ? "" : "s"} coincide${posiblesDuplicados.length === 1 ? "" : "n"} con gastos existentes. ¿Querés duplicarlos igualmente?`,
+      );
+      if (!confirmarDuplicados) return;
     }
 
     setCreandoSeleccionadosBancario(true);
@@ -2160,7 +2187,10 @@ function TablaGastosBancarios({
           </thead>
           <tbody>
             {ordenTabla.sortedRows.map((gasto) => (
-              <tr key={gasto._id}>
+              <tr
+                key={gasto._id}
+                className={gasto.posibleDuplicado ? "possible-duplicate-row" : ""}
+              >
                 <td>
                   <input
                     type="checkbox"
@@ -2186,6 +2216,13 @@ function TablaGastosBancarios({
                     disabled={Boolean(gasto.gastoId)}
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}
                   />
+                  {gasto.posibleDuplicado && (
+                    <small className="possible-duplicate-notice">
+                      Ya existe {gasto.posiblesDuplicados.length === 1
+                        ? "un gasto similar"
+                        : `${gasto.posiblesDuplicados.length} gastos similares`}.
+                    </small>
+                  )}
                 </td>
                 <td>
                   <input
@@ -2274,15 +2311,20 @@ function TablaGastosBancarios({
                 <td>
                   <button
                     type="button"
-                    className="secondary-button"
+                    className={`secondary-button${gasto.posibleDuplicado ? " duplicate-expense-button" : ""}`}
                     disabled={Boolean(gasto.gastoId) || Boolean(gastoProcesandoId)}
                     onClick={() => onCrear(gasto)}
+                    title={
+                      gasto.posibleDuplicado
+                        ? "Este movimiento coincide con un gasto existente"
+                        : "Crear gasto"
+                    }
                   >
                     {gasto.gastoId
                       ? "Creado"
                       : gastoProcesandoId === gasto._id
-                        ? "Creando..."
-                        : "Crear gasto"}
+                        ? gasto.posibleDuplicado ? "Duplicando..." : "Creando..."
+                        : gasto.posibleDuplicado ? "Duplicar gasto" : "Crear gasto"}
                   </button>
                 </td>
               </tr>

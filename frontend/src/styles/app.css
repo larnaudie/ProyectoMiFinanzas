@@ -2906,6 +2906,24 @@ td {
   white-space: normal;
 }
 
+.import-expenses-table .possible-duplicate-row td {
+  background: #fffaf0;
+}
+
+.possible-duplicate-notice {
+  display: block;
+  margin-top: 5px;
+  color: #915d00;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.import-expenses-table .duplicate-expense-button {
+  border: 1px solid #d7a84b;
+  background: #fff0c7;
+  color: #704600;
+}
+
 .file-action-button {
   display: inline-flex;
   align-items: center;

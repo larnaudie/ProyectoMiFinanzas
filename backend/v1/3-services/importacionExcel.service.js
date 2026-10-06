@@ -1074,6 +1074,33 @@ const buscarPosiblesDuplicadosEnMemoria = ({
   });
 };
 
+const agregarPosiblesDuplicados = async ({
+  usuarioId,
+  cuentaId,
+  movimientos,
+}) => {
+  if (movimientos.length === 0) return movimientos;
+
+  const movimientosPreparados = movimientos.map((movimiento) => ({ movimiento }));
+  const gastos = await obtenerGastosParaBuscarDuplicados({
+    usuarioId,
+    cuentaId,
+    movimientos: movimientosPreparados,
+  });
+  const gastosPorMonto = indexarGastosPorMonto(gastos);
+
+  return movimientos.map((movimiento) => ({
+    ...movimiento,
+    posiblesDuplicados: buscarPosiblesDuplicadosEnMemoria({
+      fechaBanco: movimiento.fechaBanco,
+      montoBancario: movimiento.montoBancario,
+      montoReal: movimiento.montoReal,
+      detalleNormalizado: normalizarTexto(movimiento.detalleOriginal),
+      gastosPorMonto,
+    }),
+  }));
+};
+
 export const crearHashBanco = ({
   usuarioId,
   cuentaId,
@@ -1172,13 +1199,19 @@ export const obtenerMovimientosImportadosService = async ({
     filtro.estadoImportacion = estadoImportacion;
   }
 
-  // La pantalla de importación sólo pide pendientes. En ese caso no hay
-  // vínculos que validar ni documentos de gasto que poblar: alcanza una única
-  // consulta liviana.
+  // En pendientes agregamos las coincidencias de gastos en una única consulta
+  // agrupada. Así la advertencia de duplicado persiste aunque se recargue la
+  // pantalla y no depende solamente de la respuesta inmediata del importador.
   if (estadoImportacion === "pendiente") {
-    return MovimientoImportado.find(filtro)
+    const movimientos = await MovimientoImportado.find(filtro)
       .sort({ fechaBanco: -1 })
       .lean();
+
+    return agregarPosiblesDuplicados({
+      usuarioId,
+      cuentaId,
+      movimientos,
+    });
   }
 
   await limpiarMovimientosVinculadosSinGasto({ usuarioId, cuentaId });
