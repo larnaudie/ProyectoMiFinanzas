@@ -46,6 +46,7 @@ const gastoDesdeMovimiento = (item) => {
   const posiblesDuplicados = item?.posiblesDuplicados
     || movimiento?.posiblesDuplicados
     || [];
+  const gastoId = obtenerId(movimiento.gastoId);
   const fila = {
     _id: movimiento._id,
     fecha: fechaParaInput(movimiento.fechaBanco),
@@ -57,9 +58,10 @@ const gastoDesdeMovimiento = (item) => {
     subcategoriaId: "",
     incluirMontoReal: true,
     estado: movimiento.estadoImportacion || "pendiente",
-    gastoId: obtenerId(movimiento.gastoId),
+    gastoId,
     posiblesDuplicados,
-    posibleDuplicado: posiblesDuplicados.length > 0,
+    posibleDuplicado: posiblesDuplicados.length > 0 || Boolean(gastoId),
+    duplicadoCreado: false,
   };
 
   return {
@@ -67,6 +69,11 @@ const gastoDesdeMovimiento = (item) => {
     montoReal: calcularMontoReal(fila),
   };
 };
+
+const gastoBancarioFinalizado = (gasto) => (
+  Boolean(gasto.duplicadoCreado)
+  || (Boolean(gasto.gastoId) && !gasto.posibleDuplicado)
+);
 
 const gastoDesdeImportacionPersonal = (item) => {
   const gasto = item.movimiento || item.gasto || item;
@@ -334,16 +341,13 @@ function ImportExcelPage() {
         formData,
       );
 
-      const gastosImportados = (data.movimientos || [])
-        .filter((item) => {
-          const movimiento = item?.movimiento || item;
-          return movimiento?.estadoImportacion === "pendiente";
-        })
-        .map(gastoDesdeMovimiento);
+      const gastosImportados = (data.movimientos || []).map(gastoDesdeMovimiento);
 
       setResultado({
         ...data,
-        totalPendientesRevision: gastosImportados.length,
+        totalPendientesRevision: gastosImportados.filter((gasto) => (
+          gasto.estado === "pendiente"
+        )).length,
       });
       setGastosBancariosSeleccionados([]);
       setFile(null);
@@ -549,7 +553,7 @@ function ImportExcelPage() {
 
   const cambiarSeleccionTodosGastosBancarios = (checked) => {
     const movimientosEditables = gastosBancarios
-      .filter((gasto) => !gasto.gastoId)
+      .filter((gasto) => !gastoBancarioFinalizado(gasto))
       .map((gasto) => gasto._id);
 
     setGastosBancariosSeleccionados(checked ? movimientosEditables : []);
@@ -609,7 +613,10 @@ function ImportExcelPage() {
 
     setGastosBancarios((actuales) =>
       actuales.map((gasto) => {
-        if (!gastosBancariosSeleccionados.includes(gasto._id) || gasto.gastoId) {
+        if (
+          !gastosBancariosSeleccionados.includes(gasto._id)
+          || gastoBancarioFinalizado(gasto)
+        ) {
           return gasto;
         }
 
@@ -682,6 +689,7 @@ function ImportExcelPage() {
       porcentaje: Number(gasto.porcentaje),
       incluirMontoReal: Boolean(gasto.incluirMontoReal),
       cambiarEstado: true,
+      duplicarGasto: Boolean(gasto.posibleDuplicado),
     };
 
     if (gasto.categoriaId) payload.categoriaId = gasto.categoriaId;
@@ -703,7 +711,9 @@ function ImportExcelPage() {
     if (gasto.posibleDuplicado) {
       const cantidad = gasto.posiblesDuplicados.length;
       const confirmarDuplicado = window.confirm(
-        `Encontramos ${cantidad} gasto${cantidad === 1 ? "" : "s"} similar${cantidad === 1 ? "" : "es"} ya creado${cantidad === 1 ? "" : "s"}. ¿Querés duplicar el gasto igualmente?`,
+        cantidad > 0
+          ? `Encontramos ${cantidad} gasto${cantidad === 1 ? "" : "s"} similar${cantidad === 1 ? "" : "es"} ya creado${cantidad === 1 ? "" : "s"}. ¿Querés duplicar el gasto igualmente?`
+          : "Este movimiento ya tiene un gasto creado. ¿Querés crear otra copia igualmente?",
       );
       if (!confirmarDuplicado) return;
     }
@@ -716,10 +726,16 @@ function ImportExcelPage() {
         armarPayloadGastoBancario(gasto),
       );
       const gastoCreado = response.data.gasto;
+      const fueDuplicado = response.data.duplicado === true;
       setGastosBancarios((actuales) =>
         actuales.map((item) =>
           item._id === gasto._id
-            ? { ...item, estado: "vinculado", gastoId: gastoCreado._id }
+            ? {
+                ...item,
+                estado: "vinculado",
+                gastoId: fueDuplicado && item.gastoId ? item.gastoId : gastoCreado._id,
+                duplicadoCreado: fueDuplicado,
+              }
             : item,
         ),
       );
@@ -738,7 +754,10 @@ function ImportExcelPage() {
 
   const crearGastosBancariosSeleccionados = async () => {
     const movimientosSeleccionados = gastosBancarios.filter(
-      (gasto) => gastosBancariosSeleccionados.includes(gasto._id) && !gasto.gastoId,
+      (gasto) => (
+        gastosBancariosSeleccionados.includes(gasto._id)
+        && !gastoBancarioFinalizado(gasto)
+      ),
     );
 
     if (movimientosSeleccionados.length === 0) {
@@ -775,7 +794,11 @@ function ImportExcelPage() {
         movimientosSeleccionados.map((gasto) =>
           api
             .post(`/importaciones/movimientos/${gasto._id}/crear-gasto`, armarPayloadGastoBancario(gasto))
-            .then((response) => ({ movimientoId: gasto._id, gastoCreado: response.data.gasto })),
+            .then((response) => ({
+              movimientoId: gasto._id,
+              gastoCreado: response.data.gasto,
+              duplicado: response.data.duplicado === true,
+            })),
         ),
       );
 
@@ -806,7 +829,7 @@ function ImportExcelPage() {
           : "Los gastos seleccionados ya existen."
         : mensajesErrores.join(" ");
       const creadosPorMovimiento = new Map(
-        creados.map((item) => [item.movimientoId, item.gastoCreado]),
+        creados.map((item) => [item.movimientoId, item]),
       );
 
       if (creados.length > 0) {
@@ -816,7 +839,10 @@ function ImportExcelPage() {
               ? {
                   ...gasto,
                   estado: "vinculado",
-                  gastoId: creadosPorMovimiento.get(gasto._id)?._id,
+                  gastoId: creadosPorMovimiento.get(gasto._id)?.duplicado && gasto.gastoId
+                    ? gasto.gastoId
+                    : creadosPorMovimiento.get(gasto._id)?.gastoCreado?._id,
+                  duplicadoCreado: creadosPorMovimiento.get(gasto._id)?.duplicado,
                 }
               : gasto,
           ),
@@ -1499,10 +1525,11 @@ function ImportExcelPage() {
       >
         <div className="import-section-header">
           <div>
-            <h2>Movimientos pendientes</h2>
+            <h2>{resultado ? "Movimientos del Excel importado" : "Movimientos pendientes"}</h2>
             <p>
-              Estos movimientos vienen del Excel bancario. Podes completarlos y crear
-              cada gasto cuando esten listos.
+              {resultado
+                ? "Se muestran todas las filas del archivo. Las que ya existen quedan disponibles únicamente para una duplicación consciente."
+                : "Estos movimientos vienen del Excel bancario. Podes completarlos y crear cada gasto cuando esten listos."}
             </p>
           </div>
           <button
@@ -1519,7 +1546,11 @@ function ImportExcelPage() {
         {cargandoMovimientos && <p>Cargando movimientos...</p>}
 
         {!cargandoMovimientos && gastosBancarios.length === 0 && (
-          <p>No hay movimientos pendientes para esta cuenta.</p>
+          <p>
+            {resultado
+              ? "El archivo no contiene movimientos para mostrar."
+              : "No hay movimientos pendientes para esta cuenta."}
+          </p>
         )}
 
         {!cargandoMovimientos && gastosBancarios.length > 0 && (
@@ -2038,7 +2069,7 @@ function TablaGastosBancarios({
   onCrearSeleccionados,
   onEliminarSeleccionados,
 }) {
-  const movimientosEditables = gastos.filter((gasto) => !gasto.gastoId);
+  const movimientosEditables = gastos.filter((gasto) => !gastoBancarioFinalizado(gasto));
   const ordenTabla = useSortableRows(gastos, columnasOrdenablesImportacion);
 
   return (
@@ -2219,7 +2250,7 @@ function TablaGastosBancarios({
                   <input
                     type="checkbox"
                     checked={seleccionados.includes(gasto._id)}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     onChange={() => onToggleSeleccion(gasto._id)}
                   />
                 </td>
@@ -2228,7 +2259,7 @@ function TablaGastosBancarios({
                     className="table-input"
                     type="date"
                     value={gasto.fecha}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     onChange={(event) => onChange(gasto._id, "fecha", event.target.value)}
                   />
                 </td>
@@ -2237,14 +2268,14 @@ function TablaGastosBancarios({
                     className="table-input table-input-wide table-detail-textarea"
                     rows={Math.max(2, Math.ceil(String(gasto.detalle || "").length / 34))}
                     value={gasto.detalle}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     onChange={(event) => onChange(gasto._id, "detalle", event.target.value)}
                   />
                   {gasto.posibleDuplicado && (
                     <small className="possible-duplicate-notice">
-                      Ya existe {gasto.posiblesDuplicados.length === 1
-                        ? "un gasto similar"
-                        : `${gasto.posiblesDuplicados.length} gastos similares`}.
+                      {gasto.posiblesDuplicados.length > 0
+                        ? `Ya existe${gasto.posiblesDuplicados.length === 1 ? "" : "n"} ${gasto.posiblesDuplicados.length === 1 ? "un gasto similar" : `${gasto.posiblesDuplicados.length} gastos similares`}.`
+                        : "Este movimiento ya tiene un gasto creado."}
                     </small>
                   )}
                 </td>
@@ -2254,7 +2285,7 @@ function TablaGastosBancarios({
                     type="number"
                     step="0.01"
                     value={gasto.montoBancario}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     title={
                       montoDistintoDeCero(gasto.montoReal)
                       && !montoDistintoDeCero(gasto.montoBancario)
@@ -2274,7 +2305,7 @@ function TablaGastosBancarios({
                     max="100"
                     value={gasto.porcentaje}
                     disabled={
-                      Boolean(gasto.gastoId)
+                      gastoBancarioFinalizado(gasto)
                       || !montoDistintoDeCero(gasto.montoBancario)
                     }
                     onChange={(event) => onChange(gasto._id, "porcentaje", event.target.value)}
@@ -2287,7 +2318,7 @@ function TablaGastosBancarios({
                     step="0.01"
                     value={gasto.montoReal}
                     disabled={
-                      Boolean(gasto.gastoId)
+                      gastoBancarioFinalizado(gasto)
                       || montoDistintoDeCero(gasto.montoBancario)
                     }
                     title={
@@ -2304,7 +2335,7 @@ function TablaGastosBancarios({
                   <SearchableCategorySelect
                     categorias={categorias}
                     value={gasto.categoriaId}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     placeholder="Sin categoría"
                     ariaLabel={`Buscar categoría para ${gasto.detalle}`}
                     onChange={(categoriaId) =>
@@ -2316,7 +2347,7 @@ function TablaGastosBancarios({
                   <SearchableSubcategorySelect
                     subcategorias={subcategorias}
                     value={obtenerSubcategoriaSeleccionada(gasto, subcategorias)}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     placeholder="Sin subcategoría"
                     ariaLabel={`Buscar subcategoría para ${gasto.detalle}`}
                     onChange={(subcategoriaId) =>
@@ -2328,7 +2359,7 @@ function TablaGastosBancarios({
                   <input
                     type="checkbox"
                     checked={Boolean(gasto.incluirMontoReal)}
-                    disabled={Boolean(gasto.gastoId)}
+                    disabled={gastoBancarioFinalizado(gasto)}
                     onChange={(event) => onChange(gasto._id, "incluirMontoReal", event.target.checked)}
                   />
                 </td>
@@ -2336,7 +2367,7 @@ function TablaGastosBancarios({
                   <button
                     type="button"
                     className={`secondary-button${gasto.posibleDuplicado ? " duplicate-expense-button" : ""}`}
-                    disabled={Boolean(gasto.gastoId) || Boolean(gastoProcesandoId)}
+                    disabled={gastoBancarioFinalizado(gasto) || Boolean(gastoProcesandoId)}
                     onClick={() => onCrear(gasto)}
                     title={
                       gasto.posibleDuplicado
@@ -2344,11 +2375,13 @@ function TablaGastosBancarios({
                         : "Crear gasto"
                     }
                   >
-                    {gasto.gastoId
-                      ? "Creado"
+                    {gasto.duplicadoCreado
+                      ? "Duplicado"
                       : gastoProcesandoId === gasto._id
                         ? gasto.posibleDuplicado ? "Duplicando..." : "Creando..."
-                        : gasto.posibleDuplicado ? "Duplicar gasto" : "Crear gasto"}
+                        : gasto.posibleDuplicado
+                          ? "¿Desea duplicar gasto?"
+                          : gasto.gastoId ? "Creado" : "Crear gasto"}
                   </button>
                 </td>
               </tr>

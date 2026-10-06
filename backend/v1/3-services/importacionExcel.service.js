@@ -1293,14 +1293,16 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
   id,
   data,
 }) => {
+  const { duplicarGasto: duplicadoSolicitado, ...datosGasto } = data;
+  const duplicarGasto = duplicadoSolicitado === true;
   const [movimiento, subcategoria] = await Promise.all([
     MovimientoImportado.findOne({
       _id: id,
       usuarioId,
     }),
-    data.subcategoriaId
+    datosGasto.subcategoriaId
       ? Subcategoria.findOne({
-          _id: data.subcategoriaId,
+          _id: datosGasto.subcategoriaId,
           usuarioId,
         }).select("nombreSubcategoria")
       : null,
@@ -1312,38 +1314,39 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
 
   await liberarMovimientoSiGastoFueEliminado(movimiento);
 
-  if (movimiento.estadoImportacion === "vinculado") {
+  if (movimiento.estadoImportacion === "vinculado" && !duplicarGasto) {
     const error = new Error("El gasto de este movimiento bancario ya existe");
     error.status = 409;
     throw error;
   }
 
-  const hashImportacion = `bancario|${movimiento.hashBanco}`;
+  const hashImportacion = duplicarGasto
+    ? null
+    : `bancario|${movimiento.hashBanco}`;
 
   let gasto;
   try {
     gasto = await crearGastoService(
       {
-        detalle: data.detalle || movimiento.detalleOriginal,
+        detalle: datosGasto.detalle || movimiento.detalleOriginal,
         cuentaId: movimiento.cuentaId,
-        fecha: data.fecha || movimiento.fechaBanco,
+        fecha: datosGasto.fecha || movimiento.fechaBanco,
         montoBancario:
-          data.montoBancario === "" || data.montoBancario === null
+          datosGasto.montoBancario === "" || datosGasto.montoBancario === null
             ? 0
-            : data.montoBancario ?? movimiento.montoBancario,
-        montoReal: data.montoReal ?? movimiento.montoReal,
-        porcentaje: data.porcentaje,
-        incluirMontoReal: data.incluirMontoReal,
-        sumaAlPresupuesto: data.sumaAlPresupuesto,
-        categoriaId: data.categoriaId,
-        subcategoriaId: data.subcategoriaId,
+            : datosGasto.montoBancario ?? movimiento.montoBancario,
+        montoReal: datosGasto.montoReal ?? movimiento.montoReal,
+        porcentaje: datosGasto.porcentaje,
+        incluirMontoReal: datosGasto.incluirMontoReal,
+        sumaAlPresupuesto: datosGasto.sumaAlPresupuesto,
+        categoriaId: datosGasto.categoriaId,
+        subcategoriaId: datosGasto.subcategoriaId,
         // Confirmar un movimiento importado siempre crea el gasto definitivo.
         // El MovimientoImportado ya funciona como la etapa previa de revisión.
         cambiarEstado: true,
-        origen: {
-          tipo: "excel",
-          referenciaId: movimiento._id,
-        },
+        origen: duplicarGasto
+          ? { tipo: "manual", referenciaId: null }
+          : { tipo: "excel", referenciaId: movimiento._id },
         hashImportacion,
       },
       usuarioId,
@@ -1386,6 +1389,17 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
     throw error;
   }
 
+  // Si el movimiento original ya estaba vinculado, la copia consciente queda
+  // como gasto manual independiente y no reemplaza ese vínculo.
+  if (duplicarGasto && movimiento.estadoImportacion === "vinculado") {
+    await reconciliarPrestamosUsuarioSeguro(usuarioId);
+    return {
+      movimiento,
+      gasto,
+      duplicado: true,
+    };
+  }
+
   movimiento.gastoId = gasto._id;
   movimiento.estadoImportacion = "vinculado";
 
@@ -1397,5 +1411,6 @@ export const crearGastoDesdeMovimientoImportadoService = async ({
   return {
     movimiento,
     gasto,
+    duplicado: duplicarGasto,
   };
 };
