@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../../../services/api.js";
 import SearchableCategorySelect from "../../../components/SearchableCategorySelect.jsx";
@@ -179,6 +179,8 @@ function ImportExcelPage() {
   const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
   const permitirCerrarMenu = contextoLayout?.alSalirMenu;
   const { cuentaId } = useParams();
+  const archivoBancarioInputRef = useRef(null);
+  const solicitudMovimientosRef = useRef(0);
 
   const [file, setFile] = useState(null);
   const [archivoPersonal, setArchivoPersonal] = useState(null);
@@ -264,15 +266,19 @@ function ImportExcelPage() {
   };
 
   const cargarMovimientosPendientes = () => {
+    const solicitudId = solicitudMovimientosRef.current + 1;
+    solicitudMovimientosRef.current = solicitudId;
     setCargandoMovimientos(true);
 
     api
       .get(`/importaciones/cuentas/${cuentaId}/movimientos?estado=pendiente`)
       .then((response) => {
+        if (solicitudMovimientosRef.current !== solicitudId) return;
         setGastosBancariosSeleccionados([]);
         setGastosBancarios((response.data.movimientos || []).map(gastoDesdeMovimiento));
       })
       .catch((apiError) => {
+        if (solicitudMovimientosRef.current !== solicitudId) return;
         setError(
           obtenerMensajeError(
             apiError,
@@ -281,23 +287,20 @@ function ImportExcelPage() {
         );
       })
       .finally(() => {
-        setCargandoMovimientos(false);
+        if (solicitudMovimientosRef.current === solicitudId) {
+          setCargandoMovimientos(false);
+        }
       });
   };
 
   useEffect(() => {
+    setResultado(null);
     cargarMovimientosPendientes();
     cargarCategorias();
     cargarSubcategorias();
   // Estas funciones sólo dependen del cuentaId que dispara la recarga.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuentaId]);
-
-  useEffect(() => {
-    if (resultado && gastosBancarios.length === 0) {
-      setResultado(null);
-    }
-  }, [gastosBancarios.length, resultado]);
 
   useEffect(() => {
     if (resultadoPersonal && gastosPersonales.length === 0) {
@@ -317,6 +320,10 @@ function ImportExcelPage() {
     formData.append("excel", file);
 
     setLoading(true);
+    // Una consulta iniciada antes de importar no debe sobrescribir el resultado
+    // nuevo cuando finalmente responda.
+    solicitudMovimientosRef.current += 1;
+    setCargandoMovimientos(false);
     setError("");
     setMensajeBancario("");
     setResultado(null);
@@ -327,25 +334,26 @@ function ImportExcelPage() {
         formData,
       );
 
-      setResultado(data);
+      const gastosImportados = (data.movimientos || [])
+        .filter((item) => {
+          const movimiento = item?.movimiento || item;
+          return movimiento?.estadoImportacion === "pendiente";
+        })
+        .map(gastoDesdeMovimiento);
+
+      setResultado({
+        ...data,
+        totalPendientesRevision: gastosImportados.length,
+      });
       setGastosBancariosSeleccionados([]);
       setFile(null);
+      if (archivoBancarioInputRef.current) {
+        archivoBancarioInputRef.current.value = "";
+      }
 
       // Conservamos posiblesDuplicados al transformar la respuesta; esa marca
       // define cuándo la acción consciente debe llamarse "Duplicar gasto".
-      setGastosBancarios(
-        (data.movimientos || [])
-          .filter(
-            (item) => {
-              const movimiento = item?.movimiento || item;
-              return (
-                movimiento
-                && movimiento.estadoImportacion !== "ignorado"
-              );
-            },
-          )
-          .map(gastoDesdeMovimiento),
-      );
+      setGastosBancarios(gastosImportados);
     } catch (apiError) {
       setError(obtenerMensajeError(apiError, "No se pudo importar el Excel bancario."));
     } finally {
@@ -1324,12 +1332,13 @@ function ImportExcelPage() {
           <label>
             Archivo Excel bancario
             <input
+              ref={archivoBancarioInputRef}
               type="file"
               accept=".xls,.xlsx"
               onChange={(event) => setFile(event.target.files[0] || null)}
             />
           </label>
-          <button type="submit" disabled={loading}>
+          <button type="submit" disabled={loading || !file}>
             {loading ? "Importando..." : "Importar Excel"}
           </button>
         </form>
@@ -1392,6 +1401,10 @@ function ImportExcelPage() {
               <span>Procesados</span>
               <strong>{resultado.totalProcesados}</strong>
             </article>
+            <article>
+              <span>Pendientes para revisar</span>
+              <strong>{resultado.totalPendientesRevision || 0}</strong>
+            </article>
             {resultado.totalReemplazados > 0 && (
               <article>
                 <span>Débitos provisionales reemplazados</span>
@@ -1423,6 +1436,12 @@ function ImportExcelPage() {
               </article>
             )}
           </div>
+          {resultado.totalPendientesRevision === 0 && (
+            <p className="detail-feedback">
+              Importación finalizada. Todos los movimientos del archivo ya estaban
+              procesados o descartados; no hay movimientos nuevos para revisar.
+            </p>
+          )}
         </section>
       )}
 
@@ -1486,8 +1505,13 @@ function ImportExcelPage() {
               cada gasto cuando esten listos.
             </p>
           </div>
-          <button type="button" className="secondary-button" onClick={cargarMovimientosPendientes}>
-            Actualizar
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={cargandoMovimientos || loading}
+            onClick={cargarMovimientosPendientes}
+          >
+            {cargandoMovimientos ? "Actualizando..." : "Actualizar"}
           </button>
         </div>
 
