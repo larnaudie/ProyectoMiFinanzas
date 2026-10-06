@@ -4340,6 +4340,16 @@ td {
   min-width: 0;
 }
 
+/*
+ * Las vistas de cuenta conservan un navegador lateral heredado. En la
+ * arquitectura nueva duplica al menú principal y, al ser fijo, queda montado
+ * sobre el contenido. Las anclas y acciones de la página permanecen dentro
+ * de sus paneles; sólo retiramos esta barra redundante.
+ */
+.navigation-v2-shell .secondary-sidebar-actions {
+  display: none;
+}
+
 .navigation-v2-shell .sidebar {
   position: sticky;
   inset: 0 auto auto 0;
