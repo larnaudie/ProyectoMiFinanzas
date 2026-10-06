@@ -22,15 +22,20 @@ function NavIcon({ nombre }) {
 
 const claseLink = ({ isActive }) => `sidebar-link${isActive ? " active" : ""}`;
 
-function Sidebar({ abierto, fijado, alEntrar, alSalir }) {
+function Sidebar({ abierto, fijado }) {
   const { cuentaId } = useParams();
 
   return (
     <aside
       className={`sidebar ${abierto ? "sidebar-open" : "sidebar-collapsed"}${fijado ? " sidebar-pinned" : ""}`}
-      onMouseEnter={alEntrar}
-      onMouseLeave={alSalir}
     >
+      <div className="sidebar-brand">
+        <span className="sidebar-brand-mark">$</span>
+        <span className="sidebar-brand-copy">
+          <strong>MiFinanzas</strong>
+          <small>Control personal</small>
+        </span>
+      </div>
       <nav className="sidebar-nav" aria-label="Navegación principal">
         <span className="sidebar-section-label">Navegación principal</span>
         <NavLink className={claseLink} to="/home" title="Inicio" aria-label="Inicio" end>

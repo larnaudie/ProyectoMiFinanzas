@@ -7,8 +7,6 @@ const Navbar = ({
   alternarMenu,
   menuAbierto,
   menuFijado,
-  alEntrarMenu,
-  alSalirMenu,
   cuentaActual,
   cuentas = [],
   cuentaId,
@@ -37,6 +35,18 @@ const Navbar = ({
   const nombreUsuario = nombreUsuarioEstado || usuario?.username || "Usuario";
   const rolUsuario = rolUsuarioEstado || usuario?.rol;
   const inicialUsuario = nombreUsuario.trim().charAt(0).toUpperCase() || "U";
+  const segmentosRuta = location.pathname.split("/").filter(Boolean);
+  const ubicacionActual = (() => {
+    if (location.pathname === "/home") return "Inicio";
+    if (location.pathname === "/dashboard" || location.pathname.includes("/dashboard")) return "Dashboard";
+    if (location.pathname === "/movimientos" || location.pathname.includes("/gastos")) return "Movimientos";
+    if (location.pathname === "/importar" || location.pathname.includes("/importar-excel")) return "Importar Excel";
+    if (location.pathname === "/analisis") return "Pagos mensuales";
+    if (location.pathname === "/prestamos") return "Deudas y préstamos";
+    if (location.pathname === "/manage") return "Administrar";
+    if (location.pathname === "/perfil") return "Configuración";
+    return segmentosRuta.at(-1)?.replaceAll("-", " ") || "MiFinanzas";
+  })();
 
   useEffect(() => {
     if (!menuUsuarioAbierto && !menuCrearAbierto) return undefined;
@@ -102,8 +112,6 @@ const Navbar = ({
         <button
           type="button"
           onClick={alternarMenu}
-          onMouseEnter={alEntrarMenu}
-          onMouseLeave={alSalirMenu}
           className={`menu-hamburguesa${menuFijado ? " pinned" : ""}`}
           aria-label={menuFijado ? "Liberar menú" : "Fijar menú"}
           aria-expanded={menuAbierto}
@@ -115,12 +123,9 @@ const Navbar = ({
           </svg>
         </button>
 
-        <div className="app-brand">
-          <span className="app-brand-mark">$</span>
-          <span className="app-brand-copy">
-            <strong>MiFinanzas</strong>
-            <small>Control personal</small>
-          </span>
+        <div className="navbar-location">
+          <small>Ubicación actual</small>
+          <strong>{ubicacionActual}</strong>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { matchPath, Outlet, useLocation } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { guardarCuentas } from "../features/slices/cuentasSlice.js";
 import { api } from "../services/api.js";
@@ -12,52 +12,26 @@ function AppLayout() {
   const dispatch = useDispatch();
   const cuentas = useSelector((state) => state.cuentas.cuentas);
   const [menuFijado, setMenuFijado] = useState(() => window.innerWidth > 900);
-  const [menuHover, setMenuHover] = useState(false);
   const [cargandoCuentaActual, setCargandoCuentaActual] = useState(false);
   const [errorCuentaActual, setErrorCuentaActual] = useState("");
-  const cerrarMenuTimerRef = useRef(null);
-  const menuAbierto = menuFijado || menuHover;
+  const menuAbierto = menuFijado;
   const coincidenciaCuenta = matchPath(
     { path: "/cuentas/:cuentaId/*" },
     location.pathname,
   );
   const cuentaId = coincidenciaCuenta?.params.cuentaId || "";
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId) || null;
-  const clasesAppBody = [
-    "app-body",
-    menuAbierto ? "sidebar-layout-open" : "",
-    menuFijado ? "sidebar-layout-pinned" : "",
+  const clasesApp = [
+    "app-shell",
+    "navigation-v2-shell",
+    menuAbierto ? "navigation-v2-menu-open" : "navigation-v2-menu-closed",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const cancelarCierreMenu = () => clearTimeout(cerrarMenuTimerRef.current);
-
-  const abrirMenuTemporal = () => {
-    cancelarCierreMenu();
-    if (!menuFijado) setMenuHover(true);
-  };
-
-  const cerrarMenuTemporal = () => {
-    cancelarCierreMenu();
-    cerrarMenuTimerRef.current = setTimeout(() => {
-      if (!menuFijado) setMenuHover(false);
-    }, 180);
-  };
-
   const alternarMenuFijado = () => {
-    cancelarCierreMenu();
-    setMenuFijado((actual) => {
-      const siguiente = !actual;
-      // El estado temporal sólo debe activarse por un hover real. Si se
-      // conserva al desfijar desde el botón, no existe un mouseleave del
-      // sidebar que lo cierre y el menú parece quedar trabado abierto.
-      setMenuHover(false);
-      return siguiente;
-    });
+    setMenuFijado((actual) => !actual);
   };
-
-  useEffect(() => () => clearTimeout(cerrarMenuTimerRef.current), []);
 
   useEffect(() => {
     if (cuentas.length > 0) {
@@ -95,30 +69,17 @@ function AppLayout() {
   }, [cuentaActual, cuentaId, cuentas.length, dispatch]);
 
   return (
-    <div className="app-shell">
-      <Navbar
-        alternarMenu={alternarMenuFijado}
-        menuAbierto={menuAbierto}
-        menuFijado={menuFijado}
-        alEntrarMenu={abrirMenuTemporal}
-        alSalirMenu={cerrarMenuTemporal}
-        cuentaActual={cuentaActual}
-        cuentas={cuentas}
-        cuentaId={cuentaId}
-        cargandoCuentaActual={cargandoCuentaActual}
-      />
-      <div className={clasesAppBody}>
-        <div
-          className={`sidebar-hover-zone${menuFijado ? " pinned" : ""}`}
-          onMouseEnter={abrirMenuTemporal}
-          onMouseLeave={cerrarMenuTemporal}
-          aria-hidden="true"
-        />
-        <Sidebar
-          abierto={menuAbierto}
-          fijado={menuFijado}
-          alEntrar={abrirMenuTemporal}
-          alSalir={cerrarMenuTemporal}
+    <div className={clasesApp}>
+      <Sidebar abierto={menuAbierto} fijado={menuFijado} />
+      <div className="navigation-v2-workspace">
+        <Navbar
+          alternarMenu={alternarMenuFijado}
+          menuAbierto={menuAbierto}
+          menuFijado={menuFijado}
+          cuentaActual={cuentaActual}
+          cuentas={cuentas}
+          cuentaId={cuentaId}
+          cargandoCuentaActual={cargandoCuentaActual}
         />
         <main className="dashboard-contenedor">
           <section className="contenido-principal">
@@ -126,8 +87,6 @@ function AppLayout() {
             <Outlet
               context={{
                 menuAbierto,
-                alEntrarMenu: abrirMenuTemporal,
-                alSalirMenu: cerrarMenuTemporal,
                 cuentaActual,
                 cargandoCuentaActual,
                 errorCuentaActual,

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link } from "react-router-dom";
 import ExpenseFiltersPanel from "../../../components/ExpenseFiltersPanel.jsx";
-import { NavegacionSecciones } from "../../../components/NavegacionSecciones.jsx";
 import SortableTableHeader from "../../../components/SortableTableHeader.jsx";
 import { useSortableRows } from "../../../hooks/useSortableRows.js";
 import { api } from "../../../services/api.js";
@@ -40,16 +39,13 @@ const formatearFecha = (fecha) => {
 };
 
 function MovimientosPage() {
-  const contextoLayout = useOutletContext();
-  const menuAbierto = contextoLayout?.menuAbierto || false;
-  const mantenerMenuAbierto = contextoLayout?.alEntrarMenu;
-  const permitirCerrarMenu = contextoLayout?.alSalirMenu;
   const [gastos, setGastos] = useState([]);
   const [cuentas, setCuentas] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [subcategorias, setSubcategorias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [vistaLista, setVistaLista] = useState("puntual");
   const [filtros, setFiltros] = useState(() =>
     crearFiltrosGastosIniciales({ incluirFiltrosGlobales: true }),
   );
@@ -168,31 +164,21 @@ function MovimientosPage() {
 
   return (
     <section className="page-section global-movements-page">
-      <nav
-        className="expense-floating-actions secondary-sidebar-actions section-navigation-only"
-        aria-label="Navegación de movimientos"
-        onMouseEnter={menuAbierto ? mantenerMenuAbierto : undefined}
-        onMouseLeave={menuAbierto ? permitirCerrarMenu : undefined}
-      >
-        <NavegacionSecciones
-          secciones={[
-            { id: "filtros-movimientos", etiqueta: "Filtros" },
-            { id: "resultados-movimientos", etiqueta: "Resultados" },
-            { id: "lista-movimientos", etiqueta: "Lista de gastos" },
-          ]}
-        />
-      </nav>
-
       <header className="page-header global-movements-header">
         <div>
-          <span className="page-eyebrow">Consulta global</span>
-          <h1>Todos tus movimientos</h1>
+          <span className="page-eyebrow">Dinero que entra y sale</span>
+          <h1>Movimientos</h1>
           <p>
-            Busca gastos de todas tus cuentas desde un único lugar. La edición
-            continúa dentro del desglose de cada cuenta.
+            Buscá, filtrá y recorré los gastos sin perder el contexto de la cuenta elegida.
           </p>
         </div>
       </header>
+
+      <nav className="movements-context-tabs" aria-label="Vistas de movimientos">
+        <a className="active" href="#lista-movimientos">Lista</a>
+        <a href="#resultados-movimientos">Ahorros</a>
+        <Link to="/dashboard">Comparaciones</Link>
+      </nav>
 
       <ExpenseFiltersPanel
         id="filtros-movimientos"
@@ -235,7 +221,7 @@ function MovimientosPage() {
             <article key={moneda}>
               <span>{moneda}</span>
               <div>
-                <small>Monto bancario</small>
+                <small>Movimiento neto</small>
                 <strong>{formatearMontoMoneda(totalesPorMoneda[moneda].montoBancario, moneda)}</strong>
               </div>
               <div>
@@ -255,11 +241,41 @@ function MovimientosPage() {
         </div>
       </section>
 
+      <section className="expense-view-toolbar" aria-label="Formato de la lista">
+        <div>
+          <strong>Formato de la lista</strong>
+          <small>Cambiá la presentación sin modificar la cuenta ni los filtros.</small>
+        </div>
+        <div className="expense-view-switch" role="group" aria-label="Elegir formato de movimientos">
+          <button
+            type="button"
+            className={vistaLista === "general" ? "active" : ""}
+            aria-pressed={vistaLista === "general"}
+            onClick={() => setVistaLista("general")}
+          >
+            Detalle general
+          </button>
+          <button
+            type="button"
+            className={vistaLista === "puntual" ? "active" : ""}
+            aria-pressed={vistaLista === "puntual"}
+            onClick={() => setVistaLista("puntual")}
+          >
+            Detalle puntual
+          </button>
+        </div>
+      </section>
+
       <section id="lista-movimientos" className="page-scroll-section">
         <header className="global-movements-section-header">
           <div>
-            <span className="page-eyebrow">Detalle centralizado</span>
-            <h2>Lista de gastos</h2>
+            <span className="page-eyebrow">{vistaLista === "general" ? "Detalle general" : "Detalle puntual"}</span>
+            <h2>{vistaLista === "general" ? "Lista de gastos de todas las cuentas" : "Movimientos con contexto completo"}</h2>
+            <small>
+              {vistaLista === "general"
+                ? "Lectura centralizada con todas las columnas."
+                : "La información relacionada se agrupa para entrar al 100% de zoom."}
+            </small>
           </div>
           <span>{gastosFiltrados.length} visibles</span>
         </header>
@@ -271,8 +287,8 @@ function MovimientosPage() {
             No hay movimientos que coincidan con los filtros elegidos.
           </p>
         ) : (
-          <div className="table-shell global-movements-table-shell">
-            <table>
+          <div className={`table-shell global-movements-table-shell is-${vistaLista}`}>
+            {vistaLista === "general" ? <table>
               <thead>
                 <tr>
                   <SortableTableHeader
@@ -364,7 +380,85 @@ function MovimientosPage() {
                   );
                 })}
               </tbody>
-            </table>
+            </table> : (
+              <table className="global-movements-punctual-table">
+                <thead>
+                  <tr>
+                    <SortableTableHeader
+                      label="Cuenta y fecha"
+                      sortKey="cuenta"
+                      sortConfig={orden.sortConfig}
+                      onSort={orden.requestSort}
+                    />
+                    <SortableTableHeader
+                      label="Detalle"
+                      sortKey="detalle"
+                      sortConfig={orden.sortConfig}
+                      onSort={orden.requestSort}
+                    />
+                    <SortableTableHeader
+                      label="Movimiento"
+                      sortKey="montoBancario"
+                      sortConfig={orden.sortConfig}
+                      onSort={orden.requestSort}
+                    />
+                    <th>Clasificación</th>
+                    <th>Estado</th>
+                    <th aria-label="Acciones" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {orden.sortedRows.map((gasto) => {
+                    const cuenta = gasto.cuenta;
+                    const cuentaId = obtenerId(cuenta || gasto.cuentaId);
+                    const moneda = obtenerMonedaMovimiento(cuenta, gasto.moneda);
+                    const esCredito = cuenta?.tipoCuenta === "credito";
+                    const categoria = nombreRelacionado(gasto.categoriaId, "nombreCategoria", "Sin categoría");
+                    const subcategoria = nombreRelacionado(gasto.subcategoriaId, "nombreSubcategoria", "Sin subcategoría");
+
+                    return (
+                      <tr key={gasto._id}>
+                        <td data-label="Cuenta y fecha">
+                          <Link className="global-account-link" to={`/cuentas/${cuentaId}/gastos`}>
+                            {cuenta?.nombreCuenta || "Cuenta no disponible"}
+                          </Link>
+                          <small>{formatearFecha(gasto.fecha)} · {moneda}</small>
+                        </td>
+                        <td data-label="Detalle">
+                          <Link
+                            className="global-expense-detail detail-name-link"
+                            to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}
+                            title={gasto.detalle || "Sin detalle"}
+                          >
+                            {gasto.detalle || "Sin detalle"}
+                          </Link>
+                          <small>{categoria} · {subcategoria}</small>
+                        </td>
+                        <td data-label="Movimiento" className="movement-amount-cell">
+                          <strong>{formatearMontoMoneda(gasto.montoBancario, moneda)}</strong>
+                          <small>
+                            Real: {esCredito ? "No aplica" : formatearMontoMoneda(gasto.montoReal, moneda)}
+                          </small>
+                        </td>
+                        <td data-label="Clasificación">
+                          <strong>{subcategoria}</strong>
+                          <small>{categoria}</small>
+                        </td>
+                        <td data-label="Estado">
+                          <span className={`expense-status-badge is-${gasto.estado || "pendiente"}`}>
+                            {gasto.estado === "creado" ? "Creado" : "Pendiente"}
+                          </span>
+                          <small>{esCredito ? "Crédito" : gasto.incluirMontoReal === true ? "Incluido en gasto real" : "Fuera de gasto real"}</small>
+                        </td>
+                        <td className="punctual-row-action">
+                          <Link to={`/cuentas/${cuentaId}/gastos/gasto/${gasto._id}`}>Abrir</Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </section>
