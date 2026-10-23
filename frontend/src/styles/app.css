@@ -10246,3 +10246,162 @@ td {
     width: 100%;
   }
 }
+
+/* Tendencia mensual de ahorro y déficit. */
+.savings-trend-card {
+  overflow: hidden;
+  border: 1px solid #cfe0dc;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(103, 91, 142, 0.08), transparent 32%),
+    rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 28px rgba(20, 65, 56, 0.05);
+}
+
+.savings-trend-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px 15px;
+  border-bottom: 1px solid #e1ebe8;
+}
+
+.savings-trend-header h2,
+.savings-trend-header p {
+  margin: 0;
+}
+
+.savings-trend-header h2 {
+  color: #173b34;
+  font-size: 18px;
+}
+
+.savings-trend-header p {
+  max-width: 740px;
+  margin-top: 5px;
+  color: #637a74;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.savings-trend-period {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e8f2ef;
+  color: #176b5b;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.savings-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr));
+  gap: 14px;
+  padding: 16px;
+}
+
+.savings-trend-currency {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid #d9e5e1;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.savings-trend-currency > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.savings-trend-currency > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.savings-trend-currency > header span,
+.savings-trend-currency > header small {
+  color: #6b7f79;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.savings-trend-currency > header strong {
+  color: #173f36;
+  font-size: 13px;
+}
+
+.savings-trend-currency > header > div:last-child {
+  text-align: right;
+}
+
+.savings-trend-currency > header > div:last-child strong {
+  font-size: 15px;
+}
+
+.savings-trend-currency > header .is-saving strong {
+  color: #17705e;
+}
+
+.savings-trend-currency > header .is-deficit strong {
+  color: #b8453c;
+}
+
+.savings-trend-chart {
+  position: relative;
+  height: 310px;
+  min-width: 0;
+}
+
+.savings-trend-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 26px;
+  color: #667b75;
+  text-align: center;
+}
+
+.savings-trend-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 18px 14px;
+  border-top: 1px solid #edf2f0;
+}
+
+.savings-trend-note > span {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #675b8e;
+  box-shadow: 0 0 0 4px rgba(103, 91, 142, 0.1);
+}
+
+.savings-trend-note p {
+  margin: 0;
+  color: #627770;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .savings-trend-header {
+    flex-direction: column;
+  }
+
+  .savings-trend-chart {
+    height: 275px;
+  }
+
+  .savings-trend-currency {
+    padding: 12px 8px;
+  }
+}

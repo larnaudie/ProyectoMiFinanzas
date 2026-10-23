@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { Link, useOutletContext, useParams } from "react-router-dom";
+import {
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import { api } from "../../../services/api.js";
 import { DashboardLoadingState } from "../../../components/DashboardLoadingState.jsx";
 import {
@@ -29,6 +39,15 @@ import {
   esTransferenciaInternaPorSubcategoria as esSubcategoriaTransferencia,
   resumirMovimientosMensuales,
 } from "../../../utils/resumenFinanciero.js";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+);
 
 const MESES_DEL_ANIO = [
   { valor: "01", nombre: "Enero" },
@@ -70,6 +89,87 @@ const formatearMes = (clave) => {
 
 const formatearMonto = (monto, moneda) =>
   formatearMontoMoneda(numeroFinito(monto), moneda);
+
+const formatearMontoCompacto = (monto, moneda) => {
+  const prefijo = moneda === "USD" ? "US$" : moneda === "UI" ? "UI" : "$";
+  const numero = numeroFinito(monto);
+  return `${prefijo} ${new Intl.NumberFormat("es-UY", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(numero)}`;
+};
+
+const crearOpcionesGraficaTendencia = (moneda) => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: {
+    mode: "index",
+    intersect: false,
+  },
+  plugins: {
+    legend: {
+      position: "top",
+      align: "end",
+      labels: {
+        usePointStyle: true,
+        boxWidth: 8,
+        color: "#38574f",
+        font: { size: 11, weight: 700 },
+      },
+    },
+    tooltip: {
+      callbacks: {
+        label: (context) => (
+          `${context.dataset.label}: ${formatearMonto(context.parsed.y, moneda)}`
+        ),
+      },
+    },
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      ticks: { color: "#637b74", font: { size: 10 } },
+    },
+    y: {
+      beginAtZero: true,
+      position: "left",
+      grid: { color: "rgba(31, 91, 77, 0.08)" },
+      ticks: {
+        color: "#637b74",
+        callback: (valor) => formatearMontoCompacto(valor, moneda),
+      },
+      title: {
+        display: true,
+        text: "Entradas / Salidas",
+        color: "#637b74",
+        font: { size: 10, weight: 700 },
+      },
+    },
+    yAvg: {
+      position: "right",
+      grace: "20%",
+      grid: {
+        drawOnChartArea: true,
+        color: (context) => (
+          Number(context.tick.value) === 0
+            ? "rgba(92, 76, 150, 0.32)"
+            : "transparent"
+        ),
+        lineWidth: (context) => (Number(context.tick.value) === 0 ? 2 : 0),
+      },
+      ticks: {
+        color: "#675b8e",
+        callback: (valor) => formatearMontoCompacto(valor, moneda),
+      },
+      title: {
+        display: true,
+        text: "AVG ahorro / déficit",
+        color: "#675b8e",
+        font: { size: 10, weight: 700 },
+      },
+    },
+  },
+});
 
 const formatearFecha = (fecha) => (
   fecha
@@ -462,6 +562,130 @@ function DashboardPage({ embedded = false }) {
       ]),
     ),
     [cuentaActual?._id, cuentas, gastos, meses],
+  );
+
+  const mesesTendencia = useMemo(() => {
+    if (fechaModo === "mes" && fechaAnio) {
+      return crearMesesDelAnio(fechaAnio);
+    }
+
+    return clavesMensualesDisponibles.length > 0
+      ? clavesMensualesDisponibles
+      : crearMesesDelAnio(anioActual);
+  }, [anioActual, clavesMensualesDisponibles, fechaAnio, fechaModo]);
+
+  const ahorroTendenciaPorMes = useMemo(
+    () => new Map(
+      mesesTendencia.map((clave) => [
+        clave,
+        resumirMovimientosMensuales({
+          gastos,
+          cuentas,
+          periodo: clave,
+          cuentaId: cuentaActual?._id || "",
+        }),
+      ]),
+    ),
+    [cuentaActual?._id, cuentas, gastos, mesesTendencia],
+  );
+
+  const tendenciasPorMoneda = useMemo(
+    () => Object.fromEntries(
+      monedasDashboard.map((moneda) => {
+        const resultadosAnteriores = [];
+        const entradas = [];
+        const salidas = [];
+        const promedioMovil = [];
+
+        mesesTendencia.forEach((clave) => {
+          const resumen = ahorroTendenciaPorMes.get(clave)?.[moneda];
+          const tieneDatos = numeroFinito(resumen?.cantidad) > 0;
+
+          if (!tieneDatos) {
+            entradas.push(null);
+            salidas.push(null);
+            promedioMovil.push(null);
+            return;
+          }
+
+          const entrada = numeroFinito(resumen.ingresosBancarios);
+          const salida = numeroFinito(resumen.egresosBancarios);
+          const resultado = Number((entrada - salida).toFixed(2));
+          resultadosAnteriores.push(resultado);
+          const ventana = resultadosAnteriores.slice(-3);
+          const promedio = ventana.reduce((total, valor) => total + valor, 0)
+            / ventana.length;
+
+          entradas.push(entrada);
+          salidas.push(salida);
+          promedioMovil.push(Number(promedio.toFixed(2)));
+        });
+
+        const ultimoPromedio = [...promedioMovil]
+          .reverse()
+          .find((valor) => valor !== null) ?? null;
+
+        return [moneda, {
+          entradas,
+          salidas,
+          promedioMovil,
+          ultimoPromedio,
+          tieneDatos: entradas.some((valor) => valor !== null),
+          chartData: {
+            labels: mesesTendencia.map((clave) => (
+              formatearMes(clave).replace(/ de \d{4}$/i, "")
+            )),
+            datasets: [
+              {
+                label: "Entradas",
+                data: entradas,
+                borderColor: "#176b5b",
+                backgroundColor: "#176b5b",
+                pointBackgroundColor: "#176b5b",
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                borderWidth: 2.5,
+                tension: 0.28,
+                spanGaps: false,
+                yAxisID: "y",
+              },
+              {
+                label: "Salidas",
+                data: salidas,
+                borderColor: "#d46658",
+                backgroundColor: "#d46658",
+                pointBackgroundColor: "#d46658",
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                borderWidth: 2.5,
+                tension: 0.28,
+                spanGaps: false,
+                yAxisID: "y",
+              },
+              {
+                label: "AVG ahorro/déficit (3 meses)",
+                data: promedioMovil,
+                borderColor: "#675b8e",
+                backgroundColor: "#675b8e",
+                pointBackgroundColor: promedioMovil.map((valor) => (
+                  valor !== null && valor < 0 ? "#c84c42" : "#28826d"
+                )),
+                pointBorderColor: "#ffffff",
+                pointBorderWidth: 1.5,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderWidth: 2.5,
+                borderDash: [7, 5],
+                tension: 0.32,
+                spanGaps: false,
+                yAxisID: "yAvg",
+              },
+            ],
+          },
+        }];
+      }),
+    ),
+    [ahorroTendenciaPorMes, mesesTendencia, monedasDashboard],
   );
 
   const ahorroDelPeriodoPorMoneda = useMemo(
@@ -1021,6 +1245,73 @@ function DashboardPage({ embedded = false }) {
           </small>
         </article>
       </section>
+
+      {!esCuentaCredito && (
+        <section className="savings-trend-card" aria-labelledby="savings-trend-title">
+          <header className="savings-trend-header">
+            <div>
+              <span className="page-eyebrow">Tendencia financiera</span>
+              <h2 id="savings-trend-title">Ahorro y déficit en el tiempo</h2>
+              <p>
+                Entradas y salidas usan la escala izquierda. AVG muestra en la
+                escala derecha el promedio móvil del resultado neto de hasta
+                tres meses.
+              </p>
+            </div>
+            <span className="savings-trend-period">
+              {fechaAnio || "Histórico disponible"}
+            </span>
+          </header>
+
+          <div className="savings-trend-grid">
+            {monedasDashboard.map((moneda) => {
+              const tendencia = tendenciasPorMoneda[moneda];
+              if (!tendencia?.tieneDatos) return null;
+              const promedio = tendencia.ultimoPromedio;
+
+              return (
+                <article className="savings-trend-currency" key={moneda}>
+                  <header>
+                    <div>
+                      <span>{moneda}</span>
+                      <strong>
+                        {promedio < 0 ? "Tendencia de déficit" : "Tendencia de ahorro"}
+                      </strong>
+                    </div>
+                    <div className={promedio < 0 ? "is-deficit" : "is-saving"}>
+                      <small>AVG actual</small>
+                      <strong>{formatearMonto(Math.abs(promedio), moneda)}</strong>
+                    </div>
+                  </header>
+                  <div className="savings-trend-chart">
+                    <Line
+                      data={tendencia.chartData}
+                      options={crearOpcionesGraficaTendencia(moneda)}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+
+            {!monedasDashboard.some(
+              (moneda) => tendenciasPorMoneda[moneda]?.tieneDatos,
+            ) && (
+              <p className="savings-trend-empty">
+                Todavía no hay meses con movimientos creados para dibujar la tendencia.
+              </p>
+            )}
+          </div>
+
+          <footer className="savings-trend-note">
+            <span />
+            <p>
+              Cero separa ahorro de déficit: AVG positivo indica que las entradas
+              superan las salidas; AVG negativo indica lo contrario. Las transferencias
+              propias conservan el mismo tratamiento neutral del resto del dashboard.
+            </p>
+          </footer>
+        </section>
+      )}
 
       {pendientesTotales > 0 && (
         <MovimientosPendientesDashboard
