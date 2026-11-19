@@ -225,6 +225,161 @@ export const actualizarGastoService = async (id, usuarioId, data) => {
   return presentarGasto(gastoActualizado);
 };
 
+export const moverGastosCuentaService = async ({
+  usuarioId,
+  gastoIds,
+  cuentaOrigenId,
+  cuentaDestinoId,
+}) => {
+  const idsUnicos = [...new Set(gastoIds.map(String))];
+  const idsValidos = idsUnicos.every((id) => mongoose.isValidObjectId(id));
+  if (!idsValidos) {
+    const error = new Error("Hay movimientos seleccionados con un identificador inválido");
+    error.status = 400;
+    throw error;
+  }
+
+  const [cuentaOrigen, cuentaDestino] = await Promise.all([
+    Cuenta.findOne({ _id: cuentaOrigenId, usuarioId })
+      .select("nombreCuenta moneda tipoCuenta"),
+    Cuenta.findOne({ _id: cuentaDestinoId, usuarioId })
+      .select("nombreCuenta moneda tipoCuenta"),
+  ]);
+
+  if (!cuentaOrigen || !cuentaDestino) {
+    const error = new Error("La cuenta de origen o destino no existe");
+    error.status = 404;
+    throw error;
+  }
+  if (String(cuentaOrigen._id) === String(cuentaDestino._id)) {
+    const error = new Error("Elegí una cuenta de destino diferente");
+    error.status = 400;
+    throw error;
+  }
+  if (cuentaOrigen.tipoCuenta === "credito" || cuentaDestino.tipoCuenta === "credito") {
+    const error = new Error("Los movimientos de tarjeta se administran desde su resumen y no se pueden trasladar con esta acción");
+    error.status = 409;
+    throw error;
+  }
+  if (normalizarMoneda(cuentaOrigen.moneda) !== normalizarMoneda(cuentaDestino.moneda)) {
+    const error = new Error("Sólo se pueden mover movimientos entre cuentas de la misma moneda");
+    error.status = 409;
+    throw error;
+  }
+
+  const gastos = await Gasto.find({
+    _id: { $in: idsUnicos },
+    usuarioId,
+    cuentaId: cuentaOrigen._id,
+  }).select("_id tarjetaId resumenTarjetaId origen");
+
+  if (gastos.length !== idsUnicos.length) {
+    const error = new Error("La selección cambió o contiene movimientos que no pertenecen a la cuenta de origen. No se movió ninguno");
+    error.status = 409;
+    throw error;
+  }
+  if (gastos.some((gasto) => gasto.tarjetaId || gasto.resumenTarjetaId || gasto.origen?.tipo === "tarjeta")) {
+    const error = new Error("La selección contiene movimientos de tarjeta que no pueden trasladarse de cuenta");
+    error.status = 409;
+    throw error;
+  }
+
+  const gastosObjectId = gastos.map((gasto) => gasto._id);
+  const referenciasDirectas = gastos
+    .filter((gasto) => gasto.origen?.referenciaId && gasto.origen?.tipo !== "excel")
+    .map((gasto) => gasto.origen.referenciaId);
+  const [contrapartesDirectas, contrapartesInversas] = await Promise.all([
+    referenciasDirectas.length > 0
+      ? Gasto.find({ _id: { $in: referenciasDirectas }, usuarioId }).select("cuentaId")
+      : [],
+    Gasto.find({
+      usuarioId,
+      "origen.referenciaId": { $in: gastosObjectId },
+      "origen.tipo": { $ne: "excel" },
+    }).select("cuentaId"),
+  ]);
+  const generaAutovinculo = [...contrapartesDirectas, ...contrapartesInversas]
+    .some((gasto) => String(gasto.cuentaId) === String(cuentaDestino._id));
+  if (generaAutovinculo) {
+    const error = new Error("Uno de los movimientos está vinculado con la cuenta destino. Desvinculalo antes de moverlo");
+    error.status = 409;
+    throw error;
+  }
+
+  const movimientosImportados = await MovimientoImportado.find({
+    usuarioId,
+    gastoId: { $in: gastosObjectId },
+  }).select("_id hashBanco");
+  if (movimientosImportados.length > 0) {
+    const hashBanco = movimientosImportados.map((movimiento) => movimiento.hashBanco);
+    const colision = await MovimientoImportado.exists({
+      usuarioId,
+      cuentaId: cuentaDestino._id,
+      hashBanco: { $in: hashBanco },
+      _id: { $nin: movimientosImportados.map((movimiento) => movimiento._id) },
+    });
+    if (colision) {
+      const error = new Error("La cuenta destino ya tiene uno de estos movimientos importados. Revisá duplicados antes de moverlos");
+      error.status = 409;
+      throw error;
+    }
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const resultado = await Gasto.updateMany(
+        {
+          _id: { $in: gastosObjectId },
+          usuarioId,
+          cuentaId: cuentaOrigen._id,
+        },
+        {
+          $set: {
+            cuentaId: cuentaDestino._id,
+            moneda: normalizarMoneda(cuentaDestino.moneda),
+          },
+        },
+        { session },
+      );
+      if (resultado.modifiedCount !== gastosObjectId.length) {
+        throw new Error("La selección cambió durante el traslado. No se movió ningún movimiento");
+      }
+      if (movimientosImportados.length > 0) {
+        await MovimientoImportado.updateMany(
+          { _id: { $in: movimientosImportados.map((movimiento) => movimiento._id) }, usuarioId },
+          { $set: { cuentaId: cuentaDestino._id, moneda: normalizarMoneda(cuentaDestino.moneda) } },
+          { session },
+        );
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  const gastosActualizados = await Gasto.find({
+    _id: { $in: gastosObjectId },
+    usuarioId,
+    cuentaId: cuentaDestino._id,
+  })
+    .populate("subcategoriaId", "nombreSubcategoria")
+    .populate("categoriaId", "nombreCategoria")
+    .populate("cuentaId", "nombreCuenta moneda tipoCuenta monedas")
+    .populate({
+      path: "origen.referenciaId",
+      select: "detalle cuentaId fecha montoBancario moneda",
+      populate: { path: "cuentaId", select: "nombreCuenta" },
+    });
+
+  await reconciliarPrestamosUsuarioSeguro(usuarioId);
+  return {
+    cantidad: gastosActualizados.length,
+    cuentaOrigen: { _id: cuentaOrigen._id, nombreCuenta: cuentaOrigen.nombreCuenta },
+    cuentaDestino: { _id: cuentaDestino._id, nombreCuenta: cuentaDestino.nombreCuenta },
+    gastos: gastosActualizados.map(presentarGasto),
+  };
+};
+
 export const crearGastoService = async (
   data,
   usuarioId,

@@ -8,6 +8,7 @@ import {
   eliminarTodosLosGastosService,
   subirFacturaGastoService,
   obtenerGastoPorIdService,
+  moverGastosCuentaService,
 } from "../3-services/gasto.service.js";
 
 export const obtenerGastos = async (req, res, next) => {
@@ -87,6 +88,21 @@ export const actualizarGasto = async (req, res, next) => {
     res.status(201).json({
       message: `Gasto ${gastoActualizado.id} actualizado exitosamente`,
       gasto: gastoActualizado,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const moverGastosCuenta = async (req, res, next) => {
+  try {
+    const resultado = await moverGastosCuentaService({
+      usuarioId: req.user.id,
+      ...req.body,
+    });
+    res.status(200).json({
+      message: `${resultado.cantidad} movimiento${resultado.cantidad === 1 ? "" : "s"} movido${resultado.cantidad === 1 ? "" : "s"} correctamente`,
+      ...resultado,
     });
   } catch (error) {
     next(error);

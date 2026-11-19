@@ -168,6 +168,11 @@ function DesglocePage() {
   const cuentaActual = cuentas.find((cuenta) => cuenta._id === cuentaId);
   const esCuentaCredito =
     cuentaActual?.tipoCuenta === "credito" || Boolean(resumenId);
+  const cuentasDestinoMovimiento = cuentas.filter((cuenta) =>
+    obtenerId(cuenta) !== cuentaId
+    && cuenta.tipoCuenta !== "credito"
+    && normalizarMoneda(cuenta.moneda) === normalizarMoneda(cuentaActual?.moneda),
+  );
   const manejaUi = obtenerMonedasCuenta(cuentaActual).includes("UI");
   const cotizacionUi = useCotizacionUi(manejaUi);
   const obtenerMonedaVisible = (gasto) => {
@@ -201,6 +206,9 @@ function DesglocePage() {
   const [resumenActual, setResumenActual] = useState(null);
   const [gastoProcesandoId, setGastoProcesandoId] = useState("");
   const [creandoSeleccionados, setCreandoSeleccionados] = useState(false);
+  const [gastosParaMover, setGastosParaMover] = useState([]);
+  const [cuentaDestinoMovimientoId, setCuentaDestinoMovimientoId] = useState("");
+  const [moviendoSeleccionados, setMoviendoSeleccionados] = useState(false);
   const [gastoVinculando, setGastoVinculando] = useState(null);
   const [candidatosVinculo, setCandidatosVinculo] = useState([]);
   const [referenciaId, setReferenciaId] = useState("");
@@ -455,6 +463,37 @@ function DesglocePage() {
     setFormGasto(crearGastoInicial());
     setFormCategoria(categoriaInicial);
     setFormSubcategoria(subcategoriaInicial);
+    setGastosParaMover([]);
+    setCuentaDestinoMovimientoId("");
+  };
+
+  const abrirModalMoverCuenta = (gastosSeleccionados) => {
+    setGastosParaMover(gastosSeleccionados.map((gasto) => gasto._id));
+    setCuentaDestinoMovimientoId("");
+    abrirModal("mover-cuenta");
+  };
+
+  const confirmarMoverCuenta = async () => {
+    if (!cuentaDestinoMovimientoId || gastosParaMover.length === 0) return;
+    setMoviendoSeleccionados(true);
+    setErrorModal("");
+    try {
+      const response = await api.patch("/gastos/mover-cuenta", {
+        gastoIds: gastosParaMover,
+        cuentaOrigenId: cuentaId,
+        cuentaDestinoId: cuentaDestinoMovimientoId,
+      });
+      response.data.gastos.forEach((gasto) => dispatch(actualizarGasto(gasto)));
+      setSeleccionados((actuales) =>
+        actuales.filter((id) => !gastosParaMover.includes(id)),
+      );
+      setMensajeAccion(response.data.message);
+      cerrarModal();
+    } catch (error) {
+      setErrorModal(obtenerMensajeErrorGasto(error));
+    } finally {
+      setMoviendoSeleccionados(false);
+    }
   };
 
   const cambiarFormGasto = (campo, valor) => {
@@ -1326,6 +1365,16 @@ function DesglocePage() {
           >
             Eliminar
           </button>
+          {!resumenId && !esCuentaCredito && (
+            <button
+              className="selection-action"
+              type="button"
+              disabled={creandoSeleccionados || moviendoSeleccionados}
+              onClick={() => abrirModalMoverCuenta(gastosSeleccionadosVisibles)}
+            >
+              Mover a otra cuenta
+            </button>
+          )}
           {pendientesSeleccionadosVisibles.length > 0 && (
             <button
               className="selection-action create-action"
@@ -1957,6 +2006,73 @@ function DesglocePage() {
 
       {mensajeAccion && <p className="detail-feedback">{mensajeAccion}</p>}
       {errorAccion && <p className="inline-error">{errorAccion}</p>}
+
+      {modalActivo === "mover-cuenta" && (
+        <div className="modal-backdrop">
+          <section className="edit-modal move-account-modal">
+            <div className="edit-modal-header">
+              <div>
+                <h2>Mover a otra cuenta</h2>
+                <p>
+                  Vas a mover {gastosParaMover.length} movimiento
+                  {gastosParaMover.length === 1 ? "" : "s"} desde {cuentaActual?.nombreCuenta}.
+                </p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={moviendoSeleccionados}
+                onClick={cerrarModal}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <label>
+              Cuenta de destino
+              <select
+                value={cuentaDestinoMovimientoId}
+                disabled={moviendoSeleccionados}
+                onChange={(event) => setCuentaDestinoMovimientoId(event.target.value)}
+              >
+                <option value="">Seleccioná una cuenta</option>
+                {cuentasDestinoMovimiento.map((cuenta) => (
+                  <option key={cuenta._id} value={cuenta._id}>
+                    {cuenta.nombreCuenta}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {cuentasDestinoMovimiento.length === 0 && (
+              <p className="inline-error">
+                No hay otra cuenta de {normalizarMoneda(cuentaActual?.moneda)} disponible.
+              </p>
+            )}
+            <p className="move-account-warning">
+              Se conserva la fecha, el detalle, la categoría, la subcategoría y los montos.
+              La operación sólo cambia la cuenta bancaria asociada.
+            </p>
+            {errorModal && <p className="inline-error">{errorModal}</p>}
+            <div className="edit-modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={moviendoSeleccionados}
+                onClick={cerrarModal}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!cuentaDestinoMovimientoId || moviendoSeleccionados}
+                onClick={confirmarMoverCuenta}
+              >
+                {moviendoSeleccionados ? "Moviendo..." : `Mover ${gastosParaMover.length}`}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {modalActivo === "gasto" && (
         <div className="modal-backdrop">

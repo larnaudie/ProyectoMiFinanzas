@@ -59,6 +59,12 @@ export const actualizarGastoSchema = Joi.object({
   resumenTarjeta: resumenTarjetaSchema,
 }).min(1);
 
+export const moverGastosCuentaSchema = Joi.object({
+  gastoIds: Joi.array().items(Joi.string().required()).min(1).max(500).unique().required(),
+  cuentaOrigenId: Joi.string().required(),
+  cuentaDestinoId: Joi.string().required().invalid(Joi.ref("cuentaOrigenId")),
+});
+
 export const crearGastoVinculadoSchema = Joi.object({
   cuentaId: Joi.string().required(),
   detalle: Joi.string().trim().min(3).max(120).required(),

@@ -8,6 +8,7 @@ import {
   eliminarGasto,
   eliminarTodosLosGastos,
   obtenerGastoPorId,
+  moverGastosCuenta,
 } from "../2-controllers/gastos.controller.js";
 import { validateBody } from "../middlewares/validateBody.middleware.js";
 import {
@@ -15,6 +16,7 @@ import {
   actualizarGastoSchema,
   crearGastoVinculadoSchema,
   crearGastoVinculadoPagoSchema,
+  moverGastosCuentaSchema,
 } from "../0-validators/gasto.validators.js";
 import { uploadFactura } from "../middlewares/uploadFactura.middleware.js";
 import { subirFacturaGasto } from "../2-controllers/gastos.controller.js";
@@ -34,6 +36,11 @@ router.post(
   "/:id/crear-vinculo-pago",
   validateBody(crearGastoVinculadoPagoSchema),
   crearGastoYVincularPago,
+);
+router.patch(
+  "/mover-cuenta",
+  validateBody(moverGastosCuentaSchema),
+  moverGastosCuenta,
 );
 router.patch(
   "/:id/factura",
