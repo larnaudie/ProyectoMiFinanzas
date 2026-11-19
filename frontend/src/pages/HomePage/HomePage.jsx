@@ -511,6 +511,7 @@ function HomePage() {
         <Link to="/importar"><strong>Importar Excel</strong><small>Cargar movimientos bancarios</small></Link>
         <Link to="/manage"><strong>Administrar</strong><small>Cuentas y categorías</small></Link>
         <Link to="/prestamos"><strong>Deudas y préstamos</strong><small>Seguir cobros y cuotas</small></Link>
+        <Link to="/asistente"><strong>Asistente IA</strong><small>Consultar y analizar tus datos</small></Link>
       </nav>
 
       {edicionSaldoCuenta && (

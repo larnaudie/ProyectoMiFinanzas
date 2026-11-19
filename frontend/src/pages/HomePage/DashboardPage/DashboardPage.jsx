@@ -38,6 +38,7 @@ import {
   esSaldoInicial,
   esTransferenciaInternaPorSubcategoria as esSubcategoriaTransferencia,
   resumirMovimientosMensuales,
+  totalizarCampoEnUyu,
 } from "../../../utils/resumenFinanciero.js";
 
 ChartJS.register(
@@ -416,8 +417,11 @@ function DashboardPage({ embedded = false }) {
   const requiereCotizacionCredito = esCuentaCredito
     && monedasDashboard.includes("UYU")
     && monedasDashboard.includes("USD");
+  const requiereCotizacionConsolidada = !cuentaActual
+    && !esCuentaCredito
+    && monedasDashboard.some((moneda) => moneda !== "UYU");
   const cotizacionUi = useCotizacionUi(
-    manejaUi || requiereCotizacionCredito,
+    manejaUi || requiereCotizacionCredito || requiereCotizacionConsolidada,
   );
 
   const resumenesFiltrados = useMemo(() => {
@@ -710,6 +714,45 @@ function DashboardPage({ embedded = false }) {
     ),
     [ahorroPorMes, monedasDashboard],
   );
+
+  const resultadoConsolidado = useMemo(() => {
+    if (cuentaActual || esCuentaCredito) return null;
+
+    const entradasUyu = totalizarCampoEnUyu(
+      ahorroDelPeriodoPorMoneda,
+      "ingresosBancarios",
+      cotizacionUi.cotizacion,
+    );
+    const salidasUyu = totalizarCampoEnUyu(
+      ahorroDelPeriodoPorMoneda,
+      "egresosBancarios",
+      cotizacionUi.cotizacion,
+    );
+    const resultadoUyu = totalizarCampoEnUyu(
+      ahorroDelPeriodoPorMoneda,
+      "resultadoBancario",
+      cotizacionUi.cotizacion,
+    );
+    const uyuPorDolar = numeroFinito(
+      cotizacionUi.cotizacion?.usd?.uyuPorDolar,
+    );
+
+    return {
+      entradasUyu,
+      salidasUyu,
+      resultadoUyu,
+      resultadoUsd:
+        resultadoUyu !== null && uyuPorDolar > 0
+          ? Number((resultadoUyu / uyuPorDolar).toFixed(2))
+          : null,
+      uyuPorDolar,
+    };
+  }, [
+    ahorroDelPeriodoPorMoneda,
+    cotizacionUi.cotizacion,
+    cuentaActual,
+    esCuentaCredito,
+  ]);
 
   const totalesPorMoneda = useMemo(
     () =>
@@ -1081,6 +1124,99 @@ function DashboardPage({ embedded = false }) {
         </div>
       </section>
 
+      {!cuentaActual && !esCuentaCredito && (
+        <section
+          className={`dashboard-consolidated-result ${
+            numeroFinito(resultadoConsolidado?.resultadoUyu) < 0
+              ? "is-deficit"
+              : "is-saving"
+          }`}
+          aria-labelledby="dashboard-consolidated-title"
+        >
+          <div className="dashboard-consolidated-copy">
+            <span className="dashboard-consolidated-eyebrow">
+              Todas tus cuentas · monedas convertidas a UYU
+            </span>
+            <h2 id="dashboard-consolidated-title">
+              {resultadoConsolidado?.resultadoUyu === null
+                ? "Resultado neto consolidado"
+                : numeroFinito(resultadoConsolidado?.resultadoUyu) < 0
+                  ? "Déficit neto consolidado"
+                  : "Ahorro neto consolidado"}
+            </h2>
+            {resultadoConsolidado?.resultadoUyu === null ? (
+              <strong className="dashboard-consolidated-loading">
+                {cotizacionUi.cargando
+                  ? "Convirtiendo monedas con la referencia del BCU..."
+                  : cotizacionUi.error || "Falta una cotización para combinar las monedas."}
+              </strong>
+            ) : (
+              <>
+                <strong className="dashboard-consolidated-amount">
+                  {formatearMonto(
+                    Math.abs(resultadoConsolidado.resultadoUyu),
+                    "UYU",
+                  )}
+                </strong>
+                {resultadoConsolidado.resultadoUsd !== null && (
+                  <small>
+                    ≈ {formatearMonto(
+                      Math.abs(resultadoConsolidado.resultadoUsd),
+                      "USD",
+                    )}
+                  </small>
+                )}
+              </>
+            )}
+            <p>
+              Es el resultado económico del período después de convertir cada
+              moneda. Las transferencias entre tus propias cuentas no se suman
+              como ingreso ni como gasto.
+            </p>
+          </div>
+
+          <div className="dashboard-consolidated-formula">
+            <div>
+              <span>Entradas externas equivalentes</span>
+              <strong>
+                {resultadoConsolidado?.entradasUyu === null
+                  ? "—"
+                  : formatearMonto(resultadoConsolidado.entradasUyu, "UYU")}
+              </strong>
+            </div>
+            <span className="dashboard-formula-operator">−</span>
+            <div>
+              <span>Salidas externas equivalentes</span>
+              <strong>
+                {resultadoConsolidado?.salidasUyu === null
+                  ? "—"
+                  : formatearMonto(resultadoConsolidado.salidasUyu, "UYU")}
+              </strong>
+            </div>
+            <span className="dashboard-formula-operator">=</span>
+            <div>
+              <span>Resultado neto</span>
+              <strong>
+                {resultadoConsolidado?.resultadoUyu === null
+                  ? "—"
+                  : formatearMonto(resultadoConsolidado.resultadoUyu, "UYU")}
+              </strong>
+            </div>
+            {resultadoConsolidado?.uyuPorDolar > 0 && (
+              <small>
+                Referencia BCU: US$ 1 = {formatearMonto(
+                  resultadoConsolidado.uyuPorDolar,
+                  "UYU",
+                )}
+                {cotizacionUi.cotizacion?.usd?.fecha
+                  ? ` · ${formatearFecha(cotizacionUi.cotizacion.usd.fecha)}`
+                  : ""}
+              </small>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="dashboard-kpis">
         <article>
           <span>{esCuentaCredito ? "Consumos de tarjeta" : "Salidas bancarias"}</span>
@@ -1148,7 +1284,9 @@ function DashboardPage({ embedded = false }) {
           <span>
             {esCuentaCredito
               ? "Deuda al último cierre"
-              : "Ahorro real del período"}
+              : cuentaActual
+                ? "Resultado externo de la cuenta"
+                : "Resultado externo por moneda"}
           </span>
           {esCuentaCredito ? (
             monedasDashboard.map((moneda) => {
@@ -1223,7 +1361,7 @@ function DashboardPage({ embedded = false }) {
                 : "Todavía no hay un resumen dentro del período"
               : cuentaActual
                 ? "Entradas menos todas las salidas bancarias de esta cuenta"
-                : "Resultado consolidado; las transferencias propias son neutrales"}
+                : "No es saldo disponible: cada moneda se muestra sin mezclar; el consolidado está arriba"}
           </small>
         </article>
         <article

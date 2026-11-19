@@ -43,6 +43,7 @@ const Navbar = ({
     if (location.pathname === "/importar" || location.pathname.includes("/importar-excel")) return "Importar Excel";
     if (location.pathname === "/analisis") return "Pagos mensuales";
     if (location.pathname === "/prestamos") return "Deudas y préstamos";
+    if (location.pathname === "/asistente") return "Asistente financiero";
     if (location.pathname === "/manage") return "Administrar";
     if (location.pathname === "/perfil") return "Configuración";
     return segmentosRuta.at(-1)?.replaceAll("-", " ") || "MiFinanzas";

@@ -14,6 +14,7 @@ import cotizacionesRouter from "./1-routes/cotizaciones.routes.js";
 import prestamosRouter from "./1-routes/prestamos.routes.js";
 import deudasCobrarRouter from "./1-routes/deudasCobrar.routes.js";
 import analisisRouter from "./1-routes/analisis.routes.js";
+import asistenteRouter from "./1-routes/asistente.routes.js";
 
 
 const router = express.Router({ mergeParams: true });
@@ -36,5 +37,6 @@ router.use("/usuarios", usuariosRouter);
 router.use("/prestamos", prestamosRouter);
 router.use("/deudas", deudasCobrarRouter);
 router.use("/analisis", analisisRouter);
+router.use("/asistente", asistenteRouter);
 
 export default router; 

@@ -10,6 +10,7 @@ const iconos = {
   desglose: <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />,
   importar: <path d="M12 3v12M7 8l5-5 5 5M4 15v5h16v-5" />,
   configuracion: <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19 12l2-1-2-3-2 .5-1.5-1L15 5h-6l-.5 2.5-1.5 1L5 8l-2 3 2 1v2l-2 1 2 3 2-.5 1.5 1L9 21h6l.5-2.5 1.5-1 2 .5 2-3-2-1v-2Z" />,
+  asistente: <path d="M12 3a7 7 0 0 0-7 7v2a4 4 0 0 0 4 4h1v-5H7v-1a5 5 0 0 1 10 0v1h-3v5h2.2A4.8 4.8 0 0 1 12 18.5H9V21h3a7 7 0 0 0 7-7v-4a7 7 0 0 0-7-7Z" />,
 };
 
 function NavIcon({ nombre }) {
@@ -61,6 +62,10 @@ function Sidebar({ abierto, fijado }) {
         <NavLink className={claseLink} to="/prestamos" title="Deudas y préstamos" aria-label="Deudas y préstamos">
           <NavIcon nombre="prestamos" />
           <span>Deudas y préstamos</span>
+        </NavLink>
+        <NavLink className={claseLink} to="/asistente" title="Asistente financiero" aria-label="Asistente financiero de solo lectura">
+          <NavIcon nombre="asistente" />
+          <span>Asistente IA</span>
         </NavLink>
         <NavLink className={claseLink} to="/manage" title="Administrar" aria-label="Administrar">
           <NavIcon nombre="manage" />

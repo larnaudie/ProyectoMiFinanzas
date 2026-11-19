@@ -18,6 +18,7 @@ import MovimientosPage from "./pages/HomePage/MovimientosPage/MovimientosPage.js
 import AnalisisPage from "./pages/HomePage/AnalisisPage/AnalisisPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import ImportPage from "./pages/HomePage/DashboardPage/ImportPage.jsx";
+import AsistentePage from "./pages/HomePage/AsistentePage/AsistentePage.jsx";
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
               <Route path="/movimientos" element={<MovimientosPage />} />
               <Route path="/analisis" element={<AnalisisPage />} />
               <Route path="/prestamos" element={<PrestamosPage />} />
+              <Route path="/asistente" element={<AsistentePage />} />
               <Route path="/perfil" element={<ProfilePage />} />
               <Route path="cuentas/:cuentaId/dashboard" element={<DashboardPage />} />
               <Route path="cuentas/:cuentaId/gastos" element={<CuentaGastosPage />} />
