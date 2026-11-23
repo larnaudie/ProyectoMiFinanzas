@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import Cuenta from "../0.1-models/cuenta.model.js";
 import Gasto from "../0.1-models/gasto.model.js";
 import Prestamo from "../0.1-models/prestamo.model.js";
@@ -258,6 +257,8 @@ const herramientas = [
   },
 ];
 
+const herramientasGemini = herramientas.map(({ strict: _strict, ...herramienta }) => herramienta);
+
 const ejecutarHerramienta = async (nombre, argumentos, usuarioId) => {
   if (nombre === "obtener_estado_general") return obtenerEstadoGeneral(usuarioId);
   if (nombre === "obtener_resumen_periodo") return obtenerResumenPeriodo({ usuarioId, ...argumentos });
@@ -293,47 +294,133 @@ const validarFrecuencia = (usuarioId) => {
   consumosPorUsuario.set(clave, recientes);
 };
 
+const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+
+export const extraerTextoGemini = (interaccion = {}) => {
+  const textoDirecto = String(interaccion.output_text || interaccion.outputText || "").trim();
+  if (textoDirecto) return textoDirecto;
+
+  return (interaccion.steps || [])
+    .filter((paso) => paso?.type === "model_output")
+    .flatMap((paso) => paso.content || [])
+    .filter((contenido) => contenido?.type === "text")
+    .map((contenido) => contenido.text || "")
+    .join("\n")
+    .trim();
+};
+
+export const convertirHistorialAGemini = (historial = [], pregunta = "") => [
+  ...historial.slice(-10).map((mensaje) => ({
+    type: mensaje.role === "assistant" ? "model_output" : "user_input",
+    content: [{ type: "text", text: String(mensaje.content || "") }],
+  })),
+  {
+    type: "user_input",
+    content: [{ type: "text", text: String(pregunta || "") }],
+  },
+];
+
+const crearErrorGemini = (status, detalle = "") => {
+  let mensaje = "El asistente de Gemini no pudo completar la consulta. Intentá nuevamente.";
+  let estado = 502;
+  if (status === 400) mensaje = "Gemini rechazó la consulta. Revisá la configuración del modelo.";
+  if (status === 401 || status === 403) {
+    mensaje = "La clave de Gemini no es válida o no tiene acceso al modelo configurado.";
+    estado = 503;
+  }
+  if (status === 429) {
+    mensaje = "El asistente alcanzó temporalmente el límite gratuito de Gemini. Esperá un momento e intentá nuevamente.";
+    estado = 429;
+  }
+  if (status >= 500) mensaje = "Gemini está temporalmente fuera de servicio. Intentá nuevamente más tarde.";
+  const error = new Error(mensaje);
+  error.status = estado;
+  error.providerStatus = status;
+  error.providerDetail = detalle;
+  return error;
+};
+
+export const solicitarInteraccionGemini = async ({
+  apiKey,
+  modelo,
+  input,
+  fetchImpl = fetch,
+}) => {
+  let respuesta;
+  try {
+    respuesta = await fetchImpl(GEMINI_INTERACTIONS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        model: modelo,
+        store: false,
+        system_instruction: INSTRUCCIONES,
+        input,
+        tools: herramientasGemini,
+      }),
+      signal: AbortSignal.timeout(55_000),
+    });
+  } catch (errorOriginal) {
+    const error = new Error("No se pudo conectar con Gemini. Intentá nuevamente más tarde.");
+    error.status = 503;
+    error.cause = errorOriginal;
+    throw error;
+  }
+
+  const cuerpo = await respuesta.json().catch(() => ({}));
+  if (!respuesta.ok) {
+    const detalle = cuerpo?.error?.message || cuerpo?.message || "";
+    throw crearErrorGemini(respuesta.status, detalle);
+  }
+  return cuerpo;
+};
+
 export const consultarAsistenteFinancieroService = async ({ usuarioId, pregunta, historial = [] }) => {
-  if (!process.env.OPENAI_API_KEY) {
-    const error = new Error("El asistente todavía no tiene configurada su clave de OpenAI");
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error("El asistente todavía no tiene configurada su clave de Gemini");
     error.status = 503;
     throw error;
   }
   validarFrecuencia(usuarioId);
-  const cliente = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const modelo = process.env.OPENAI_ANALYSIS_MODEL || "gpt-5-mini";
-  const input = [
-    ...historial.slice(-10).map((mensaje) => ({ role: mensaje.role, content: mensaje.content })),
-    { role: "user", content: pregunta },
-  ];
+  const modelo = process.env.GEMINI_ANALYSIS_MODEL || "gemini-3.8-flash";
+  const input = convertirHistorialAGemini(historial, pregunta);
   const herramientasUsadas = [];
-  let respuesta = await cliente.responses.create({
-    model: modelo, instructions: INSTRUCCIONES, input,
-    tools: herramientas, parallel_tool_calls: false, store: false,
+  let respuesta = await solicitarInteraccionGemini({
+    apiKey: process.env.GEMINI_API_KEY,
+    modelo,
+    input,
   });
 
   for (let vuelta = 0; vuelta < 6; vuelta += 1) {
-    const llamadas = respuesta.output.filter((item) => item.type === "function_call");
+    const pasos = respuesta.steps || [];
+    const llamadas = pasos.filter((item) => item.type === "function_call");
     if (llamadas.length === 0) break;
-    input.push(...respuesta.output);
+    input.push(...pasos);
     for (const llamada of llamadas) {
-      let argumentos = {};
-      try { argumentos = JSON.parse(llamada.arguments || "{}"); } catch { argumentos = {}; }
+      let argumentos = llamada.arguments || {};
+      if (typeof argumentos === "string") {
+        try { argumentos = JSON.parse(argumentos || "{}"); } catch { argumentos = {}; }
+      }
       const resultado = await ejecutarHerramienta(llamada.name, argumentos, usuarioId);
       herramientasUsadas.push(llamada.name);
       input.push({
-        type: "function_call_output",
-        call_id: llamada.call_id,
-        output: JSON.stringify(resultado),
+        type: "function_result",
+        name: llamada.name,
+        call_id: llamada.id,
+        result: [{ type: "text", text: JSON.stringify(resultado) }],
       });
     }
-    respuesta = await cliente.responses.create({
-      model: modelo, instructions: INSTRUCCIONES, input,
-      tools: herramientas, parallel_tool_calls: false, store: false,
+    respuesta = await solicitarInteraccionGemini({
+      apiKey: process.env.GEMINI_API_KEY,
+      modelo,
+      input,
     });
   }
 
-  const texto = String(respuesta.output_text || "").trim();
+  const texto = extraerTextoGemini(respuesta);
   if (!texto) {
     const error = new Error("El asistente no pudo construir una respuesta con los datos disponibles");
     error.status = 502;
@@ -343,6 +430,7 @@ export const consultarAsistenteFinancieroService = async ({ usuarioId, pregunta,
     respuesta: texto,
     soloLectura: true,
     modelo,
+    proveedor: "Google Gemini",
     consultasRealizadas: [...new Set(herramientasUsadas)],
   };
 };
