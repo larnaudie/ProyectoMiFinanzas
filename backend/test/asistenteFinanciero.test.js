@@ -79,16 +79,15 @@ test("convierte el historial al formato stateless de Gemini", () => {
   ], "¿Cómo fue noviembre?");
 
   assert.equal(input.length, 3);
-  assert.equal(input[0].type, "user_input");
-  assert.equal(input[1].type, "model_output");
-  assert.equal(input[2].content[0].text, "¿Cómo fue noviembre?");
+  assert.equal(input[0].role, "user");
+  assert.equal(input[1].role, "model");
+  assert.equal(input[2].parts[0].text, "¿Cómo fue noviembre?");
 });
 
 test("extrae la respuesta textual de Gemini", () => {
-  assert.equal(extraerTextoGemini({ output_text: "Respuesta directa" }), "Respuesta directa");
   assert.equal(extraerTextoGemini({
-    steps: [{ type: "model_output", content: [{ type: "text", text: "Respuesta por pasos" }] }],
-  }), "Respuesta por pasos");
+    candidates: [{ content: { parts: [{ text: "Respuesta por partes" }] } }],
+  }), "Respuesta por partes");
 });
 
 test("envía herramientas de solo lectura a Gemini sin persistir la interacción", async () => {
@@ -98,22 +97,23 @@ test("envía herramientas de solo lectura a Gemini sin persistir la interacción
     return {
       ok: true,
       status: 200,
-      json: async () => ({ output_text: "Listo", steps: [] }),
+      json: async () => ({ candidates: [{ content: { parts: [{ text: "Listo" }] } }] }),
     };
   };
 
   const respuesta = await solicitarInteraccionGemini({
     apiKey: "clave-de-prueba",
-    modelo: "gemini-3.8-flash",
-    input: [{ type: "user_input", content: [{ type: "text", text: "Hola" }] }],
+    modelo: "gemini-2.5-flash",
+    input: [{ role: "user", parts: [{ text: "Hola" }] }],
     fetchImpl,
   });
   const cuerpo = JSON.parse(solicitud.body);
 
-  assert.equal(respuesta.output_text, "Listo");
-  assert.equal(cuerpo.model, "gemini-3.8-flash");
-  assert.equal(cuerpo.store, false);
-  assert.equal(cuerpo.tools.length, 4);
+  assert.equal(extraerTextoGemini(respuesta), "Listo");
+  assert.match(cuerpo.systemInstruction.parts[0].text, /MiFinanzas/);
+  assert.equal(cuerpo.contents[0].parts[0].text, "Hola");
+  assert.equal(cuerpo.tools[0].functionDeclarations.length, 4);
+  assert.match(solicitud.body, /obtener_estado_general/);
   assert.equal(solicitud.headers["x-goog-api-key"], "clave-de-prueba");
 });
 
@@ -127,7 +127,7 @@ test("traduce el límite gratuito de Gemini a un mensaje comprensible", async ()
   await assert.rejects(
     solicitarInteraccionGemini({
       apiKey: "clave-de-prueba",
-      modelo: "gemini-3.8-flash",
+      modelo: "gemini-2.5-flash",
       input: [],
       fetchImpl,
     }),

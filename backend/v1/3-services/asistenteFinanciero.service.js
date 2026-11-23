@@ -257,7 +257,38 @@ const herramientas = [
   },
 ];
 
-const herramientasGemini = herramientas.map(({ strict: _strict, ...herramienta }) => herramienta);
+const normalizarEsquemaGemini = (esquema = {}) => {
+  const tipoOriginal = esquema.type;
+  const eraNullable = Array.isArray(tipoOriginal) && tipoOriginal.includes("null");
+  const tipo = Array.isArray(tipoOriginal)
+    ? tipoOriginal.find((valor) => valor !== "null")
+    : tipoOriginal;
+  const normalizado = { ...esquema, ...(tipo ? { type: tipo } : {}) };
+  delete normalizado.additionalProperties;
+
+  if (Array.isArray(normalizado.enum)) normalizado.enum = normalizado.enum.filter((valor) => valor !== null);
+  if (normalizado.properties) {
+    normalizado.properties = Object.fromEntries(
+      Object.entries(normalizado.properties).map(([nombre, valor]) => [nombre, normalizarEsquemaGemini(valor)]),
+    );
+  }
+  if (Array.isArray(normalizado.required) && normalizado.properties) {
+    normalizado.required = normalizado.required.filter((nombre) => {
+      const propiedadOriginal = esquema.properties?.[nombre];
+      return !(Array.isArray(propiedadOriginal?.type) && propiedadOriginal.type.includes("null"));
+    });
+    if (normalizado.required.length === 0) delete normalizado.required;
+  }
+  if (eraNullable) normalizado.nullable = true;
+  return normalizado;
+};
+
+const herramientasGemini = [{
+  functionDeclarations: herramientas.map(({ type: _type, strict: _strict, ...herramienta }) => ({
+    ...herramienta,
+    parameters: normalizarEsquemaGemini(herramienta.parameters),
+  })),
+}];
 
 const ejecutarHerramienta = async (nombre, argumentos, usuarioId) => {
   if (nombre === "obtener_estado_general") return obtenerEstadoGeneral(usuarioId);
@@ -294,29 +325,24 @@ const validarFrecuencia = (usuarioId) => {
   consumosPorUsuario.set(clave, recientes);
 };
 
-const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-export const extraerTextoGemini = (interaccion = {}) => {
-  const textoDirecto = String(interaccion.output_text || interaccion.outputText || "").trim();
-  if (textoDirecto) return textoDirecto;
-
-  return (interaccion.steps || [])
-    .filter((paso) => paso?.type === "model_output")
-    .flatMap((paso) => paso.content || [])
-    .filter((contenido) => contenido?.type === "text")
-    .map((contenido) => contenido.text || "")
+export const extraerTextoGemini = (respuesta = {}) => (
+  respuesta.candidates?.[0]?.content?.parts || []
+)
+    .filter((parte) => typeof parte?.text === "string")
+    .map((parte) => parte.text)
     .join("\n")
     .trim();
-};
 
 export const convertirHistorialAGemini = (historial = [], pregunta = "") => [
   ...historial.slice(-10).map((mensaje) => ({
-    type: mensaje.role === "assistant" ? "model_output" : "user_input",
-    content: [{ type: "text", text: String(mensaje.content || "") }],
+    role: mensaje.role === "assistant" ? "model" : "user",
+    parts: [{ text: String(mensaje.content || "") }],
   })),
   {
-    type: "user_input",
-    content: [{ type: "text", text: String(pregunta || "") }],
+    role: "user",
+    parts: [{ text: String(pregunta || "") }],
   },
 ];
 
@@ -348,18 +374,18 @@ export const solicitarInteraccionGemini = async ({
 }) => {
   let respuesta;
   try {
-    respuesta = await fetchImpl(GEMINI_INTERACTIONS_URL, {
+    const url = `${GEMINI_API_BASE}/${encodeURIComponent(modelo)}:generateContent`;
+    respuesta = await fetchImpl(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
-        model: modelo,
-        store: false,
-        system_instruction: INSTRUCCIONES,
-        input,
+        systemInstruction: { parts: [{ text: INSTRUCCIONES }] },
+        contents: input,
         tools: herramientasGemini,
+        generationConfig: { temperature: 0.2 },
       }),
       signal: AbortSignal.timeout(55_000),
     });
@@ -385,7 +411,7 @@ export const consultarAsistenteFinancieroService = async ({ usuarioId, pregunta,
     throw error;
   }
   validarFrecuencia(usuarioId);
-  const modelo = process.env.GEMINI_ANALYSIS_MODEL || "gemini-3.8-flash";
+  const modelo = process.env.GEMINI_ANALYSIS_MODEL || "gemini-2.5-flash";
   const input = convertirHistorialAGemini(historial, pregunta);
   const herramientasUsadas = [];
   let respuesta = await solicitarInteraccionGemini({
@@ -395,24 +421,28 @@ export const consultarAsistenteFinancieroService = async ({ usuarioId, pregunta,
   });
 
   for (let vuelta = 0; vuelta < 6; vuelta += 1) {
-    const pasos = respuesta.steps || [];
-    const llamadas = pasos.filter((item) => item.type === "function_call");
+    const contenidoModelo = respuesta.candidates?.[0]?.content;
+    const llamadas = (contenidoModelo?.parts || [])
+      .map((parte) => parte.functionCall)
+      .filter(Boolean);
     if (llamadas.length === 0) break;
-    input.push(...pasos);
+    input.push(contenidoModelo);
+    const respuestasHerramientas = [];
     for (const llamada of llamadas) {
-      let argumentos = llamada.arguments || {};
+      let argumentos = llamada.args || {};
       if (typeof argumentos === "string") {
         try { argumentos = JSON.parse(argumentos || "{}"); } catch { argumentos = {}; }
       }
       const resultado = await ejecutarHerramienta(llamada.name, argumentos, usuarioId);
       herramientasUsadas.push(llamada.name);
-      input.push({
-        type: "function_result",
-        name: llamada.name,
-        call_id: llamada.id,
-        result: [{ type: "text", text: JSON.stringify(resultado) }],
+      respuestasHerramientas.push({
+        functionResponse: {
+          name: llamada.name,
+          response: { result: resultado },
+        },
       });
     }
+    input.push({ role: "user", parts: respuestasHerramientas });
     respuesta = await solicitarInteraccionGemini({
       apiKey: process.env.GEMINI_API_KEY,
       modelo,
